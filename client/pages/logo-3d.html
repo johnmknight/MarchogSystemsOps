@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Marchog Systems — 3D Logo</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #020509; cursor: none; }
+    canvas { display: block; }
+  </style>
+</head>
+<body>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script>
+    // ═══════════════════════════════════════════════════════════
+    //  MARCHOG SYSTEMS — 3D FLOATING LOGO
+    // ═══════════════════════════════════════════════════════════
+
+    async function loadFonts() {
+      try {
+        const aurebesh = new FontFace('Aurebesh', "url('../fonts/Aurebesh.otf')");
+        const aurebeshBold = new FontFace('Aurebesh', "url('../fonts/Aurebesh Bold.otf')", { weight: 'bold' });
+        const michroma = new FontFace('Michroma', "url('https://fonts.gstatic.com/s/michroma/v19/PN_zRfy9qWD8fEagAPg9pTk.woff2')");
+        await Promise.all([aurebesh.load(), aurebeshBold.load(), michroma.load()]);
+        document.fonts.add(aurebesh);
+        document.fonts.add(aurebeshBold);
+        document.fonts.add(michroma);
+      } catch (e) {
+        console.warn('Font load failed, using fallback', e);
+      }
+    }
+
+    loadFonts().then(init);
+
+    function init() {
+      const COL_BLUE = new THREE.Color(74/255, 158/255, 255/255);
+      const COL_TEAL = new THREE.Color(54/255, 214/255, 231/255);
+
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x020509);
+      scene.fog = new THREE.FogExp2(0x020509, 0.08);
+
+      const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 100);
+      camera.position.set(0, 0, 6);
+
+      const renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      document.body.appendChild(renderer.domElement);
+
+      // ── Lighting ───────────────────────────────────────────
+      scene.add(new THREE.AmbientLight(0x111828, 0.5));
+      const pointLight = new THREE.PointLight(COL_BLUE, 1.5, 20);
+      pointLight.position.set(2, 2, 4);
+      scene.add(pointLight);
+      const rimLight = new THREE.PointLight(COL_TEAL, 0.6, 15);
+      rimLight.position.set(-3, -1, 3);
+      scene.add(rimLight);
+
+      // ── Starfield ──────────────────────────────────────────
+      const starGeo = new THREE.BufferGeometry();
+      const starPos = new Float32Array(600 * 3);
+      for (let i = 0; i < 600; i++) {
+        starPos[i*3]   = (Math.random()-0.5) * 40;
+        starPos[i*3+1] = (Math.random()-0.5) * 40;
+        starPos[i*3+2] = (Math.random()-0.5) * 40 - 5;
+      }
+      starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
+      const starMat = new THREE.PointsMaterial({ color: 0x4a9eff, size: 0.02, transparent: true, opacity: 0.4 });
+      scene.add(new THREE.Points(starGeo, starMat));
+
+      // ── Helper: torus ring ─────────────────────────────────
+      function makeRing(radius, tube, color, opacity) {
+        const geo = new THREE.TorusGeometry(radius, tube, 16, 128);
+        const mat = new THREE.MeshStandardMaterial({
+          color, emissive: color, emissiveIntensity: 0.4,
+          transparent: true, opacity, metalness: 0.6, roughness: 0.3,
+          side: THREE.DoubleSide,
+        });
+        return new THREE.Mesh(geo, mat);
+      }
+
+      // ═════════════════════════════════════════════════════════
+      //  DRAW TEXT ALONG A CIRCULAR ARC ON CANVAS
+      //  Like SVG textPath — each character is placed and rotated
+      //  to follow the curve of a circle
+      // ═════════════════════════════════════════════════════════
+      function drawTextOnArc(ctx, text, cx, cy, radius, startAngle, letterSpacing, opts = {}) {
+        const fontSize = opts.fontSize || 48;
+        const fontFamily = opts.fontFamily || '"Courier New", monospace';
+        const fontWeight = opts.fontWeight || 'bold';
+        const fillColor = opts.color || 'rgba(74, 158, 255, 0.9)';
+        const glowColor = opts.glowColor || 'rgba(74, 158, 255, 0.5)';
+        const topArc = opts.topArc || false; // true = text along top, readable from outside
+
+        ctx.font = `${fontWeight} ${fontSize}px ${fontFamily}`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+
+        const chars = text.split('');
+        const charWidths = chars.map(c => ctx.measureText(c).width + letterSpacing);
+        const totalWidth = charWidths.reduce((a, b) => a + b, 0) - letterSpacing;
+        const totalAngle = totalWidth / radius;
+
+        // For top arc, reverse direction so text reads left-to-right from outside
+        const dir = topArc ? -1 : 1;
+        let angle = startAngle - dir * totalAngle / 2;
+
+        chars.forEach((char, i) => {
+          const charAngle = charWidths[i] / radius;
+          const midAngle = angle + dir * charAngle / 2;
+
+          ctx.save();
+          ctx.translate(
+            cx + Math.cos(midAngle) * radius,
+            cy + Math.sin(midAngle) * radius
+          );
+          ctx.rotate(midAngle + (topArc ? -Math.PI / 2 : Math.PI / 2));
+
+          // Switch to Courier for separators/punctuation that Aurebesh lacks
+          const isSeparator = (char === '\u00B7' || char === '·' || char === '.' || char === '-');
+          if (isSeparator && fontFamily.includes('Aurebesh')) {
+            ctx.font = `${fontWeight} ${fontSize}px "Courier New", monospace`;
+          } else {
+            ctx.font = `${fontWeight} ${fontSize}px ${fontFamily}`;
+          }
+
+          ctx.shadowColor = glowColor;
+          ctx.shadowBlur = fontSize * 0.4;
+          ctx.fillStyle = fillColor;
+          ctx.fillText(char, 0, 0);
+          ctx.shadowBlur = fontSize * 0.12;
+          ctx.fillText(char, 0, 0);
+          ctx.shadowBlur = 0;
+
+          ctx.restore();
+
+          angle += dir * charAngle;
+        });
+      }
+
+      // ═════════════════════════════════════════════════════════
+      //  CREATE THE TEXT RING TEXTURE
+      //  A flat canvas with text curved along a circular arc,
+      //  mapped to a plane that rotates with the inner group
+      // ═════════════════════════════════════════════════════════
+      function createTextRingTexture() {
+        const size = 1024;
+        const canvas = document.createElement('canvas');
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, size, size);
+
+        const cx = size / 2;
+        const cy = size / 2;
+
+        // The inner ring in our 3D scene is r=1.55, outer ring r=1.88
+        // Text sits between at r=1.64 in scene units
+        // Map to canvas: scene diameter ~3.76 → canvas 1024
+        // Scale factor: 1024 / (1.88 * 2 * 1.15) ≈ 237 px per scene unit
+        const scale = size / (1.88 * 2 * 1.15);
+
+        // Primary text radius in canvas pixels
+        const textR = 1.64 * scale;
+        // Bottom of circle = PI/2 (canvas coords: +Y is down)
+        // English text along the bottom semicircle
+        drawTextOnArc(ctx, 'MARCHOG  ·  SYSTEMS', cx, cy, textR, Math.PI / 2, 6, {
+          fontSize: 38,
+          fontFamily: 'Michroma, sans-serif',
+          color: 'rgba(74, 158, 255, 0.95)',
+          glowColor: 'rgba(74, 158, 255, 0.6)',
+        });
+
+        // Aurebesh version along the top semicircle (opposite side)
+        drawTextOnArc(ctx, 'MARCHOG  ·  SYSTEMS', cx, cy, textR, -Math.PI / 2, 6, {
+          fontSize: 38,
+          fontFamily: 'Aurebesh, monospace',
+          color: 'rgba(54, 214, 231, 0.7)',
+          glowColor: 'rgba(54, 214, 231, 0.4)',
+          topArc: true,
+        });
+
+        // Downward arrow at very bottom
+        const arrowY = cy + 1.68 * scale;
+        ctx.fillStyle = 'rgba(74, 158, 255, 0.4)';
+        ctx.beginPath();
+        ctx.moveTo(cx - 6, arrowY - 5);
+        ctx.lineTo(cx, arrowY + 4);
+        ctx.lineTo(cx + 6, arrowY - 5);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillRect(cx - 2, arrowY - 14, 4, 10);
+
+        const tex = new THREE.CanvasTexture(canvas);
+        tex.minFilter = THREE.LinearFilter;
+        tex.magFilter = THREE.LinearFilter;
+        return tex;
+      }
+
+      // ═════════════════════════════════════════════════════════
+      //  OUTER RING — coin-spin on Y
+      // ═════════════════════════════════════════════════════════
+      const outerGroup = new THREE.Group();
+
+      outerGroup.add(makeRing(1.88, 0.018, COL_BLUE, 0.5));
+      outerGroup.add(makeRing(1.75, 0.008, COL_BLUE, 0.25));
+
+      // Dotted ring
+      const dotGeo = new THREE.SphereGeometry(0.012, 6, 6);
+      const dotMat = new THREE.MeshStandardMaterial({
+        color: COL_BLUE, emissive: COL_BLUE, emissiveIntensity: 0.5,
+        transparent: true, opacity: 0.35,
+      });
+      for (let i = 0; i < 60; i++) {
+        const a = (i / 60) * Math.PI * 2;
+        const dot = new THREE.Mesh(dotGeo, dotMat);
+        dot.position.set(Math.cos(a) * 1.81, Math.sin(a) * 1.81, 0);
+        outerGroup.add(dot);
+      }
+
+      // Tick marks
+      const tickGeo = new THREE.BoxGeometry(0.008, 0.07, 0.008);
+      const tickMat = new THREE.MeshStandardMaterial({
+        color: COL_BLUE, emissive: COL_BLUE, emissiveIntensity: 0.3,
+        transparent: true, opacity: 0.2,
+      });
+      [0, 45, 90, 135, 180, 225, 270, 315].forEach(deg => {
+        const rad = deg * Math.PI / 180;
+        const tick = new THREE.Mesh(tickGeo, tickMat);
+        tick.position.set(Math.cos(rad) * 1.92, Math.sin(rad) * 1.92, 0);
+        tick.rotation.z = rad;
+        outerGroup.add(tick);
+      });
+
+      scene.add(outerGroup);
+
+      // ═════════════════════════════════════════════════════════
+      //  INNER RING + CURVED TEXT PLANE — orbits on Z together
+      // ═════════════════════════════════════════════════════════
+      const innerGroup = new THREE.Group();
+
+      innerGroup.add(makeRing(1.55, 0.012, COL_BLUE, 0.3));
+      innerGroup.add(makeRing(1.54, 0.05, COL_BLUE, 0.06));
+
+      // Text plane — flat canvas with arc-curved text, sized to cover the ring area
+      const textPlaneSz = 1.88 * 2 * 1.15; // match canvas mapping
+      const textPlane = new THREE.Mesh(
+        new THREE.PlaneGeometry(textPlaneSz, textPlaneSz),
+        new THREE.MeshBasicMaterial({
+          map: createTextRingTexture(),
+          transparent: true,
+          depthWrite: false,
+          side: THREE.DoubleSide,
+        })
+      );
+      textPlane.position.z = 0.06; // well in front of rings so text renders on top
+      innerGroup.add(textPlane);
+
+      scene.add(innerGroup);
+
+      // ═════════════════════════════════════════════════════════
+      //  CENTER M — stationary, faces camera
+      // ═════════════════════════════════════════════════════════
+      const centerGroup = new THREE.Group();
+
+      function createMTexture() {
+        const canvas = document.createElement('canvas');
+        canvas.width = 512; canvas.height = 512;
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, 512, 512);
+        const s = 512 / 400;
+        ctx.save();
+        ctx.scale(s, s);
+
+        ctx.beginPath();
+        ctx.moveTo(120, 270); ctx.lineTo(120, 95); ctx.lineTo(140, 95);
+        ctx.lineTo(185, 165); ctx.lineTo(200, 135); ctx.lineTo(215, 165);
+        ctx.lineTo(260, 95); ctx.lineTo(280, 95); ctx.lineTo(280, 270);
+        ctx.lineTo(258, 270); ctx.lineTo(258, 155); ctx.lineTo(220, 225);
+        ctx.lineTo(200, 190); ctx.lineTo(180, 225); ctx.lineTo(142, 155);
+        ctx.lineTo(142, 270); ctx.closePath();
+
+        ctx.shadowColor = 'rgba(74, 158, 255, 0.6)';
+        ctx.shadowBlur = 20;
+        ctx.fillStyle = 'rgba(74, 158, 255, 0.8)';
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        ctx.strokeStyle = 'rgba(74, 158, 255, 0.4)';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+
+        // Data lines
+        ctx.shadowColor = 'rgba(54, 214, 231, 0.7)';
+        ctx.shadowBlur = 12;
+        ctx.strokeStyle = 'rgba(54, 214, 231, 0.9)';
+        ctx.lineWidth = 3.5;
+        ctx.lineCap = 'round';
+        [[282, 160, 320, 160], [282, 182, 328, 182], [282, 204, 314, 204]].forEach(([x1, y1, x2, y2]) => {
+          ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+          ctx.fillStyle = 'rgba(54, 214, 231, 0.95)';
+          [x1, x2].forEach(x => { ctx.beginPath(); ctx.arc(x, y1, 4, 0, Math.PI * 2); ctx.fill(); });
+        });
+        ctx.shadowBlur = 0;
+        ctx.restore();
+        return new THREE.CanvasTexture(canvas);
+      }
+
+      const mPlane = new THREE.Mesh(
+        new THREE.PlaneGeometry(2.6, 2.6),
+        new THREE.MeshBasicMaterial({ map: createMTexture(), transparent: true, depthWrite: false, side: THREE.DoubleSide })
+      );
+      centerGroup.add(mPlane);
+
+      // Aurebesh M — real font
+      function createAurebeshM() {
+        const canvas = document.createElement('canvas');
+        canvas.width = 256; canvas.height = 256;
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, 256, 256);
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.shadowColor = 'rgba(54, 214, 231, 0.9)';
+        ctx.shadowBlur = 20;
+        ctx.fillStyle = 'rgba(54, 214, 231, 0.8)';
+        ctx.font = 'bold 140px Aurebesh, monospace';
+        ctx.fillText('M', 128, 128);
+        ctx.shadowBlur = 6;
+        ctx.fillText('M', 128, 128);
+        ctx.shadowBlur = 0;
+        return new THREE.CanvasTexture(canvas);
+      }
+
+      const aurebeshSprite = new THREE.Sprite(
+        new THREE.SpriteMaterial({ map: createAurebeshM(), transparent: true, depthWrite: false, sizeAttenuation: true })
+      );
+      aurebeshSprite.scale.set(0.55, 0.55, 1);
+      aurebeshSprite.position.set(0, 1.0, 0.01);
+      centerGroup.add(aurebeshSprite);
+
+      // REG · 19 · 71 — centered below the M
+      function createRegTexture() {
+        const canvas = document.createElement('canvas');
+        canvas.width = 512; canvas.height = 128;
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, 512, 128);
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.font = '28px Michroma, sans-serif';
+        ctx.shadowColor = 'rgba(74, 158, 255, 0.5)';
+        ctx.shadowBlur = 12;
+        ctx.fillStyle = 'rgba(74, 158, 255, 0.5)';
+        ctx.fillText('REG \u00B7 19 \u00B7 71', 256, 64);
+        ctx.shadowBlur = 4;
+        ctx.fillText('REG \u00B7 19 \u00B7 71', 256, 64);
+        ctx.shadowBlur = 0;
+        return new THREE.CanvasTexture(canvas);
+      }
+      const regSprite = new THREE.Sprite(
+        new THREE.SpriteMaterial({ map: createRegTexture(), transparent: true, depthWrite: false, sizeAttenuation: true })
+      );
+      regSprite.scale.set(1.6, 0.4, 1);
+      regSprite.position.set(0, -0.95, 0.01);
+      centerGroup.add(regSprite);
+
+      scene.add(centerGroup);
+
+      // ═════════════════════════════════════════════════════════
+      //  GLOW HALO
+      // ═════════════════════════════════════════════════════════
+      const haloCanvas = document.createElement('canvas');
+      haloCanvas.width = 256; haloCanvas.height = 256;
+      const haloCtx = haloCanvas.getContext('2d');
+      const grad = haloCtx.createRadialGradient(128, 128, 0, 128, 128, 128);
+      grad.addColorStop(0, 'rgba(74,158,255,0.12)');
+      grad.addColorStop(0.5, 'rgba(74,158,255,0.04)');
+      grad.addColorStop(1, 'rgba(74,158,255,0)');
+      haloCtx.fillStyle = grad;
+      haloCtx.fillRect(0, 0, 256, 256);
+      const halo = new THREE.Mesh(
+        new THREE.PlaneGeometry(6, 6),
+        new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(haloCanvas), transparent: true, depthWrite: false })
+      );
+      halo.position.z = -0.5;
+      scene.add(halo);
+
+      // ═════════════════════════════════════════════════════════
+      //  ANIMATION
+      // ═════════════════════════════════════════════════════════
+      const clock = new THREE.Clock();
+
+      function animate() {
+        requestAnimationFrame(animate);
+        const t = clock.getElapsedTime();
+
+        // Outer ring: coin spin on Y, ~25s per revolution
+        outerGroup.rotation.y = t * 0.25;
+        outerGroup.rotation.x = Math.sin(t * 0.15) * 0.08;
+
+        // Inner ring + text: rotate together on Z
+        innerGroup.rotation.z = t * 0.12;
+        innerGroup.rotation.x = Math.sin(t * 0.1 + 1) * 0.05;
+
+        // Center M: gentle float + breathe
+        centerGroup.position.y = Math.sin(t * 0.4) * 0.03;
+        const breathe = 1.0 + Math.sin(t * 0.5) * 0.015;
+        centerGroup.scale.set(breathe, breathe, 1);
+        mPlane.material.opacity = 0.85 + Math.sin(t * 1.2) * 0.15;
+
+        halo.material.opacity = 0.6 + Math.sin(t * 0.3) * 0.2;
+        starMat.opacity = 0.3 + Math.sin(t * 0.2) * 0.1;
+
+        pointLight.position.x = 2 + Math.sin(t * 0.3);
+        pointLight.position.y = 2 + Math.cos(t * 0.2);
+        rimLight.position.x = -3 + Math.sin(t * 0.25 + 2);
+
+        renderer.render(scene, camera);
+      }
+      animate();
+
+      window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      });
+    }
+  </script>
+</body>
+</html>

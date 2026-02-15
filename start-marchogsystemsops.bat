@@ -8,8 +8,6 @@ if not exist "venv" (
     python -m venv venv
     call venv\Scripts\activate
     pip install -r requirements.txt
-) else (
-    call venv\Scripts\activate
 )
 
 echo.
@@ -21,4 +19,4 @@ echo  Starting server on http://localhost:8082
 echo  Press Ctrl+C to stop
 echo.
 
-uvicorn main:app --host 0.0.0.0 --port 8082 --reload
+venv\Scripts\python.exe -m uvicorn main:app --host 0.0.0.0 --port 8082 --reload

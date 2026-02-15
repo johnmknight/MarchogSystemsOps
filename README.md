@@ -50,7 +50,19 @@ Ordered lists of pages with durations and transitions. Screens in playlist mode 
 start-marchogsystemsops.bat
 # Open http://localhost:8082
 # Add ?id=bridge-main for named screens
+# Config panel at http://localhost:8082/config
 ```
+
+### Manual Start
+
+If the batch file doesn't work, run directly via the venv Python:
+
+```bash
+cd server
+venv\Scripts\python.exe -m uvicorn main:app --host 0.0.0.0 --port 8082 --reload
+```
+
+> **Note:** Do not rely on `activate` + bare `uvicorn` — uvicorn may not be on PATH. Always invoke via `venv\Scripts\python.exe -m uvicorn`.
 
 ## Pages
 

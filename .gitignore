@@ -1,16 +1,9 @@
-# Python
+frames/
+frames2/
+*.mp4
+extract_frames*.py
 __pycache__/
 *.pyc
-venv/
-.env
-
-# Database
+server/venv/
 *.db
-
-# IDE
-.vscode/
-.idea/
-
-# OS
-.DS_Store
-Thumbs.db
+node_modules/

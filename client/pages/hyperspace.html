@@ -7,499 +7,556 @@
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body { width: 100%; height: 100%; overflow: hidden; background: #000; }
-    canvas { display: block; width: 100%; height: 100%; }
-
-    /* Optional HUD overlay */
-    .hud {
-      position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
-      font-family: 'Orbitron', 'Courier New', monospace;
-      font-size: 0.7em; letter-spacing: 0.15em;
-      color: rgba(120, 180, 255, 0.4);
-      text-transform: uppercase;
-      pointer-events: none;
-      text-shadow: 0 0 10px rgba(100, 160, 255, 0.3);
-    }
-    .hud.jump-active { color: rgba(200, 220, 255, 0.7); }
-
-    .jump-btn {
-      position: fixed; bottom: 20px; right: 20px;
-      padding: 8px 20px;
-      background: rgba(10, 15, 30, 0.6);
-      border: 1px solid rgba(100, 160, 255, 0.3);
-      border-radius: 2px;
-      color: rgba(150, 200, 255, 0.7);
-      font-family: 'Orbitron', 'Courier New', monospace;
-      font-size: 0.65em; letter-spacing: 0.1em;
-      cursor: pointer; text-transform: uppercase;
-      transition: all 0.3s;
-    }
-    .jump-btn:hover {
-      background: rgba(100, 160, 255, 0.15);
-      border-color: rgba(100, 160, 255, 0.6);
-      color: rgba(200, 230, 255, 0.9);
-      box-shadow: 0 0 20px rgba(100, 160, 255, 0.2);
-    }
+    #bg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+    #overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
   </style>
-  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500&display=swap" rel="stylesheet">
 </head>
 <body>
-  <canvas id="hyperspace"></canvas>
-  <div class="hud" id="hud">REALSPACE — STANDBY</div>
-  <button class="jump-btn" id="jumpBtn">ENGAGE HYPERDRIVE</button>
+  <!-- Three.js tunnel layer -->
+  <div id="bg"></div>
+  <!-- 2D canvas overlay for stars + flash -->
+  <canvas id="overlay"></canvas>
 
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script>
     /**
-     * Hyperspace Effect — Star Wars inspired jump-to-lightspeed
+     * Hyperspace — Rogue One Style
+     * Three.js cylinder with procedural cloud texture + 2D star overlay
      *
-     * Phases:
-     *   0 = IDLE        — gentle drifting starfield
-     *   1 = SPOOL       — hyperdrive spooling, stars begin to stretch
-     *   2 = JUMP        — stars streak violently, tunnel forms
-     *   3 = HYPERSPACE  — full tunnel, swirling blue-white
-     *   4 = EXIT        — deceleration, stars compress back
-     *
-     * Click "ENGAGE HYPERDRIVE" or press SPACE to trigger the sequence.
-     * The sequence loops: idle → spool → jump → hyperspace → exit → idle
+     * Phases (looping):
+     *   IDLE       — gentle starfield (6s)
+     *   SPOOL      — stars stretch (2.5s)
+     *   JUMP       — flash + whiteout (1.2s)
+     *   HYPERSPACE — rotating cloud cylinder tunnel (10s)
+     *   EXIT       — flash + decel (1.5s)
+     *   COOLDOWN   — pause (3s)
      */
 
-    const canvas = document.getElementById('hyperspace');
-    const ctx = canvas.getContext('2d');
-    const hud = document.getElementById('hud');
-
-    // ── Configuration ───────────────────────────────────────
-    const CONFIG = {
-      starCount: 1200,
-      tunnelRingCount: 40,
-      // Phase durations (ms)
-      spoolDuration: 2500,
-      jumpDuration: 1200,
-      hyperspaceDuration: 8000,
-      exitDuration: 1500,
-      // Visual
-      maxStarSpeed: 35,
-      idleStarSpeed: 0.15,
-      streakLengthMultiplier: 18,
-      tunnelRadius: 0.42,       // fraction of min(w,h)
-      glowIntensity: 0.8,
+    // ═══════════════════════════════════════════════════════
+    //  CONFIG
+    // ═══════════════════════════════════════════════════════
+    const CFG = {
+      starCount: 3000,
+      maxSpeed: 50,
+      idleSpeed: 0.10,
+      tunnelLength: 120,
+      tunnelRadius: 8,
+      cylinderSegments: 64,
+      textureSize: 1024,
+      durations: {
+        idle: 6000,
+        spool: 2500,
+        jump: 1200,
+        hyperspace: 10000,
+        exit: 1500,
+        cooldown: 3000,
+      }
     };
 
-    // ── State ────────────────────────────────────────────────
-    let W, H, cx, cy;
-    let phase = 0;         // current phase
-    let phaseStart = 0;    // timestamp when current phase started
-    let speed = CONFIG.idleStarSpeed;
-    let targetSpeed = CONFIG.idleStarSpeed;
-    let stars = [];
-    let tunnelRings = [];
-    let autoLoop = true;
+    // ═══════════════════════════════════════════════════════
+    //  STATE
+    // ═══════════════════════════════════════════════════════
+    let phase = 'idle';
+    let phaseStart = 0;
+    let speed = CFG.idleSpeed;
+    let targetSpeed = CFG.idleSpeed;
+    let globalFade = 1;
+    let flashIntensity = 0;
+    let tunnelOpacity = 0;
+    let tunnelTargetOpacity = 0;
+    let lastTime = performance.now();
 
-    // ── Star Class ───────────────────────────────────────────
-    class Star {
-      constructor() {
-        this.reset(true);
+    // ── Easing ──────────────────────────────────────────
+    const easeInQuad = t => t * t;
+    const easeOutQuad = t => 1 - (1-t)*(1-t);
+    const easeInExpo = t => t === 0 ? 0 : Math.pow(2, 10*t - 10);
+    const easeOutExpo = t => t === 1 ? 1 : 1 - Math.pow(2, -10*t);
+    const easeInCubic = t => t*t*t;
+    const easeOutCubic = t => 1 - Math.pow(1-t, 3);
+
+    // ═══════════════════════════════════════════════════════
+    //  PROCEDURAL CLOUD TEXTURE
+    // ═══════════════════════════════════════════════════════
+    function generateCloudTexture(size) {
+      const c = document.createElement('canvas');
+      c.width = size;
+      c.height = size;
+      const ctx = c.getContext('2d');
+
+      // Start black
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, size, size);
+
+      // Layer multiple noise octaves for organic cloud look
+      const layers = [
+        { count: 60, minR: size*0.08, maxR: size*0.25, alpha: 0.12 },  // large soft blobs
+        { count: 120, minR: size*0.03, maxR: size*0.12, alpha: 0.10 }, // medium detail
+        { count: 200, minR: size*0.01, maxR: size*0.05, alpha: 0.08 }, // fine wisps
+        { count: 80, minR: size*0.04, maxR: size*0.15, alpha: 0.15 },  // bright highlights
+      ];
+
+      for (const layer of layers) {
+        for (let i = 0; i < layer.count; i++) {
+          const x = Math.random() * size;
+          const y = Math.random() * size;
+          const r = layer.minR + Math.random() * (layer.maxR - layer.minR);
+
+          // Streaky ellipses — stretch horizontally for tunnel flow feel
+          const stretchX = 1.5 + Math.random() * 2.5;
+          const stretchY = 0.4 + Math.random() * 0.6;
+
+          const hue = 200 + Math.random() * 25;
+          const sat = 50 + Math.random() * 40;
+          const light = 45 + Math.random() * 35;
+
+          const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+          g.addColorStop(0, `hsla(${hue}, ${sat}%, ${light}%, ${layer.alpha})`);
+          g.addColorStop(0.4, `hsla(${hue+5}, ${sat-10}%, ${light-5}%, ${layer.alpha * 0.6})`);
+          g.addColorStop(1, `hsla(${hue}, ${sat-20}%, ${light-15}%, 0)`);
+
+          ctx.save();
+          ctx.translate(x, y);
+          ctx.scale(stretchX, stretchY);
+          ctx.translate(-x, -y);
+          ctx.fillStyle = g;
+          ctx.fillRect(x - r * stretchX, y - r, r * stretchX * 2, r * 2);
+          ctx.restore();
+        }
       }
+
+      // Add some dark void patches for contrast (like Rogue One frames 17-18)
+      for (let i = 0; i < 25; i++) {
+        const x = Math.random() * size;
+        const y = Math.random() * size;
+        const r = size * (0.03 + Math.random() * 0.08);
+        const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+        g.addColorStop(0, 'rgba(0, 2, 10, 0.25)');
+        g.addColorStop(0.6, 'rgba(0, 5, 15, 0.12)');
+        g.addColorStop(1, 'rgba(0, 0, 0, 0)');
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // Bright hot spots (the secondary bright spots from reference)
+      for (let i = 0; i < 15; i++) {
+        const x = Math.random() * size;
+        const y = Math.random() * size;
+        const r = size * (0.01 + Math.random() * 0.04);
+        const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+        g.addColorStop(0, 'rgba(200, 230, 255, 0.3)');
+        g.addColorStop(0.3, 'rgba(140, 190, 255, 0.15)');
+        g.addColorStop(1, 'rgba(80, 150, 255, 0)');
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // Make it tile seamlessly — blend edges
+      const blendW = size * 0.15;
+      // Horizontal wrap
+      const edgeData = ctx.getImageData(0, 0, blendW, size);
+      const tempC = document.createElement('canvas');
+      tempC.width = blendW; tempC.height = size;
+      tempC.getContext('2d').putImageData(edgeData, 0, 0);
+      ctx.save();
+      ctx.globalAlpha = 0.5;
+      ctx.drawImage(tempC, size - blendW, 0);
+      ctx.restore();
+
+      return c;
+    }
+
+    // ═══════════════════════════════════════════════════════
+    //  THREE.JS TUNNEL SETUP
+    // ═══════════════════════════════════════════════════════
+    const container = document.getElementById('bg');
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setClearColor(0x000000, 1);
+    container.appendChild(renderer.domElement);
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 200);
+    camera.position.set(0, 0, 0);
+    camera.lookAt(0, 0, -1);
+
+    // Generate cloud texture
+    const cloudCanvas = generateCloudTexture(CFG.textureSize);
+    const cloudTexture = new THREE.CanvasTexture(cloudCanvas);
+    cloudTexture.wrapS = THREE.RepeatWrapping;
+    cloudTexture.wrapT = THREE.RepeatWrapping;
+    cloudTexture.repeat.set(3, 1); // tile along length
+
+    // Cylinder — camera sits inside
+    const cylGeom = new THREE.CylinderGeometry(
+      CFG.tunnelRadius, CFG.tunnelRadius,
+      CFG.tunnelLength,
+      CFG.cylinderSegments, 1, true
+    );
+    const cylMat = new THREE.MeshBasicMaterial({
+      map: cloudTexture,
+      side: THREE.BackSide,   // render inside faces
+      transparent: true,
+      opacity: 0,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    const cylinder = new THREE.Mesh(cylGeom, cylMat);
+    cylinder.rotation.x = Math.PI / 2; // align along Z axis
+    cylinder.position.z = -CFG.tunnelLength / 2;
+    scene.add(cylinder);
+
+    // Second cylinder layer — slightly different texture offset for depth
+    const cloudCanvas2 = generateCloudTexture(CFG.textureSize);
+    const cloudTexture2 = new THREE.CanvasTexture(cloudCanvas2);
+    cloudTexture2.wrapS = THREE.RepeatWrapping;
+    cloudTexture2.wrapT = THREE.RepeatWrapping;
+    cloudTexture2.repeat.set(2, 1);
+
+    const cylMat2 = new THREE.MeshBasicMaterial({
+      map: cloudTexture2,
+      side: THREE.BackSide,
+      transparent: true,
+      opacity: 0,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    const cylinder2 = new THREE.Mesh(
+      new THREE.CylinderGeometry(
+        CFG.tunnelRadius * 1.15, CFG.tunnelRadius * 1.15,
+        CFG.tunnelLength, CFG.cylinderSegments, 1, true
+      ),
+      cylMat2
+    );
+    cylinder2.rotation.x = Math.PI / 2;
+    cylinder2.position.z = -CFG.tunnelLength / 2;
+    scene.add(cylinder2);
+
+    // Third layer — tight inner glow cylinder
+    const cloudCanvas3 = generateCloudTexture(CFG.textureSize);
+    const cloudTexture3 = new THREE.CanvasTexture(cloudCanvas3);
+    cloudTexture3.wrapS = THREE.RepeatWrapping;
+    cloudTexture3.wrapT = THREE.RepeatWrapping;
+    cloudTexture3.repeat.set(4, 1);
+
+    const cylMat3 = new THREE.MeshBasicMaterial({
+      map: cloudTexture3,
+      side: THREE.BackSide,
+      transparent: true,
+      opacity: 0,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    const cylinder3 = new THREE.Mesh(
+      new THREE.CylinderGeometry(
+        CFG.tunnelRadius * 0.7, CFG.tunnelRadius * 0.7,
+        CFG.tunnelLength, CFG.cylinderSegments, 1, true
+      ),
+      cylMat3
+    );
+    cylinder3.rotation.x = Math.PI / 2;
+    cylinder3.position.z = -CFG.tunnelLength / 2;
+    scene.add(cylinder3);
+
+    // Central glow light (bright convergence orb)
+    const orbGeom = new THREE.SphereGeometry(0.5, 16, 16);
+    const orbMat = new THREE.MeshBasicMaterial({
+      color: 0xccddff,
+      transparent: true,
+      opacity: 0,
+      blending: THREE.AdditiveBlending,
+    });
+    const orb = new THREE.Mesh(orbGeom, orbMat);
+    orb.position.z = -25;
+    scene.add(orb);
+
+    // (halo removed — orb handles convergence glow)
+
+    // ═══════════════════════════════════════════════════════
+    //  2D CANVAS — Stars + Flash + Fade
+    // ═══════════════════════════════════════════════════════
+    const canvas = document.getElementById('overlay');
+    const ctx = canvas.getContext('2d');
+    let W, H, cx, cy;
+
+    class Star {
+      constructor() { this.reset(true); }
 
       reset(scatter = false) {
-        // Position in normalized space (-1 to 1 from center)
         if (scatter) {
-          // Scatter across the whole field
-          this.x = (Math.random() - 0.5) * 2.5;
-          this.y = (Math.random() - 0.5) * 2.5;
-          this.z = Math.random() * 1.5 + 0.01;
+          this.x = (Math.random() - 0.5) * 2.8;
+          this.y = (Math.random() - 0.5) * 2.8;
+          this.z = Math.random() * 1.8 + 0.01;
         } else {
-          // Spawn near center for continuous flow
           const angle = Math.random() * Math.PI * 2;
-          const dist = Math.random() * 0.05 + 0.001;
+          const maxDist = speed > 2 ? 0.04 : 0.9;
+          const dist = Math.random() * maxDist + 0.001;
           this.x = Math.cos(angle) * dist;
           this.y = Math.sin(angle) * dist;
-          this.z = 1.5;
+          this.z = 1.5 + Math.random() * 0.5;
         }
-        this.baseSize = Math.random() * 1.8 + 0.3;
+        this.baseSize = Math.random() * 1.2 + 0.2;
         this.brightness = Math.random() * 0.5 + 0.5;
+        this.twinkle = Math.random() * Math.PI * 2;
+        this.twinkleSpd = 0.5 + Math.random() * 2;
 
-        // Color: mostly white/blue-white with some warmer ones
-        const colorRoll = Math.random();
-        if (colorRoll < 0.6) {
-          // Blue-white
-          this.r = 180 + Math.random() * 75;
-          this.g = 200 + Math.random() * 55;
+        const roll = Math.random();
+        if (roll < 0.6) {
+          this.r = 160 + Math.random() * 70;
+          this.g = 190 + Math.random() * 50;
           this.b = 255;
-        } else if (colorRoll < 0.85) {
-          // Pure white
-          this.r = 240 + Math.random() * 15;
-          this.g = 240 + Math.random() * 15;
-          this.b = 245 + Math.random() * 10;
+        } else if (roll < 0.88) {
+          this.r = 230 + Math.random() * 25;
+          this.g = 238 + Math.random() * 17;
+          this.b = 250 + Math.random() * 5;
         } else {
-          // Warm accent
           this.r = 255;
-          this.g = 220 + Math.random() * 35;
-          this.b = 180 + Math.random() * 40;
+          this.g = 230 + Math.random() * 25;
+          this.b = 200 + Math.random() * 30;
         }
       }
 
-      update(dt, currentSpeed) {
-        this.z -= currentSpeed * dt;
-
-        if (this.z <= 0.001) {
-          this.reset(false);
-        }
+      update(dt, spd) {
+        this.z -= spd * dt;
+        this.twinkle += this.twinkleSpd * dt;
+        if (this.z <= 0.001) this.reset(false);
       }
 
-      draw(ctx, currentSpeed) {
-        // Project to screen
+      draw(ctx, spd) {
         const scale = 1 / this.z;
         const sx = cx + this.x * scale * cx;
         const sy = cy + this.y * scale * cy;
 
-        // Off screen?
-        if (sx < -50 || sx > W + 50 || sy < -50 || sy > H + 50) {
-          this.reset(false);
-          return;
+        if (sx < -200 || sx > W + 200 || sy < -200 || sy > H + 200) {
+          this.reset(false); return;
         }
 
-        const size = this.baseSize * scale * 0.8;
-        const alpha = Math.min(1, this.brightness * scale * 0.3);
+        // Cap star size to prevent giant bubbles
+        const rawSize = this.baseSize * scale * 0.7;
+        const size = Math.min(rawSize, 3.5);
+        const tw = 0.7 + Math.sin(this.twinkle) * 0.3;
+        const alpha = Math.min(0.95, this.brightness * Math.min(scale, 5) * 0.25) * tw;
+        const r = Math.round(this.r), g = Math.round(this.g), b = Math.round(this.b);
 
-        if (currentSpeed > 1) {
-          // ── Streak mode ──────────────────────────
-          const streakFactor = Math.min(currentSpeed / 5, CONFIG.streakLengthMultiplier);
-          const prevZ = this.z + currentSpeed * 0.016;
+        if (spd > 0.8) {
+          const streakFactor = Math.min(spd / 3, 35);
+          const prevZ = this.z + spd * 0.016;
           const prevScale = 1 / prevZ;
           const prevSx = cx + this.x * prevScale * cx;
           const prevSy = cy + this.y * prevScale * cy;
+          const dx = sx - prevSx, dy = sy - prevSy;
+          const len = Math.sqrt(dx*dx + dy*dy);
 
-          const dx = sx - prevSx;
-          const dy = sy - prevSy;
-          const len = Math.sqrt(dx * dx + dy * dy);
-
-          if (len > 0.5) {
-            const streakLen = len * streakFactor;
-            const nx = dx / len;
-            const ny = dy / len;
-
-            // Draw streak with gradient
-            const grad = ctx.createLinearGradient(
-              sx - nx * streakLen, sy - ny * streakLen,
-              sx, sy
-            );
-
-            const coreAlpha = Math.min(0.95, alpha * 1.5);
-            const r = Math.round(this.r);
-            const g = Math.round(this.g);
-            const b = Math.round(this.b);
-
-            grad.addColorStop(0, `rgba(${r}, ${g}, ${b}, 0)`);
-            grad.addColorStop(0.3, `rgba(${r}, ${g}, ${b}, ${coreAlpha * 0.3})`);
-            grad.addColorStop(0.8, `rgba(${r}, ${g}, ${b}, ${coreAlpha * 0.7})`);
-            grad.addColorStop(1, `rgba(${r}, ${g}, ${b}, ${coreAlpha})`);
-
+          if (len > 0.3) {
+            const sLen = len * streakFactor;
+            const nx = dx/len, ny = dy/len;
+            const grad = ctx.createLinearGradient(sx-nx*sLen, sy-ny*sLen, sx, sy);
+            const ca = Math.min(0.85, alpha * 1.3);
+            grad.addColorStop(0, `rgba(${r},${g},${b},0)`);
+            grad.addColorStop(0.35, `rgba(${r},${g},${b},${ca*0.12})`);
+            grad.addColorStop(0.7, `rgba(${r},${g},${b},${ca*0.45})`);
+            grad.addColorStop(1, `rgba(${r},${g},${b},${ca})`);
             ctx.beginPath();
             ctx.strokeStyle = grad;
-            ctx.lineWidth = Math.min(size * 0.6 + currentSpeed * 0.05, 4);
-            ctx.moveTo(sx - nx * streakLen, sy - ny * streakLen);
+            ctx.lineWidth = Math.min(size * 0.35 + spd * 0.02, 2.5);
+            ctx.moveTo(sx-nx*sLen, sy-ny*sLen);
             ctx.lineTo(sx, sy);
             ctx.stroke();
-
-            // Bright tip
-            if (currentSpeed > 5) {
+            if (spd > 8 && size > 0.5) {
               ctx.beginPath();
-              ctx.fillStyle = `rgba(255, 255, 255, ${coreAlpha * 0.8})`;
-              ctx.arc(sx, sy, Math.min(size * 0.3, 2), 0, Math.PI * 2);
+              ctx.fillStyle = `rgba(255,255,255,${ca*0.6})`;
+              ctx.arc(sx, sy, Math.min(size*0.15, 1.2), 0, Math.PI*2);
               ctx.fill();
             }
           }
         } else {
-          // ── Point mode (idle starfield) ──────────
-          // Soft glow
-          if (size > 0.8) {
-            ctx.beginPath();
-            const glowSize = size * 2.5;
-            const glow = ctx.createRadialGradient(sx, sy, 0, sx, sy, glowSize);
-            glow.addColorStop(0, `rgba(${Math.round(this.r)}, ${Math.round(this.g)}, ${Math.round(this.b)}, ${alpha * 0.3})`);
-            glow.addColorStop(1, `rgba(${Math.round(this.r)}, ${Math.round(this.g)}, ${Math.round(this.b)}, 0)`);
+          // Subtle glow for brighter stars only
+          if (size > 1.0 && alpha > 0.3) {
+            const glowSz = Math.min(size * 2, 6);
+            const glow = ctx.createRadialGradient(sx, sy, 0, sx, sy, glowSz);
+            glow.addColorStop(0, `rgba(${r},${g},${b},${alpha*0.12})`);
+            glow.addColorStop(1, `rgba(${r},${g},${b},0)`);
             ctx.fillStyle = glow;
-            ctx.arc(sx, sy, glowSize, 0, Math.PI * 2);
+            ctx.beginPath();
+            ctx.arc(sx, sy, glowSz, 0, Math.PI*2);
             ctx.fill();
           }
-
-          // Core
           ctx.beginPath();
-          ctx.fillStyle = `rgba(${Math.round(this.r)}, ${Math.round(this.g)}, ${Math.round(this.b)}, ${alpha})`;
-          ctx.arc(sx, sy, Math.max(size * 0.5, 0.3), 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(${r},${g},${b},${alpha})`;
+          ctx.arc(sx, sy, Math.max(Math.min(size*0.4, 1.8), 0.3), 0, Math.PI*2);
           ctx.fill();
         }
       }
     }
 
-    // ── Tunnel Ring ──────────────────────────────────────────
-    class TunnelRing {
-      constructor(z) {
-        this.z = z;
-        this.rotation = Math.random() * Math.PI * 2;
-        this.rotSpeed = (Math.random() - 0.5) * 0.3;
-        this.segments = 24 + Math.floor(Math.random() * 12);
-        this.wobble = Math.random() * 0.05;
-      }
-
-      reset() {
-        this.z = 2.0;
-        this.rotation = Math.random() * Math.PI * 2;
-      }
-
-      update(dt, currentSpeed) {
-        this.z -= currentSpeed * dt * 0.7;
-        this.rotation += this.rotSpeed * dt;
-        if (this.z <= 0.01) this.reset();
-      }
-
-      draw(ctx, currentSpeed) {
-        if (currentSpeed < 3) return; // Only visible during hyperspace
-
-        const scale = 1 / this.z;
-        const radius = CONFIG.tunnelRadius * Math.min(W, H) * scale;
-
-        if (radius < 5 || radius > Math.max(W, H) * 2) return;
-
-        const alpha = Math.min(0.35, (1 / this.z) * 0.05) * Math.min(1, (currentSpeed - 3) / 10);
-
-        ctx.save();
-        ctx.translate(cx, cy);
-        ctx.rotate(this.rotation);
-
-        // Draw ring segments
-        ctx.beginPath();
-        for (let i = 0; i < this.segments; i++) {
-          const angle = (i / this.segments) * Math.PI * 2;
-          const wobbleR = radius + Math.sin(angle * 3 + this.rotation * 2) * radius * this.wobble;
-          const x = Math.cos(angle) * wobbleR;
-          const y = Math.sin(angle) * wobbleR;
-          if (i === 0) ctx.moveTo(x, y);
-          else ctx.lineTo(x, y);
-        }
-        ctx.closePath();
-
-        // Blue-white ring glow
-        ctx.strokeStyle = `rgba(130, 180, 255, ${alpha})`;
-        ctx.lineWidth = Math.max(1, 2 * scale);
-        ctx.stroke();
-
-        // Inner glow
-        if (alpha > 0.1) {
-          ctx.strokeStyle = `rgba(200, 220, 255, ${alpha * 0.4})`;
-          ctx.lineWidth = Math.max(0.5, 1 * scale);
-          ctx.stroke();
-        }
-
-        ctx.restore();
-      }
+    let stars = [];
+    function initStars() {
+      stars = [];
+      for (let i = 0; i < CFG.starCount; i++) stars.push(new Star());
     }
 
-    // ── Initialization ──────────────────────────────────────
+    // ═══════════════════════════════════════════════════════
+    //  PHASE MANAGEMENT
+    // ═══════════════════════════════════════════════════════
+    function setPhase(p) { phase = p; phaseStart = performance.now(); }
+    function phaseProgress() {
+      return Math.min((performance.now() - phaseStart) / (CFG.durations[phase] || 5000), 1);
+    }
+
+    // ═══════════════════════════════════════════════════════
+    //  RESIZE
+    // ═══════════════════════════════════════════════════════
     function resize() {
       const dpr = window.devicePixelRatio || 1;
       W = canvas.width = window.innerWidth * dpr;
       H = canvas.height = window.innerHeight * dpr;
       canvas.style.width = window.innerWidth + 'px';
       canvas.style.height = window.innerHeight + 'px';
-      cx = W / 2;
-      cy = H / 2;
+      cx = W / 2; cy = H / 2;
+
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
     }
 
-    function initStars() {
-      stars = [];
-      for (let i = 0; i < CONFIG.starCount; i++) {
-        stars.push(new Star());
-      }
-    }
-
-    function initTunnelRings() {
-      tunnelRings = [];
-      for (let i = 0; i < CONFIG.tunnelRingCount; i++) {
-        tunnelRings.push(new TunnelRing(Math.random() * 2));
-      }
-    }
-
-    // ── Phase Management ────────────────────────────────────
-    const HUD_TEXT = {
-      0: 'REALSPACE — STANDBY',
-      1: 'HYPERDRIVE SPOOLING...',
-      2: 'ENTERING HYPERSPACE',
-      3: 'HYPERSPACE — LIGHTSPEED',
-      4: 'REVERTING TO REALSPACE',
-    };
-
-    function setPhase(newPhase) {
-      phase = newPhase;
-      phaseStart = performance.now();
-      hud.textContent = HUD_TEXT[phase] || '';
-      hud.classList.toggle('jump-active', phase >= 1 && phase <= 3);
-
-      const btn = document.getElementById('jumpBtn');
-      if (phase === 0) {
-        btn.textContent = 'ENGAGE HYPERDRIVE';
-        btn.style.pointerEvents = 'auto';
-      } else {
-        btn.textContent = phase === 3 ? 'IN HYPERSPACE' : 'STANDBY...';
-        btn.style.pointerEvents = 'none';
-      }
-    }
-
-    function getPhaseProgress() {
-      const elapsed = performance.now() - phaseStart;
-      const durations = {
-        1: CONFIG.spoolDuration,
-        2: CONFIG.jumpDuration,
-        3: CONFIG.hyperspaceDuration,
-        4: CONFIG.exitDuration,
-      };
-      const dur = durations[phase];
-      return dur ? Math.min(elapsed / dur, 1) : 0;
-    }
-
-    function triggerJump() {
-      if (phase !== 0) return;
-      setPhase(1);
-    }
-
-    // ── Easing ──────────────────────────────────────────────
-    function easeInQuad(t) { return t * t; }
-    function easeOutQuad(t) { return 1 - (1 - t) * (1 - t); }
-    function easeInExpo(t) { return t === 0 ? 0 : Math.pow(2, 10 * t - 10); }
-    function easeOutExpo(t) { return t === 1 ? 1 : 1 - Math.pow(2, -10 * t); }
-
-    // ── Render Loop ─────────────────────────────────────────
-    let lastTime = performance.now();
-
+    // ═══════════════════════════════════════════════════════
+    //  RENDER LOOP
+    // ═══════════════════════════════════════════════════════
     function render(now) {
       requestAnimationFrame(render);
-
       const dt = Math.min((now - lastTime) / 1000, 0.1);
       lastTime = now;
+      const p = phaseProgress();
 
-      const progress = getPhaseProgress();
-
-      // ── Phase transitions ────────────────────────
+      // ── Phase logic ──────────────────────────────
       switch (phase) {
-        case 0: // IDLE
-          targetSpeed = CONFIG.idleStarSpeed;
+        case 'idle':
+          targetSpeed = CFG.idleSpeed;
+          tunnelTargetOpacity = 0;
+          flashIntensity = Math.max(0, flashIntensity - dt * 2);
+          globalFade = Math.max(0, globalFade - dt * 0.8);
+          if (p >= 1) setPhase('spool');
           break;
 
-        case 1: // SPOOL — gradual acceleration
-          targetSpeed = CONFIG.idleStarSpeed + easeInQuad(progress) * 3;
-          if (progress >= 1) setPhase(2);
+        case 'spool':
+          targetSpeed = CFG.idleSpeed + easeInCubic(p) * 5;
+          tunnelTargetOpacity = 0;
+          flashIntensity = 0;
+          if (p >= 1) setPhase('jump');
           break;
 
-        case 2: // JUMP — explosive acceleration
-          targetSpeed = 3 + easeInExpo(progress) * (CONFIG.maxStarSpeed - 3);
-          if (progress >= 1) setPhase(3);
+        case 'jump':
+          targetSpeed = 5 + easeInExpo(p) * (CFG.maxSpeed - 5);
+          tunnelTargetOpacity = easeInQuad(Math.max(0, p - 0.4) / 0.6);
+
+          if (p < 0.35) flashIntensity = easeInQuad(p / 0.35) * 0.5;
+          else if (p < 0.7) flashIntensity = 0.5 + easeInQuad((p-0.35)/0.35) * 0.45;
+          else flashIntensity = 0.95 * (1 - easeOutQuad((p-0.7)/0.3));
+
+          if (p >= 1) setPhase('hyperspace');
           break;
 
-        case 3: // HYPERSPACE — sustained high speed with oscillation
-          const osc = Math.sin(progress * Math.PI * 4) * 3;
-          targetSpeed = CONFIG.maxStarSpeed + osc;
-          if (progress >= 1) setPhase(4);
+        case 'hyperspace':
+          targetSpeed = CFG.maxSpeed + Math.sin(p * Math.PI * 5) * 2;
+          tunnelTargetOpacity = 0.85 + Math.sin(p * Math.PI * 3) * 0.1;
+          flashIntensity = Math.max(0, flashIntensity - dt * 3);
+          if (p >= 1) setPhase('exit');
           break;
 
-        case 4: // EXIT — deceleration
-          targetSpeed = CONFIG.maxStarSpeed * (1 - easeOutExpo(progress));
-          if (targetSpeed < CONFIG.idleStarSpeed) targetSpeed = CONFIG.idleStarSpeed;
-          if (progress >= 1) {
-            setPhase(0);
-            if (autoLoop) {
-              // Auto-trigger next jump after a pause
-              setTimeout(() => { if (phase === 0) triggerJump(); }, 5000);
-            }
-          }
+        case 'exit':
+          targetSpeed = CFG.maxSpeed * (1 - easeOutExpo(p));
+          if (targetSpeed < CFG.idleSpeed) targetSpeed = CFG.idleSpeed;
+          tunnelTargetOpacity = 0.85 * (1 - easeOutCubic(p));
+
+          if (p < 0.15) flashIntensity = (0.15 - p) * 6;
+          else flashIntensity = Math.max(0, flashIntensity - dt * 3);
+
+          if (p >= 1) setPhase('cooldown');
+          break;
+
+        case 'cooldown':
+          targetSpeed = CFG.idleSpeed;
+          tunnelTargetOpacity = 0;
+          flashIntensity = 0;
+          if (p >= 1) setPhase('idle');
           break;
       }
 
-      // Smooth speed interpolation
+      // Smooth interpolation
       speed += (targetSpeed - speed) * Math.min(1, dt * 8);
+      tunnelOpacity += (tunnelTargetOpacity - tunnelOpacity) * Math.min(1, dt * 5);
 
-      // ── Clear ────────────────────────────────────
-      // Fade trail for motion blur effect
-      if (speed > 2) {
-        ctx.fillStyle = `rgba(0, 0, 0, ${Math.max(0.15, 0.4 - speed * 0.005)})`;
-      } else {
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
-      }
-      ctx.fillRect(0, 0, W, H);
+      // ── THREE.JS TUNNEL ────────────────────────────
+      // Scroll textures forward (simulates flying through tunnel)
+      const scrollSpeed = speed * dt * 0.08;
+      cloudTexture.offset.y += scrollSpeed;
+      cloudTexture2.offset.y += scrollSpeed * 0.7;
+      cloudTexture3.offset.y += scrollSpeed * 1.2;
 
-      // ── Central glow during hyperspace ───────────
-      if (speed > 5) {
-        const glowAlpha = Math.min(0.15, (speed - 5) / 100);
-        const glowR = Math.min(W, H) * 0.3;
-        const centralGlow = ctx.createRadialGradient(cx, cy, 0, cx, cy, glowR);
-        centralGlow.addColorStop(0, `rgba(180, 210, 255, ${glowAlpha})`);
-        centralGlow.addColorStop(0.5, `rgba(100, 150, 255, ${glowAlpha * 0.3})`);
-        centralGlow.addColorStop(1, 'rgba(0, 0, 40, 0)');
-        ctx.fillStyle = centralGlow;
-        ctx.fillRect(0, 0, W, H);
-      }
+      // No rotation — tunnel stays centered and straight
 
-      // ── Outer vignette (always) ──────────────────
-      const vignette = ctx.createRadialGradient(cx, cy, Math.min(W, H) * 0.3, cx, cy, Math.max(W, H) * 0.75);
-      vignette.addColorStop(0, 'rgba(0, 0, 0, 0)');
-      vignette.addColorStop(1, `rgba(0, 0, 20, ${speed > 5 ? 0.5 : 0.3})`);
-      ctx.fillStyle = vignette;
-      ctx.fillRect(0, 0, W, H);
+      // Set opacity
+      cylMat.opacity = tunnelOpacity * 0.55;
+      cylMat2.opacity = tunnelOpacity * 0.35;
+      cylMat3.opacity = tunnelOpacity * 0.45;
 
-      // ── Update & draw tunnel rings ───────────────
-      if (speed > 3) {
-        for (const ring of tunnelRings) {
-          ring.update(dt, speed);
-          ring.draw(ctx, speed);
-        }
-      }
+      // Central orb
+      const orbPulse = 0.8 + Math.sin(now * 0.003) * 0.15 + Math.sin(now * 0.007) * 0.05;
+      orbMat.opacity = tunnelOpacity * 0.9 * orbPulse;
+      orb.scale.setScalar(0.3 + tunnelOpacity * 1.2 * orbPulse);
 
-      // ── Update & draw stars ──────────────────────
+      // Background color shift — dark to deep blue during tunnel
+      const bgBlue = tunnelOpacity * 0.12;
+      renderer.setClearColor(
+        new THREE.Color(bgBlue * 0.1, bgBlue * 0.25, bgBlue),
+        1
+      );
+
+      renderer.render(scene, camera);
+
+      // ── 2D OVERLAY ─────────────────────────────────
+      // Always clear overlay to transparent so Three.js tunnel shows through
+      ctx.clearRect(0, 0, W, H);
+
+      // Stars
       for (const star of stars) {
         star.update(dt, speed);
         star.draw(ctx, speed);
       }
 
-      // ── Chromatic aberration at high speed ───────
-      if (speed > 20) {
-        const abAlpha = Math.min(0.04, (speed - 20) / 500);
-        ctx.fillStyle = `rgba(100, 150, 255, ${abAlpha})`;
+      // Flash overlay
+      if (flashIntensity > 0.01) {
+        ctx.fillStyle = `rgba(255,252,240,${flashIntensity})`;
+        ctx.fillRect(0, 0, W, H);
+      }
+
+      // Global fade
+      if (globalFade > 0.001) {
+        ctx.fillStyle = `rgba(0,0,0,${globalFade})`;
         ctx.fillRect(0, 0, W, H);
       }
     }
 
-    // ── Event Handlers ──────────────────────────────────────
+    // ═══════════════════════════════════════════════════════
+    //  BOOT
+    // ═══════════════════════════════════════════════════════
     window.addEventListener('resize', resize);
-
-    document.getElementById('jumpBtn').addEventListener('click', triggerJump);
-
     document.addEventListener('keydown', (e) => {
-      if (e.code === 'Space' || e.key === ' ') {
-        e.preventDefault();
-        triggerJump();
-      }
-      // Forward nav keys to parent shell
-      if (['ArrowLeft', 'ArrowRight'].includes(e.key)) {
+      if (['ArrowLeft','ArrowRight'].includes(e.key)) {
         window.parent.postMessage({ type: 'keydown', key: e.key }, '*');
       }
     });
 
-    // Listen for messages from parent shell
-    window.addEventListener('message', (e) => {
-      if (e.data.type === 'triggerJump') {
-        triggerJump();
-      }
-    });
-
-    // ── Boot ────────────────────────────────────────────────
     resize();
     initStars();
-    initTunnelRings();
-    setPhase(0);
+    globalFade = 1;
+    setPhase('idle');
     requestAnimationFrame(render);
 
-    // Auto-start first jump after a brief pause
-    setTimeout(() => triggerJump(), 3000);
-
-    // Notify parent shell
     window.parent.postMessage({ type: 'pageReady', page: 'hyperspace' }, '*');
   </script>
 </body>

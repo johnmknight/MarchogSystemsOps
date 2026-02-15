@@ -17,7 +17,11 @@ from database import (
     init_db, get_all_pages, get_page,
     get_all_scenes, get_scene, get_active_scene,
     create_scene, delete_scene, activate_scene,
-    set_screen_config, remove_screen_config, get_screen_assignment
+    set_screen_config, remove_screen_config, get_screen_assignment,
+    get_all_rooms, get_room, create_room, update_room, delete_room,
+    get_zone, create_zone, update_zone, delete_zone,
+    get_zone_screens, assign_screen_to_zone, unassign_screen_from_zone,
+    get_rooms_with_screens,
 )
 
 # Paths
@@ -55,6 +59,35 @@ app.add_middleware(
 
 # ── Pydantic Models ──────────────────────────────────────────
 
+class RoomCreate(BaseModel):
+    id: str
+    name: str
+    description: str = ""
+    icon: str = "🚀"
+
+class RoomUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    icon: Optional[str] = None
+
+class ZoneCreate(BaseModel):
+    id: str
+    room_id: str
+    name: str
+    description: str = ""
+    icon: str = "📍"
+
+class ZoneUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    icon: Optional[str] = None
+
+class ZoneScreenAssign(BaseModel):
+    screen_id: str
+    page_id: str
+    label: str = ""
+
+
 class SceneCreate(BaseModel):
     id: str
     name: str
@@ -66,6 +99,99 @@ class ScreenConfigUpdate(BaseModel):
     static_page: Optional[str] = None
     playlist_loop: bool = True
     playlist: Optional[list] = None
+
+
+# ── API: Rooms ─────────────────────────────────────────
+
+@app.get("/api/rooms")
+async def api_rooms(include_screens: bool = True):
+    """List all rooms with their zones and screen assignments."""
+    if include_screens:
+        return await get_rooms_with_screens()
+    return await get_all_rooms()
+
+@app.post("/api/rooms")
+async def api_create_room(room: RoomCreate):
+    """Create a new room."""
+    await create_room(room.id, room.name, room.description, room.icon)
+    return {"status": "created", "id": room.id}
+
+@app.get("/api/rooms/{room_id}")
+async def api_room(room_id: str):
+    """Get a room with zones."""
+    room = await get_room(room_id)
+    if not room:
+        raise HTTPException(404, "Room not found")
+    return room
+
+@app.put("/api/rooms/{room_id}")
+async def api_update_room(room_id: str, data: RoomUpdate):
+    """Update a room."""
+    await update_room(room_id, data.name, data.description, data.icon)
+    return {"status": "updated"}
+
+@app.delete("/api/rooms/{room_id}")
+async def api_delete_room(room_id: str):
+    """Delete a room and its zones."""
+    await delete_room(room_id)
+    return {"status": "deleted"}
+
+
+# ── API: Zones ─────────────────────────────────────────
+
+@app.post("/api/zones")
+async def api_create_zone(zone: ZoneCreate):
+    """Create a zone within a room."""
+    await create_zone(zone.id, zone.room_id, zone.name, zone.description, zone.icon)
+    return {"status": "created", "id": zone.id}
+
+@app.get("/api/zones/{zone_id}")
+async def api_zone(zone_id: str):
+    """Get a zone."""
+    zone = await get_zone(zone_id)
+    if not zone:
+        raise HTTPException(404, "Zone not found")
+    return zone
+
+@app.put("/api/zones/{zone_id}")
+async def api_update_zone(zone_id: str, data: ZoneUpdate):
+    """Update a zone."""
+    await update_zone(zone_id, data.name, data.description, data.icon)
+    return {"status": "updated"}
+
+@app.delete("/api/zones/{zone_id}")
+async def api_delete_zone(zone_id: str):
+    """Delete a zone."""
+    await delete_zone(zone_id)
+    return {"status": "deleted"}
+
+
+# ── API: Zone Screen Assignments ───────────────────────────
+
+@app.get("/api/zones/{zone_id}/screens")
+async def api_zone_screens(zone_id: str):
+    """Get screens assigned to a zone in the active scene."""
+    return await get_zone_screens(zone_id)
+
+@app.post("/api/zones/{zone_id}/screens")
+async def api_assign_screen_to_zone(zone_id: str, data: ZoneScreenAssign):
+    """Assign a screen to a zone in the active scene."""
+    active = await get_active_scene()
+    if not active:
+        raise HTTPException(400, "No active scene")
+    await assign_screen_to_zone(active["id"], data.screen_id, zone_id, data.page_id, data.label)
+    # Push assignment to screen if connected
+    await push_assignment_to_screen(data.screen_id)
+    return {"status": "assigned", "screen_id": data.screen_id, "zone_id": zone_id}
+
+@app.delete("/api/zones/{zone_id}/screens/{screen_id}")
+async def api_unassign_screen_from_zone(zone_id: str, screen_id: str):
+    """Remove a screen from a zone in the active scene."""
+    active = await get_active_scene()
+    if not active:
+        raise HTTPException(400, "No active scene")
+    await unassign_screen_from_zone(active["id"], screen_id)
+    return {"status": "unassigned", "screen_id": screen_id}
 
 
 # ── API: Pages ───────────────────────────────────────────────
@@ -265,6 +391,13 @@ async def push_assignment_to_screen(screen_id: str):
             })
         except Exception as e:
             print(f"Failed to push assignment to {screen_id}: {e}")
+
+
+# ── Explicit page routes ─────────────────────────────────────
+
+@app.get("/config")
+async def config_page():
+    return FileResponse(str(CLIENT_DIR / "config.html"))
 
 
 # ── Static Files ─────────────────────────────────────────────

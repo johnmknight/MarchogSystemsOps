@@ -1,0 +1,981 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Marchog Systems — Standby</title>
+  <style>
+    @font-face { font-family: 'Aurebesh'; src: url('../fonts/Aurebesh.otf') format('opentype'); }
+    @font-face { font-family: 'Aurebesh'; src: url('../fonts/Aurebesh Bold.otf') format('opentype'); font-weight: bold; }
+    @font-face { font-family: 'Aurebesh Condensed'; src: url('../fonts/Aurebesh Condensed.otf') format('opentype'); }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    html, body {
+      width: 100%; height: 100%; overflow: hidden;
+      background: #020509;
+      font-family: 'Courier New', monospace;
+      cursor: none;
+    }
+
+    /* ── 3D Logo canvas ──────────────────────────── */
+    #logo3d {
+      position: absolute; inset: 0;
+      z-index: 1;
+    }
+
+    /* ── Scan lines ──────────────────────────────── */
+    .scanlines {
+      position: absolute; inset: 0;
+      background: repeating-linear-gradient(
+        0deg, transparent, transparent 2px,
+        rgba(0,0,0,0.05) 2px, rgba(0,0,0,0.05) 4px
+      );
+      pointer-events: none; z-index: 50;
+    }
+
+    /* ── Vignette ────────────────────────────────── */
+    .vignette {
+      position: absolute; inset: 0;
+      background: radial-gradient(ellipse at center, transparent 35%, rgba(0,0,0,0.65) 100%);
+      pointer-events: none; z-index: 51;
+    }
+
+    /* ── Horizontal scan beam ────────────────────── */
+    .h-scan {
+      position: absolute; left: 0; right: 0; height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(54,214,231,0.06), rgba(54,214,231,0.12), rgba(54,214,231,0.06), transparent);
+      z-index: 48; pointer-events: none;
+      animation: scanDown 10s linear infinite;
+    }
+    @keyframes scanDown {
+      0% { top: -2px; opacity: 0; }
+      5% { opacity: 1; }
+      95% { opacity: 1; }
+      100% { top: 100%; opacity: 0; }
+    }
+
+    /* ════════════════════════════════════════════════
+       TOP BAR
+       ════════════════════════════════════════════════ */
+    .top-bar {
+      position: absolute; top: 0; left: 0; right: 0;
+      height: 42px;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 20px;
+      background: linear-gradient(180deg, rgba(2,5,9,0.85) 0%, transparent 100%);
+      border-bottom: 1px solid rgba(74,158,255,0.08);
+      z-index: 30; pointer-events: none;
+    }
+    .top-left, .top-right {
+      display: flex; align-items: center; gap: 16px;
+    }
+    .sys-name {
+      font-family: Michroma, 'Courier New', monospace;
+      font-size: clamp(8px, 1vw, 11px);
+      letter-spacing: 0.25em;
+      color: rgba(74,158,255,0.45);
+      text-transform: uppercase;
+    }
+    .sys-divider {
+      width: 1px; height: 14px;
+      background: rgba(74,158,255,0.12);
+    }
+    .sys-tag {
+      font-family: 'Aurebesh Condensed', monospace;
+      font-size: clamp(7px, 0.8vw, 9px);
+      letter-spacing: 0.15em;
+      color: rgba(54,214,231,0.3);
+    }
+    .clock-block {
+      display: flex; align-items: baseline; gap: 10px;
+    }
+    .clock-date {
+      font-family: Michroma, monospace;
+      font-size: clamp(7px, 0.75vw, 9px);
+      letter-spacing: 0.15em;
+      color: rgba(74,158,255,0.25);
+    }
+    .clock-time {
+      font-family: Michroma, monospace;
+      font-size: clamp(9px, 1.1vw, 13px);
+      letter-spacing: 0.2em;
+      color: rgba(74,158,255,0.5);
+    }
+    .clock-seconds {
+      font-size: 0.7em;
+      color: rgba(74,158,255,0.25);
+    }
+
+    /* ════════════════════════════════════════════════
+       BOTTOM BAR
+       ════════════════════════════════════════════════ */
+    .bottom-bar {
+      position: absolute; bottom: 0; left: 0; right: 0;
+      height: 42px;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 20px;
+      background: linear-gradient(0deg, rgba(2,5,9,0.85) 0%, transparent 100%);
+      border-top: 1px solid rgba(74,158,255,0.08);
+      z-index: 30; pointer-events: none;
+    }
+    .bottom-left, .bottom-center, .bottom-right {
+      display: flex; align-items: center; gap: 12px;
+    }
+    .conn-dot {
+      width: 5px; height: 5px; border-radius: 50%;
+      background: rgba(54,214,231,0.6);
+      box-shadow: 0 0 6px rgba(54,214,231,0.3);
+      animation: pulse 3s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 0.4; }
+      50% { opacity: 1; }
+    }
+    .conn-label {
+      font-family: Michroma, monospace;
+      font-size: clamp(7px, 0.7vw, 9px);
+      letter-spacing: 0.2em;
+      color: rgba(54,214,231,0.35);
+    }
+    .status-awaiting {
+      font-family: Michroma, monospace;
+      font-size: clamp(8px, 0.9vw, 11px);
+      letter-spacing: 0.3em;
+      color: rgba(74,158,255,0.3);
+      animation: statusPulse 4s ease-in-out infinite;
+    }
+    @keyframes statusPulse {
+      0%, 100% { opacity: 0.2; }
+      50% { opacity: 0.5; }
+    }
+    .uptime-label {
+      font-family: Michroma, monospace;
+      font-size: clamp(7px, 0.7vw, 9px);
+      letter-spacing: 0.15em;
+      color: rgba(74,158,255,0.2);
+    }
+
+    /* ════════════════════════════════════════════════
+       CORNER BRACKETS
+       ════════════════════════════════════════════════ */
+    .corner {
+      position: absolute; width: 24px; height: 24px;
+      z-index: 32; pointer-events: none;
+    }
+    .corner::before, .corner::after {
+      content: ''; position: absolute;
+      background: rgba(74,158,255,0.1);
+    }
+    .corner.tl { top: 42px; left: 12px; }
+    .corner.tr { top: 42px; right: 12px; }
+    .corner.bl { bottom: 42px; left: 12px; }
+    .corner.br { bottom: 42px; right: 12px; }
+    .corner.tl::before, .corner.tr::before { top: 0; height: 1px; width: 100%; }
+    .corner.bl::before, .corner.br::before { bottom: 0; height: 1px; width: 100%; }
+    .corner.tl::after, .corner.bl::after { left: 0; width: 1px; height: 100%; }
+    .corner.tr::after, .corner.br::after { right: 0; width: 1px; height: 100%; }
+
+    /* ════════════════════════════════════════════════
+       ATTENTION BANNER — rotated vertical left edge
+       ════════════════════════════════════════════════ */
+    .attention-strip {
+      position: absolute;
+      left: 27px; top: 50%;
+      transform: translateY(-50%) rotate(-90deg);
+      transform-origin: center center;
+      width: 80vh; height: 54px;
+      z-index: 40; pointer-events: none;
+      display: flex; flex-direction: column;
+      align-items: stretch;
+    }
+    .attn-frame {
+      position: relative;
+      width: 100%; height: 100%;
+      border: 1px solid rgba(200, 60, 40, 0.5);
+      background: rgba(10, 2, 2, 0.85);
+      display: flex; align-items: center;
+      overflow: hidden;
+    }
+    /* Angled corner cuts via clip-path */
+    .attn-frame::before {
+      content: '';
+      position: absolute; inset: -1px;
+      border: 1px solid rgba(255, 70, 50, 0.25);
+      clip-path: polygon(8px 0, calc(100% - 8px) 0, 100% 8px, 100% calc(100% - 8px), calc(100% - 8px) 100%, 8px 100%, 0 calc(100% - 8px), 0 8px);
+      pointer-events: none;
+    }
+    /* Outer glow border */
+    .attn-frame::after {
+      content: '';
+      position: absolute; inset: -3px;
+      border: 1px solid rgba(200, 60, 40, 0.15);
+      clip-path: polygon(10px 0, calc(100% - 10px) 0, 100% 10px, 100% calc(100% - 10px), calc(100% - 10px) 100%, 10px 100%, 0 calc(100% - 10px), 0 10px);
+      pointer-events: none;
+    }
+
+    /* Hazard stripe bars */
+    .attn-stripe {
+      position: absolute;
+      height: 10px;
+      left: 6px; right: 6px;
+      background: repeating-linear-gradient(
+        -45deg,
+        rgba(200, 60, 40, 0.5),
+        rgba(200, 60, 40, 0.5) 6px,
+        rgba(10, 2, 2, 0.9) 6px,
+        rgba(10, 2, 2, 0.9) 12px
+      );
+      mask-image: linear-gradient(90deg,
+        white 0%, white 28%,
+        transparent 30%, transparent 70%,
+        white 72%, white 100%);
+      -webkit-mask-image: linear-gradient(90deg,
+        white 0%, white 28%,
+        transparent 30%, transparent 70%,
+        white 72%, white 100%);
+    }
+    .attn-stripe.top { top: 4px; }
+    .attn-stripe.bottom { bottom: 4px; }
+
+    /* Aurebesh text in stripe gaps */
+    .attn-aurebesh {
+      position: absolute;
+      left: 50%; transform: translateX(-50%);
+      font-family: 'Aurebesh', monospace;
+      font-size: 7px;
+      letter-spacing: 0.2em;
+      color: rgba(200, 60, 40, 0.4);
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+    .attn-aurebesh.top { top: 4px; line-height: 10px; }
+    .attn-aurebesh.bottom { bottom: 4px; line-height: 10px; }
+
+    /* Main center panel */
+    .attn-center {
+      position: absolute;
+      left: 12px; right: 12px;
+      top: 16px; bottom: 16px;
+      border: 1px solid rgba(200, 60, 40, 0.25);
+      background: rgba(40, 6, 6, 0.4);
+      display: flex; align-items: center;
+      justify-content: center; gap: 14px;
+    }
+
+    /* Warning triangles */
+    .attn-warn {
+      width: 16px; height: 16px;
+      flex-shrink: 0;
+    }
+    .attn-warn svg {
+      width: 100%; height: 100%;
+    }
+
+    /* Main ATTENTION text */
+    .attn-text {
+      font-family: Michroma, sans-serif;
+      font-size: 14px;
+      letter-spacing: 0.35em;
+      color: rgba(200, 60, 40, 0.7);
+      text-shadow: 0 0 12px rgba(200, 60, 40, 0.3);
+      white-space: nowrap;
+    }
+
+    /* ════════════════════════════════════════════════
+       LEFT PANEL — SYSTEM TELEMETRY
+       ════════════════════════════════════════════════ */
+    .panel-left {
+      position: absolute; top: 56px; left: 68px; bottom: 56px;
+      width: clamp(120px, 14vw, 200px);
+      display: flex; flex-direction: column; gap: 0;
+      z-index: 25; pointer-events: none;
+      overflow: hidden;
+    }
+    .panel-header {
+      font-family: Michroma, monospace;
+      font-size: clamp(6px, 0.6vw, 8px);
+      letter-spacing: 0.25em;
+      color: rgba(74,158,255,0.25);
+      text-transform: uppercase;
+      padding-bottom: 6px;
+      border-bottom: 1px solid rgba(74,158,255,0.06);
+      margin-bottom: 8px;
+    }
+    .telem-row {
+      display: flex; align-items: center; gap: 6px;
+      margin-bottom: 6px;
+    }
+    .telem-label {
+      font-family: Michroma, monospace;
+      font-size: clamp(6px, 0.55vw, 7px);
+      letter-spacing: 0.15em;
+      color: rgba(74,158,255,0.2);
+      width: 28px; flex-shrink: 0;
+    }
+    .telem-bar {
+      flex: 1; height: 3px;
+      background: rgba(74,158,255,0.06);
+      border-radius: 1px; overflow: hidden;
+    }
+    .telem-fill {
+      height: 100%; border-radius: 1px;
+      background: rgba(74,158,255,0.25);
+      transition: width 2s ease;
+    }
+    .telem-fill.teal { background: rgba(54,214,231,0.3); }
+    .telem-val {
+      font-family: Michroma, monospace;
+      font-size: clamp(6px, 0.55vw, 7px);
+      color: rgba(74,158,255,0.2);
+      width: 30px; text-align: right; flex-shrink: 0;
+    }
+
+    /* Aurebesh data stream below telemetry */
+    .data-stream {
+      margin-top: 12px;
+      flex: 1; overflow: hidden;
+      opacity: 0.25;
+    }
+    .data-row {
+      font-family: 'Aurebesh Condensed', monospace;
+      font-size: clamp(7px, 0.75vw, 9px);
+      line-height: 1.9;
+      color: rgba(74,158,255,0.4);
+      white-space: nowrap;
+    }
+
+    /* ════════════════════════════════════════════════
+       RIGHT PANEL — EVENT LOG
+       ════════════════════════════════════════════════ */
+    .panel-right {
+      position: absolute; top: 56px; right: 14px; bottom: 56px;
+      width: clamp(140px, 18vw, 260px);
+      display: flex; flex-direction: column; gap: 0;
+      z-index: 25; pointer-events: none;
+      overflow: hidden;
+    }
+    .log-entry {
+      display: flex; gap: 8px;
+      margin-bottom: 8px;
+      opacity: 0;
+      animation: logFadeIn 0.6s ease forwards;
+    }
+    .log-time {
+      font-family: Michroma, monospace;
+      font-size: clamp(5px, 0.5vw, 7px);
+      color: rgba(74,158,255,0.15);
+      flex-shrink: 0;
+      width: 42px;
+    }
+    .log-dot {
+      width: 3px; height: 3px; border-radius: 50%;
+      margin-top: 4px; flex-shrink: 0;
+      background: rgba(74,158,255,0.2);
+    }
+    .log-dot.teal { background: rgba(54,214,231,0.3); }
+    .log-dot.warn { background: rgba(255,180,60,0.3); }
+    .log-msg {
+      font-family: 'Courier New', monospace;
+      font-size: clamp(6px, 0.6vw, 8px);
+      line-height: 1.4;
+      color: rgba(74,158,255,0.2);
+    }
+    .log-msg .aurebesh {
+      font-family: 'Aurebesh Condensed', monospace;
+      color: rgba(54,214,231,0.2);
+    }
+    @keyframes logFadeIn {
+      from { opacity: 0; transform: translateY(-4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Aurebesh data stream below log */
+    .data-stream-right {
+      margin-top: 12px;
+      flex: 1; overflow: hidden;
+      opacity: 0.2;
+      text-align: right;
+    }
+
+    /* ════════════════════════════════════════════════
+       CENTER STATUS TEXT
+       ════════════════════════════════════════════════ */
+    .center-status {
+      position: absolute;
+      left: 50%; bottom: 14%;
+      transform: translateX(-50%);
+      display: flex; flex-direction: column;
+      align-items: center; gap: 8px;
+      z-index: 25; pointer-events: none;
+    }
+    .center-aurebesh {
+      font-family: 'Aurebesh', monospace;
+      font-size: clamp(12px, 1.6vw, 18px);
+      letter-spacing: 0.3em;
+      color: rgba(54,214,231,0.45);
+      animation: statusPulse 3s ease-in-out infinite;
+    }
+    .center-english {
+      font-family: Michroma, monospace;
+      font-size: clamp(8px, 0.9vw, 11px);
+      letter-spacing: 0.35em;
+      color: rgba(200,214,229,0.15);
+      text-transform: uppercase;
+    }
+  </style>
+</head>
+<body>
+
+  <canvas id="logo3d"></canvas>
+
+  <div class="scanlines"></div>
+  <div class="vignette"></div>
+  <div class="h-scan"></div>
+
+  <!-- Corner brackets -->
+  <div class="corner tl"></div>
+  <div class="corner tr"></div>
+  <div class="corner bl"></div>
+  <div class="corner br"></div>
+
+  <!-- ══ ATTENTION BANNER — vertical left edge ══ -->
+  <div class="attention-strip">
+    <div class="attn-frame">
+      <!-- Hazard stripes with gaps for Aurebesh -->
+      <div class="attn-stripe top"></div>
+      <div class="attn-stripe bottom"></div>
+      <!-- Aurebesh ATTENTION in stripe gaps -->
+      <span class="attn-aurebesh top">ATTENTION</span>
+      <span class="attn-aurebesh bottom">ATTENTION</span>
+      <!-- Center panel -->
+      <div class="attn-center">
+        <div class="attn-warn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="rgba(200,60,40,0.6)" stroke-width="1.5">
+            <path d="M12 2L1 21h22L12 2z"/><line x1="12" y1="9" x2="12" y2="14"/><circle cx="12" cy="17" r="0.5" fill="rgba(200,60,40,0.6)"/>
+          </svg>
+        </div>
+        <span class="attn-text">ATTENTION</span>
+        <div class="attn-warn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="rgba(200,60,40,0.6)" stroke-width="1.5">
+            <path d="M12 2L1 21h22L12 2z"/><line x1="12" y1="9" x2="12" y2="14"/><circle cx="12" cy="17" r="0.5" fill="rgba(200,60,40,0.6)"/>
+          </svg>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── TOP BAR ─────────────────────────────────── -->
+  <div class="top-bar">
+    <div class="top-left">
+      <span class="sys-name">Marchog Systems Ops</span>
+      <div class="sys-divider"></div>
+      <span class="sys-tag">marchog systems operations</span>
+    </div>
+    <div class="top-right">
+      <div class="clock-block">
+        <span class="clock-date" id="clockDate"></span>
+        <span class="clock-time" id="clockTime"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── BOTTOM BAR ──────────────────────────────── -->
+  <div class="bottom-bar">
+    <div class="bottom-left">
+      <div class="conn-dot"></div>
+      <span class="conn-label">STANDBY</span>
+      <div class="sys-divider"></div>
+      <span class="uptime-label" id="uptime">00:00:00</span>
+    </div>
+    <div class="bottom-center">
+      <span class="status-awaiting">AWAITING ASSIGNMENT</span>
+    </div>
+    <div class="bottom-right">
+      <span class="uptime-label" id="screenId">SCR-000</span>
+    </div>
+  </div>
+
+  <!-- ── LEFT PANEL — TELEMETRY ──────────────────── -->
+  <div class="panel-left">
+    <div class="panel-header">System Telemetry</div>
+    <div id="telemRows"></div>
+    <div class="data-stream" id="dataLeft"></div>
+  </div>
+
+  <!-- ── RIGHT PANEL — EVENT LOG ─────────────────── -->
+  <div class="panel-right">
+    <div class="panel-header" style="text-align:right">Event Log</div>
+    <div id="logEntries"></div>
+    <div class="data-stream-right" id="dataRight"></div>
+  </div>
+
+  <!-- ── CENTER STATUS ───────────────────────────── -->
+  <div class="center-status">
+    <div class="center-aurebesh">terminal standby</div>
+    <div class="center-english">Awaiting Assignment</div>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script>
+    // ═══════════════════════════════════════════════════════
+    //  FONT LOADING
+    // ═══════════════════════════════════════════════════════
+    async function loadFonts() {
+      try {
+        const aurebesh = new FontFace('Aurebesh', "url('../fonts/Aurebesh.otf')");
+        const aurebeshBold = new FontFace('Aurebesh', "url('../fonts/Aurebesh Bold.otf')", { weight: 'bold' });
+        const michroma = new FontFace('Michroma', "url('https://fonts.gstatic.com/s/michroma/v19/PN_zRfy9qWD8fEagAPg9pTk.woff2')");
+        await Promise.all([aurebesh.load(), aurebeshBold.load(), michroma.load()]);
+        document.fonts.add(aurebesh);
+        document.fonts.add(aurebeshBold);
+        document.fonts.add(michroma);
+      } catch (e) {
+        console.warn('Font load failed, using fallback', e);
+      }
+    }
+
+    loadFonts().then(init3D);
+
+    // ═══════════════════════════════════════════════════════
+    //  3D LOGO
+    // ═══════════════════════════════════════════════════════
+    function init3D() {
+      const COL_BLUE = new THREE.Color(74/255, 158/255, 255/255);
+      const COL_TEAL = new THREE.Color(54/255, 214/255, 231/255);
+
+      const domCanvas = document.getElementById('logo3d');
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x020509);
+      scene.fog = new THREE.FogExp2(0x020509, 0.08);
+
+      const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 100);
+      camera.position.set(0, 0, 6);
+
+      const renderer = new THREE.WebGLRenderer({ canvas: domCanvas, antialias: true });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+      scene.add(new THREE.AmbientLight(0x111828, 0.5));
+      const pointLight = new THREE.PointLight(COL_BLUE, 1.5, 20);
+      pointLight.position.set(2, 2, 4);
+      scene.add(pointLight);
+      const rimLight = new THREE.PointLight(COL_TEAL, 0.6, 15);
+      rimLight.position.set(-3, -1, 3);
+      scene.add(rimLight);
+
+      // Starfield
+      const starGeo = new THREE.BufferGeometry();
+      const starPos = new Float32Array(600 * 3);
+      for (let i = 0; i < 600; i++) {
+        starPos[i*3]   = (Math.random()-0.5) * 40;
+        starPos[i*3+1] = (Math.random()-0.5) * 40;
+        starPos[i*3+2] = (Math.random()-0.5) * 40 - 5;
+      }
+      starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
+      const starMat = new THREE.PointsMaterial({ color: 0x4a9eff, size: 0.02, transparent: true, opacity: 0.4 });
+      scene.add(new THREE.Points(starGeo, starMat));
+
+      function makeRing(radius, tube, color, opacity) {
+        return new THREE.Mesh(
+          new THREE.TorusGeometry(radius, tube, 16, 128),
+          new THREE.MeshStandardMaterial({
+            color, emissive: color, emissiveIntensity: 0.4,
+            transparent: true, opacity, metalness: 0.6, roughness: 0.3, side: THREE.DoubleSide,
+          })
+        );
+      }
+
+      // ── Arc text renderer ──────────────────────────
+      function drawTextOnArc(ctx, text, cx, cy, radius, startAngle, letterSpacing, opts = {}) {
+        const fontSize = opts.fontSize || 48;
+        const fontFamily = opts.fontFamily || 'Michroma, sans-serif';
+        const fontWeight = opts.fontWeight || 'bold';
+        const fillColor = opts.color || 'rgba(74,158,255,0.9)';
+        const glowColor = opts.glowColor || 'rgba(74,158,255,0.5)';
+        const topArc = opts.topArc || false;
+
+        ctx.font = `${fontWeight} ${fontSize}px ${fontFamily}`;
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+
+        const chars = text.split('');
+        const charWidths = chars.map(c => ctx.measureText(c).width + letterSpacing);
+        const totalWidth = charWidths.reduce((a,b) => a+b, 0) - letterSpacing;
+        const totalAngle = totalWidth / radius;
+        const dir = topArc ? -1 : 1;
+        let angle = startAngle - dir * totalAngle / 2;
+
+        chars.forEach((char, i) => {
+          const charAngle = charWidths[i] / radius;
+          const midAngle = angle + dir * charAngle / 2;
+          ctx.save();
+          ctx.translate(cx + Math.cos(midAngle) * radius, cy + Math.sin(midAngle) * radius);
+          ctx.rotate(midAngle + (topArc ? -Math.PI/2 : Math.PI/2));
+
+          const isSep = (char === '\u00B7' || char === '·' || char === '.' || char === '-');
+          if (isSep && fontFamily.includes('Aurebesh')) {
+            ctx.font = `${fontWeight} ${fontSize}px "Courier New", monospace`;
+          } else {
+            ctx.font = `${fontWeight} ${fontSize}px ${fontFamily}`;
+          }
+
+          ctx.shadowColor = glowColor; ctx.shadowBlur = fontSize * 0.4;
+          ctx.fillStyle = fillColor; ctx.fillText(char, 0, 0);
+          ctx.shadowBlur = fontSize * 0.12; ctx.fillText(char, 0, 0);
+          ctx.shadowBlur = 0;
+          ctx.restore();
+          angle += dir * charAngle;
+        });
+      }
+
+      // ── Text ring texture ──────────────────────────
+      function createTextRingTexture() {
+        const size = 1024;
+        const canvas = document.createElement('canvas');
+        canvas.width = size; canvas.height = size;
+        const ctx = canvas.getContext('2d');
+        const cx = size/2, cy = size/2;
+        const scale = size / (1.88 * 2 * 1.15);
+        const textR = 1.64 * scale;
+
+        drawTextOnArc(ctx, 'MARCHOG  ·  SYSTEMS', cx, cy, textR, Math.PI/2, 6, {
+          fontSize: 38, fontFamily: 'Michroma, sans-serif',
+          color: 'rgba(74,158,255,0.95)', glowColor: 'rgba(74,158,255,0.6)',
+        });
+        drawTextOnArc(ctx, 'MARCHOG  ·  SYSTEMS', cx, cy, textR, -Math.PI/2, 6, {
+          fontSize: 38, fontFamily: 'Aurebesh, monospace',
+          color: 'rgba(54,214,231,0.7)', glowColor: 'rgba(54,214,231,0.4)', topArc: true,
+        });
+
+        // Arrow
+        const arrowY = cy + 1.68 * scale;
+        ctx.fillStyle = 'rgba(74,158,255,0.4)';
+        ctx.beginPath(); ctx.moveTo(cx-6, arrowY-5); ctx.lineTo(cx, arrowY+4); ctx.lineTo(cx+6, arrowY-5); ctx.closePath(); ctx.fill();
+        ctx.fillRect(cx-2, arrowY-14, 4, 10);
+
+        const tex = new THREE.CanvasTexture(canvas);
+        tex.minFilter = THREE.LinearFilter; tex.magFilter = THREE.LinearFilter;
+        return tex;
+      }
+
+      // ── Outer ring group ───────────────────────────
+      const outerGroup = new THREE.Group();
+      outerGroup.add(makeRing(1.88, 0.018, COL_BLUE, 0.5));
+      outerGroup.add(makeRing(1.75, 0.008, COL_BLUE, 0.25));
+
+      const dotGeo = new THREE.SphereGeometry(0.012, 6, 6);
+      const dotMat = new THREE.MeshStandardMaterial({
+        color: COL_BLUE, emissive: COL_BLUE, emissiveIntensity: 0.5, transparent: true, opacity: 0.35,
+      });
+      for (let i = 0; i < 60; i++) {
+        const a = (i/60) * Math.PI * 2;
+        const dot = new THREE.Mesh(dotGeo, dotMat);
+        dot.position.set(Math.cos(a)*1.81, Math.sin(a)*1.81, 0);
+        outerGroup.add(dot);
+      }
+      const tickGeo = new THREE.BoxGeometry(0.008, 0.07, 0.008);
+      const tickMat = new THREE.MeshStandardMaterial({
+        color: COL_BLUE, emissive: COL_BLUE, emissiveIntensity: 0.3, transparent: true, opacity: 0.2,
+      });
+      [0,45,90,135,180,225,270,315].forEach(deg => {
+        const rad = deg * Math.PI / 180;
+        const tick = new THREE.Mesh(tickGeo, tickMat);
+        tick.position.set(Math.cos(rad)*1.92, Math.sin(rad)*1.92, 0);
+        tick.rotation.z = rad;
+        outerGroup.add(tick);
+      });
+      scene.add(outerGroup);
+
+      // ── Inner ring + text ──────────────────────────
+      const innerGroup = new THREE.Group();
+      innerGroup.add(makeRing(1.55, 0.012, COL_BLUE, 0.3));
+      innerGroup.add(makeRing(1.54, 0.05, COL_BLUE, 0.06));
+
+      const textPlaneSz = 1.88 * 2 * 1.15;
+      const textPlane = new THREE.Mesh(
+        new THREE.PlaneGeometry(textPlaneSz, textPlaneSz),
+        new THREE.MeshBasicMaterial({ map: createTextRingTexture(), transparent: true, depthWrite: false, side: THREE.DoubleSide })
+      );
+      textPlane.position.z = 0.06;
+      innerGroup.add(textPlane);
+      scene.add(innerGroup);
+
+      // ── Center M ───────────────────────────────────
+      const centerGroup = new THREE.Group();
+
+      function createMTexture() {
+        const canvas = document.createElement('canvas');
+        canvas.width = 512; canvas.height = 512;
+        const ctx = canvas.getContext('2d');
+        const s = 512/400; ctx.save(); ctx.scale(s,s);
+
+        ctx.beginPath();
+        ctx.moveTo(120,270); ctx.lineTo(120,95); ctx.lineTo(140,95);
+        ctx.lineTo(185,165); ctx.lineTo(200,135); ctx.lineTo(215,165);
+        ctx.lineTo(260,95); ctx.lineTo(280,95); ctx.lineTo(280,270);
+        ctx.lineTo(258,270); ctx.lineTo(258,155); ctx.lineTo(220,225);
+        ctx.lineTo(200,190); ctx.lineTo(180,225); ctx.lineTo(142,155);
+        ctx.lineTo(142,270); ctx.closePath();
+
+        ctx.shadowColor = 'rgba(74,158,255,0.6)'; ctx.shadowBlur = 20;
+        ctx.fillStyle = 'rgba(74,158,255,0.8)'; ctx.fill();
+        ctx.shadowBlur = 0; ctx.strokeStyle = 'rgba(74,158,255,0.4)'; ctx.lineWidth = 1; ctx.stroke();
+
+        ctx.shadowColor = 'rgba(54,214,231,0.7)'; ctx.shadowBlur = 12;
+        ctx.strokeStyle = 'rgba(54,214,231,0.9)'; ctx.lineWidth = 3.5; ctx.lineCap = 'round';
+        [[282,160,320,160],[282,182,328,182],[282,204,314,204]].forEach(([x1,y1,x2,y2]) => {
+          ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+          ctx.fillStyle = 'rgba(54,214,231,0.95)';
+          [x1,x2].forEach(x => { ctx.beginPath(); ctx.arc(x,y1,4,0,Math.PI*2); ctx.fill(); });
+        });
+        ctx.shadowBlur = 0; ctx.restore();
+        return new THREE.CanvasTexture(canvas);
+      }
+
+      centerGroup.add(new THREE.Mesh(
+        new THREE.PlaneGeometry(2.6, 2.6),
+        new THREE.MeshBasicMaterial({ map: createMTexture(), transparent: true, depthWrite: false, side: THREE.DoubleSide })
+      ));
+
+      // Aurebesh M
+      function createAurebeshM() {
+        const c = document.createElement('canvas'); c.width = 256; c.height = 256;
+        const ctx = c.getContext('2d');
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.shadowColor = 'rgba(54,214,231,0.9)'; ctx.shadowBlur = 20;
+        ctx.fillStyle = 'rgba(54,214,231,0.8)'; ctx.font = 'bold 140px Aurebesh, monospace';
+        ctx.fillText('M', 128, 128); ctx.shadowBlur = 6; ctx.fillText('M', 128, 128);
+        return new THREE.CanvasTexture(c);
+      }
+      const aurebeshSprite = new THREE.Sprite(
+        new THREE.SpriteMaterial({ map: createAurebeshM(), transparent: true, depthWrite: false, sizeAttenuation: true })
+      );
+      aurebeshSprite.scale.set(0.55, 0.55, 1); aurebeshSprite.position.set(0, 1.0, 0.01);
+      centerGroup.add(aurebeshSprite);
+
+      // REG text
+      function createRegTexture() {
+        const c = document.createElement('canvas'); c.width = 512; c.height = 128;
+        const ctx = c.getContext('2d');
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.font = '28px Michroma, sans-serif';
+        ctx.shadowColor = 'rgba(74,158,255,0.5)'; ctx.shadowBlur = 12;
+        ctx.fillStyle = 'rgba(74,158,255,0.5)';
+        ctx.fillText('REG \u00B7 19 \u00B7 71', 256, 64);
+        ctx.shadowBlur = 4; ctx.fillText('REG \u00B7 19 \u00B7 71', 256, 64);
+        return new THREE.CanvasTexture(c);
+      }
+      const regSprite = new THREE.Sprite(
+        new THREE.SpriteMaterial({ map: createRegTexture(), transparent: true, depthWrite: false, sizeAttenuation: true })
+      );
+      regSprite.scale.set(1.6, 0.4, 1); regSprite.position.set(0, -0.95, 0.01);
+      centerGroup.add(regSprite);
+
+      scene.add(centerGroup);
+
+      // Halo
+      const haloC = document.createElement('canvas'); haloC.width = 256; haloC.height = 256;
+      const hCtx = haloC.getContext('2d');
+      const grad = hCtx.createRadialGradient(128,128,0,128,128,128);
+      grad.addColorStop(0, 'rgba(74,158,255,0.12)'); grad.addColorStop(0.5, 'rgba(74,158,255,0.04)'); grad.addColorStop(1, 'rgba(74,158,255,0)');
+      hCtx.fillStyle = grad; hCtx.fillRect(0,0,256,256);
+      const halo = new THREE.Mesh(
+        new THREE.PlaneGeometry(6,6),
+        new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(haloC), transparent: true, depthWrite: false })
+      );
+      halo.position.z = -0.5; scene.add(halo);
+
+      // Animation
+      const mPlane = centerGroup.children[0];
+      const clock = new THREE.Clock();
+      function animate() {
+        requestAnimationFrame(animate);
+        const t = clock.getElapsedTime();
+        outerGroup.rotation.y = t * 0.25;
+        outerGroup.rotation.x = Math.sin(t*0.15) * 0.08;
+        innerGroup.rotation.z = t * 0.12;
+        innerGroup.rotation.x = Math.sin(t*0.1+1) * 0.05;
+        centerGroup.position.y = Math.sin(t*0.4) * 0.03;
+        const breathe = 1.0 + Math.sin(t*0.5) * 0.015;
+        centerGroup.scale.set(breathe, breathe, 1);
+        mPlane.material.opacity = 0.85 + Math.sin(t*1.2) * 0.15;
+        halo.material.opacity = 0.6 + Math.sin(t*0.3) * 0.2;
+        starMat.opacity = 0.3 + Math.sin(t*0.2) * 0.1;
+        pointLight.position.x = 2 + Math.sin(t*0.3);
+        pointLight.position.y = 2 + Math.cos(t*0.2);
+        rimLight.position.x = -3 + Math.sin(t*0.25+2);
+        renderer.render(scene, camera);
+      }
+      animate();
+
+      window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      });
+    }
+
+    // ═══════════════════════════════════════════════════════
+    //  CLOCK + DATE
+    // ═══════════════════════════════════════════════════════
+    const startTime = Date.now();
+
+    function updateClock() {
+      const now = new Date();
+      const h = String(now.getHours()).padStart(2, '0');
+      const m = String(now.getMinutes()).padStart(2, '0');
+      const s = String(now.getSeconds()).padStart(2, '0');
+      document.getElementById('clockTime').innerHTML = `${h}:${m}<span class="clock-seconds">:${s}</span>`;
+
+      const months = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+      const d = String(now.getDate()).padStart(2, '0');
+      document.getElementById('clockDate').textContent = `${d} ${months[now.getMonth()]} ${now.getFullYear()}`;
+
+      // Uptime
+      const elapsed = Math.floor((Date.now() - startTime) / 1000);
+      const uh = String(Math.floor(elapsed / 3600)).padStart(2, '0');
+      const um = String(Math.floor((elapsed % 3600) / 60)).padStart(2, '0');
+      const us = String(elapsed % 60).padStart(2, '0');
+      document.getElementById('uptime').textContent = `UP ${uh}:${um}:${us}`;
+    }
+    setInterval(updateClock, 1000);
+    updateClock();
+
+    // Screen ID from parent shell URL
+    try {
+      const params = new URLSearchParams(window.parent.location.search);
+      const sid = params.get('id');
+      if (sid) document.getElementById('screenId').textContent = sid.toUpperCase();
+    } catch(e) {}
+
+    // ═══════════════════════════════════════════════════════
+    //  TELEMETRY — simulated system readouts
+    // ═══════════════════════════════════════════════════════
+    const telemChannels = [
+      { label: 'CPU', min: 2, max: 18, teal: false },
+      { label: 'MEM', min: 30, max: 45, teal: false },
+      { label: 'NET', min: 5, max: 25, teal: true },
+      { label: 'GPU', min: 8, max: 22, teal: false },
+      { label: 'PWR', min: 85, max: 99, teal: true },
+      { label: 'THR', min: 1, max: 12, teal: false },
+      { label: 'DSP', min: 40, max: 70, teal: true },
+      { label: 'BUS', min: 10, max: 35, teal: false },
+    ];
+
+    function buildTelemetry() {
+      const container = document.getElementById('telemRows');
+      telemChannels.forEach((ch, i) => {
+        const row = document.createElement('div');
+        row.className = 'telem-row';
+        row.innerHTML = `
+          <span class="telem-label">${ch.label}</span>
+          <div class="telem-bar"><div class="telem-fill ${ch.teal ? 'teal' : ''}" id="telem-fill-${i}" style="width:${ch.min}%"></div></div>
+          <span class="telem-val" id="telem-val-${i}">${ch.min}%</span>
+        `;
+        container.appendChild(row);
+      });
+    }
+    buildTelemetry();
+
+    function updateTelemetry() {
+      telemChannels.forEach((ch, i) => {
+        const val = ch.min + Math.random() * (ch.max - ch.min);
+        document.getElementById(`telem-fill-${i}`).style.width = val + '%';
+        document.getElementById(`telem-val-${i}`).textContent = val.toFixed(1) + '%';
+      });
+    }
+    setInterval(updateTelemetry, 2500);
+    updateTelemetry();
+
+    // ═══════════════════════════════════════════════════════
+    //  EVENT LOG — simulated activity
+    // ═══════════════════════════════════════════════════════
+    const logTemplates = [
+      { msg: 'Heartbeat acknowledged', dot: '' },
+      { msg: 'Scene sync <span class="aurebesh">nominal</span>', dot: 'teal' },
+      { msg: 'Buffer flush cycle', dot: '' },
+      { msg: 'Network route verified', dot: 'teal' },
+      { msg: 'Display calibration OK', dot: '' },
+      { msg: 'Awaiting scene assignment', dot: 'warn' },
+      { msg: 'Power draw <span class="aurebesh">stable</span>', dot: 'teal' },
+      { msg: 'WebSocket keepalive', dot: '' },
+      { msg: 'Frame sync delta 0.2ms', dot: '' },
+      { msg: 'Thermal within limits', dot: 'teal' },
+      { msg: 'Input scan: no devices', dot: '' },
+      { msg: 'Render pipeline idle', dot: 'warn' },
+      { msg: 'DNS resolution cached', dot: '' },
+      { msg: 'Certificate valid <span class="aurebesh">31d</span>', dot: 'teal' },
+      { msg: 'Memory pool compacted', dot: '' },
+    ];
+
+    const MAX_LOG_ENTRIES = 20;
+    let logCount = 0;
+
+    function addLogEntry() {
+      const container = document.getElementById('logEntries');
+      const tmpl = logTemplates[Math.floor(Math.random() * logTemplates.length)];
+      const now = new Date();
+      const ts = String(now.getHours()).padStart(2,'0') + ':' +
+                 String(now.getMinutes()).padStart(2,'0') + ':' +
+                 String(now.getSeconds()).padStart(2,'0');
+
+      const entry = document.createElement('div');
+      entry.className = 'log-entry';
+      entry.innerHTML = `
+        <span class="log-time">${ts}</span>
+        <div class="log-dot ${tmpl.dot}"></div>
+        <span class="log-msg">${tmpl.msg}</span>
+      `;
+      container.insertBefore(entry, container.firstChild);
+
+      logCount++;
+      while (container.children.length > MAX_LOG_ENTRIES) {
+        container.removeChild(container.lastChild);
+      }
+    }
+
+    // Initial burst
+    for (let i = 0; i < 8; i++) addLogEntry();
+    setInterval(addLogEntry, 4000 + Math.random() * 3000);
+
+    // ═══════════════════════════════════════════════════════
+    //  DATA STREAMS — Aurebesh scrolling columns
+    // ═══════════════════════════════════════════════════════
+    const dataWords = [
+      'MARCHOG','SYSTEMS','STANDBY','READY','NOMINAL','SYNC','CORE','RELAY',
+      'NODE','ACTIVE','BUFFER','QUEUE','LINK','PORT','FEED','SIGNAL','CLEAR',
+      'ROUTE','GRID','CYCLE','PULSE','DRIFT','LOCK','HOLD','PHASE','VECTOR',
+      'ARRAY','SCAN','ALIGN','FLUX',
+    ];
+
+    function genDataLine() {
+      const r = Math.random();
+      if (r < 0.3) {
+        let h = ''; for (let i = 0; i < 4 + Math.floor(Math.random()*5); i++) h += '0123456789ABCDEF'[Math.floor(Math.random()*16)];
+        return h;
+      } else if (r < 0.6) {
+        return dataWords[Math.floor(Math.random()*dataWords.length)] + '-' + String(Math.floor(Math.random()*999)).padStart(3,'0');
+      } else {
+        const p = ['SYS','NET','MEM','CPU','PWR','THR','DSP'];
+        return p[Math.floor(Math.random()*p.length)] + ':' + (Math.random()*100).toFixed(1);
+      }
+    }
+
+    const MAX_ROWS = 50;
+    let leftData = [], rightData = [];
+    for (let i = 0; i < MAX_ROWS; i++) { leftData.push(genDataLine()); rightData.push(genDataLine()); }
+
+    function renderStreams() {
+      document.getElementById('dataLeft').innerHTML = leftData.map(d => `<div class="data-row">${d}</div>`).join('');
+      document.getElementById('dataRight').innerHTML = rightData.map(d => `<div class="data-row">${d}</div>`).join('');
+    }
+    renderStreams();
+
+    setInterval(() => {
+      leftData.unshift(genDataLine()); if (leftData.length > MAX_ROWS) leftData.pop();
+      rightData.unshift(genDataLine()); if (rightData.length > MAX_ROWS) rightData.pop();
+      renderStreams();
+    }, 2200);
+  </script>
+</body>
+</html>
