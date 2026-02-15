@@ -14,7 +14,8 @@ from typing import Optional
 import json
 
 from database import (
-    init_db, get_all_pages, get_page,
+    init_db, get_all_pages, get_page, create_page, update_page, delete_page,
+    scan_pages_directory,
     get_all_scenes, get_scene, get_active_scene,
     create_scene, delete_scene, activate_scene,
     set_screen_config, remove_screen_config, get_screen_assignment,
@@ -42,6 +43,13 @@ async def lifespan(app: FastAPI):
     print("⚡ MarchogSystemsOps Server starting...")
     await init_db()
     print("✅ Database initialized")
+    # Auto-discover new pages in client/pages/
+    pages_dir = CLIENT_DIR / "pages"
+    discovered = await scan_pages_directory(pages_dir)
+    if discovered:
+        print(f"✅ Auto-registered {len(discovered)} new page(s): {', '.join(discovered)}")
+    else:
+        print("✅ All pages up to date")
     yield
     print("MarchogSystemsOps Server shutting down...")
 
@@ -86,6 +94,21 @@ class ZoneScreenAssign(BaseModel):
     screen_id: str
     page_id: str
     label: str = ""
+
+
+class PageCreate(BaseModel):
+    id: str
+    name: str
+    file: str
+    description: str = ""
+    icon: str = ""
+    category: str = "general"
+
+class PageUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    icon: Optional[str] = None
+    category: Optional[str] = None
 
 
 class SceneCreate(BaseModel):
@@ -201,6 +224,19 @@ async def api_pages():
     """List all available pages."""
     return await get_all_pages()
 
+@app.post("/api/pages")
+async def api_create_page(page: PageCreate):
+    """Register a new page."""
+    await create_page(page.id, page.name, page.file, page.description, page.icon, page.category)
+    return {"status": "created", "id": page.id}
+
+@app.post("/api/pages/scan")
+async def api_scan_pages():
+    """Re-scan pages directory for new HTML files."""
+    pages_dir = CLIENT_DIR / "pages"
+    discovered = await scan_pages_directory(pages_dir)
+    return {"status": "scanned", "discovered": discovered}
+
 @app.get("/api/pages/{page_id}")
 async def api_page(page_id: str):
     """Get a single page."""
@@ -208,6 +244,18 @@ async def api_page(page_id: str):
     if not page:
         raise HTTPException(404, "Page not found")
     return page
+
+@app.put("/api/pages/{page_id}")
+async def api_update_page(page_id: str, data: PageUpdate):
+    """Update a page's metadata."""
+    await update_page(page_id, data.name, data.description, data.icon, data.category)
+    return {"status": "updated"}
+
+@app.delete("/api/pages/{page_id}")
+async def api_delete_page(page_id: str):
+    """Delete a page registration."""
+    await delete_page(page_id)
+    return {"status": "deleted"}
 
 
 # ── API: Scenes ──────────────────────────────────────────────

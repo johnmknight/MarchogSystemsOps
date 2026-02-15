@@ -345,6 +345,10 @@
     <div class="section">
       <div class="section-head">
         <div class="section-title">Available Pages</div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-sm" onclick="scanPages()">⟐ SCAN DIR</button>
+          <button class="btn btn-sm btn-add" onclick="showAddPageModal()">+ ADD PAGE</button>
+        </div>
       </div>
       <div class="card-grid" id="pageGrid"></div>
     </div>
@@ -483,15 +487,23 @@
       const grid = document.getElementById('pageGrid');
       grid.innerHTML = pages.map(p => `
         <div class="card" style="padding:12px">
-          <div class="card-header" style="margin-bottom:0">
-            <div class="card-icon">${p.icon}</div>
-            <div>
+          <div class="card-header" style="margin-bottom:4px">
+            <div class="card-icon">${p.icon || '◻'}</div>
+            <div style="flex:1">
               <div class="card-name">${p.name}</div>
               <div class="card-desc">${p.description}</div>
+              <div class="card-desc" style="color:var(--accent-blue);opacity:0.5">${p.file} · ${p.category}</div>
             </div>
           </div>
+          <div class="card-actions">
+            <button class="btn btn-sm" onclick="showEditPageModal('${p.id}')">EDIT</button>
+            <button class="btn btn-sm btn-danger" onclick="deletePage('${p.id}','${p.name}')">DELETE</button>
+            <a href="/pages/${p.file}" target="_blank" class="btn btn-sm" style="text-decoration:none">PREVIEW ↗</a>
+          </div>
         </div>
-      `).join('');
+      `).join('') + `
+        <div class="add-card" onclick="showAddPageModal()">+ ADD PAGE</div>
+      `;
     }
 
     // ═══════════════════════════════════════════════════
@@ -671,6 +683,136 @@
     async function unassignScreen(zoneId, screenId) {
       if (!confirm(`Remove screen "${screenId}" from this zone?`)) return;
       await api('DELETE', `/api/zones/${zoneId}/screens/${screenId}`);
+      await loadAll();
+    }
+
+    // ── Add Page ────────────────────────────────────────
+    function showAddPageModal() {
+      openModal(`
+        <h3>REGISTER NEW PAGE</h3>
+        <div class="form-group">
+          <label>Page Name</label>
+          <input id="pageName" placeholder="e.g. Star Map" oninput="autoId('pageName','pageId')">
+        </div>
+        <div class="form-group">
+          <label>ID (auto-generated)</label>
+          <input id="pageId" placeholder="star-map">
+        </div>
+        <div class="form-group">
+          <label>HTML File (in pages/)</label>
+          <input id="pageFile" placeholder="e.g. star-map.html">
+        </div>
+        <div class="form-group">
+          <label>Description</label>
+          <input id="pageDesc" placeholder="Optional description">
+        </div>
+        <div style="display:flex;gap:10px">
+          <div class="form-group" style="flex:0 0 80px">
+            <label>Icon</label>
+            <input id="pageIcon" value="◻" style="width:60px">
+          </div>
+          <div class="form-group" style="flex:1">
+            <label>Category</label>
+            <select id="pageCat">
+              <option value="general">General</option>
+              <option value="ambient">Ambient</option>
+              <option value="hud">HUD</option>
+              <option value="maintenance">Maintenance</option>
+              <option value="interactive">Interactive</option>
+            </select>
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button class="btn" onclick="closeModal()">CANCEL</button>
+          <button class="btn btn-primary" onclick="submitPage()">CREATE</button>
+        </div>
+      `);
+    }
+
+    async function submitPage() {
+      const name = document.getElementById('pageName').value.trim();
+      const id = document.getElementById('pageId').value.trim();
+      const file = document.getElementById('pageFile').value.trim();
+      const desc = document.getElementById('pageDesc').value.trim();
+      const icon = document.getElementById('pageIcon').value.trim() || '◻';
+      const cat = document.getElementById('pageCat').value;
+      if (!name || !id || !file) return;
+
+      await api('POST', '/api/pages', { id, name, file, description: desc, icon, category: cat });
+      closeModal();
+      await loadAll();
+    }
+
+    // ── Edit Page ───────────────────────────────────────
+    function showEditPageModal(pageId) {
+      const p = pages.find(pg => pg.id === pageId);
+      if (!p) return;
+      openModal(`
+        <h3>EDIT PAGE</h3>
+        <div class="form-group">
+          <label>ID (read-only)</label>
+          <input value="${p.id}" disabled style="opacity:0.5">
+        </div>
+        <div class="form-group">
+          <label>Page Name</label>
+          <input id="editPageName" value="${p.name}">
+        </div>
+        <div class="form-group">
+          <label>Description</label>
+          <input id="editPageDesc" value="${p.description || ''}">
+        </div>
+        <div style="display:flex;gap:10px">
+          <div class="form-group" style="flex:0 0 80px">
+            <label>Icon</label>
+            <input id="editPageIcon" value="${p.icon || ''}" style="width:60px">
+          </div>
+          <div class="form-group" style="flex:1">
+            <label>Category</label>
+            <select id="editPageCat">
+              <option value="general" ${p.category==='general'?'selected':''}>General</option>
+              <option value="ambient" ${p.category==='ambient'?'selected':''}>Ambient</option>
+              <option value="hud" ${p.category==='hud'?'selected':''}>HUD</option>
+              <option value="maintenance" ${p.category==='maintenance'?'selected':''}>Maintenance</option>
+              <option value="interactive" ${p.category==='interactive'?'selected':''}>Interactive</option>
+            </select>
+          </div>
+        </div>
+        <input type="hidden" id="editPageId" value="${p.id}">
+        <div class="modal-actions">
+          <button class="btn" onclick="closeModal()">CANCEL</button>
+          <button class="btn btn-primary" onclick="submitEditPage()">SAVE</button>
+        </div>
+      `);
+    }
+
+    async function submitEditPage() {
+      const id = document.getElementById('editPageId').value;
+      const name = document.getElementById('editPageName').value.trim();
+      const desc = document.getElementById('editPageDesc').value.trim();
+      const icon = document.getElementById('editPageIcon').value.trim();
+      const cat = document.getElementById('editPageCat').value;
+      if (!name) return;
+
+      await api('PUT', `/api/pages/${id}`, { name, description: desc, icon, category: cat });
+      closeModal();
+      await loadAll();
+    }
+
+    // ── Delete Page ──────────────────────────────────────
+    async function deletePage(id, name) {
+      if (!confirm(`Delete page "${name}"? This only removes the registration, not the HTML file.`)) return;
+      await api('DELETE', `/api/pages/${id}`);
+      await loadAll();
+    }
+
+    // ── Scan Pages ──────────────────────────────────────
+    async function scanPages() {
+      const result = await api('POST', '/api/pages/scan');
+      if (result.discovered && result.discovered.length > 0) {
+        alert(`Discovered ${result.discovered.length} new page(s): ${result.discovered.join(', ')}`);
+      } else {
+        alert('No new pages found.');
+      }
       await loadAll();
     }
 
