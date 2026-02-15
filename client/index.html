@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MarchogSystemsOps</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;900&family=Share+Tech+Mono&display=swap');
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    :root {
+      --bg-void: #000000;
+      --bg-panel: rgba(10, 12, 18, 0.92);
+      --border-imperial: #c0392b;
+      --border-rebel: #f39c12;
+      --border-active: #3498db;
+      --text-primary: #c8d6e5;
+      --text-secondary: #636e72;
+      --text-glow: #e74c3c;
+      --accent-red: #e74c3c;
+      --accent-blue: #3498db;
+      --accent-gold: #f1c40f;
+      --success: #2ecc71;
+      --warning: #e67e22;
+    }
+
+    html, body {
+      height: 100%;
+      overflow: hidden;
+      font-family: 'Share Tech Mono', 'Courier New', monospace;
+      background: var(--bg-void);
+      color: var(--text-primary);
+    }
+
+    .app-shell { display: flex; flex-direction: column; height: 100vh; width: 100vw; }
+
+    /* ── Page frames ─────────────────────────────── */
+    .page-content { flex: 1; position: relative; overflow: hidden; }
+    .page-frame {
+      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+      border: none; opacity: 0; pointer-events: none;
+      transition: opacity 0.4s ease;
+    }
+    .page-frame.active { opacity: 1; pointer-events: auto; }
+    .page-frame.fade-out { opacity: 0; pointer-events: none; }
+
+    /* ── Connection status ────────────────────────── */
+    .conn-status {
+      position: fixed; top: 8px; right: 8px;
+      display: flex; align-items: center; gap: 6px;
+      padding: 4px 12px;
+      background: var(--bg-panel);
+      border: 1px solid rgba(192, 57, 43, 0.3);
+      border-radius: 2px;
+      font-family: 'Orbitron', sans-serif;
+      font-size: 0.6em; letter-spacing: 0.1em;
+      color: var(--text-secondary);
+      opacity: 0.5; transition: opacity 0.3s;
+      z-index: 100;
+    }
+    .conn-status:hover { opacity: 1; }
+    .conn-status .dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--success);
+    }
+    .conn-status.disconnected .dot { background: var(--accent-red); }
+    .conn-status.connecting .dot { background: var(--warning); animation: pulse 1s infinite; }
+
+    /* ── Page dots ────────────────────────────────── */
+    .page-dots {
+      position: fixed; bottom: 12px; left: 12px;
+      display: flex; gap: 8px; opacity: 0.4;
+      transition: opacity 0.3s;
+    }
+    .page-dots:hover { opacity: 1; }
+    .page-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: rgba(200, 214, 229, 0.25);
+      cursor: pointer; transition: all 0.2s;
+    }
+    .page-dot.active {
+      background: var(--accent-red);
+      box-shadow: 0 0 8px var(--accent-red);
+    }
+    .page-dot:hover:not(.active) { background: rgba(200, 214, 229, 0.5); }
+
+    /* ── Playlist indicator ──────────────────────── */
+    .playlist-indicator {
+      position: fixed; bottom: 12px; left: 50%;
+      transform: translateX(-50%);
+      display: none; align-items: center; gap: 8px;
+      padding: 4px 14px;
+      background: var(--bg-panel);
+      border: 1px solid rgba(192, 57, 43, 0.2);
+      border-radius: 2px;
+      font-size: 0.65em; color: var(--text-secondary);
+      opacity: 0.4; transition: opacity 0.3s;
+    }
+    .playlist-indicator:hover { opacity: 1; }
+    .playlist-indicator.visible { display: flex; }
+    .playlist-bar {
+      width: 80px; height: 3px;
+      background: rgba(200, 214, 229, 0.1);
+      border-radius: 1px; overflow: hidden;
+    }
+    .playlist-progress {
+      height: 100%; width: 0%;
+      background: var(--accent-red);
+      transition: width 0.1s linear;
+    }
+
+    /* ── Keyboard hint ───────────────────────────── */
+    .keyboard-hint {
+      position: fixed; bottom: 12px; right: 12px;
+      display: flex; align-items: center; gap: 6px;
+      padding: 4px 12px;
+      background: var(--bg-panel);
+      border: 1px solid rgba(200, 214, 229, 0.1);
+      border-radius: 2px;
+      font-size: 0.65em; color: rgba(200, 214, 229, 0.3);
+      opacity: 0; transition: opacity 0.3s; pointer-events: none;
+    }
+    .keyboard-hint.visible { opacity: 1; }
+    .key-icon {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 20px; height: 20px;
+      background: rgba(200, 214, 229, 0.05);
+      border: 1px solid rgba(200, 214, 229, 0.15);
+      border-radius: 3px; font-size: 0.9em;
+    }
+
+    /* ── Notifications ───────────────────────────── */
+    .notifications {
+      position: fixed; top: 40px; right: 12px;
+      z-index: 1000; display: flex; flex-direction: column; gap: 8px;
+    }
+    .notification {
+      padding: 10px 16px; max-width: 280px;
+      background: var(--bg-panel);
+      border: 1px solid var(--accent-red);
+      border-left: 3px solid var(--accent-red);
+      font-size: 0.75em;
+      animation: slideIn 0.3s ease;
+    }
+    .notification.success { border-color: var(--success); }
+    .notification.info { border-color: var(--accent-blue); }
+
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+    @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <!-- Connection status -->
+    <div class="conn-status connecting" id="connStatus">
+      <span class="dot"></span>
+      <span id="connText">CONNECTING</span>
+      <span id="screenIdLabel"></span>
+    </div>
+
+    <!-- Page frames container -->
+    <main class="page-content" id="pageContent"></main>
+
+    <!-- Page dots -->
+    <div class="page-dots" id="pageDots"></div>
+
+    <!-- Playlist progress -->
+    <div class="playlist-indicator" id="playlistIndicator">
+      <span id="playlistLabel">PLAYLIST</span>
+      <div class="playlist-bar"><div class="playlist-progress" id="playlistProgress"></div></div>
+      <span id="playlistTime"></span>
+    </div>
+
+    <!-- Keyboard hint -->
+    <div class="keyboard-hint" id="keyboardHint">
+      <span class="key-icon">←</span>
+      <span class="key-icon">→</span>
+      <span>NAV</span>
+      <span class="key-icon">F</span>
+      <span>FULL</span>
+    </div>
+
+    <!-- Notifications -->
+    <div class="notifications" id="notifications"></div>
+  </div>
+
+  <script>
+    /**
+     * MarchogSystemsOps Client Shell
+     * Manages page iframes, WebSocket connection, scene assignments, and playlists
+     */
+    const Shell = {
+      // ── State ────────────────────────────────────
+      screenId: null,
+      pages: [],              // [{id, name, file, ...}]
+      loadedFrames: {},       // {pageId: iframe element}
+      currentPage: null,      // current page id
+      currentPageIndex: 0,
+
+      // Playlist state
+      playlistMode: false,
+      playlist: [],           // [{page_id, duration, transition}]
+      playlistIndex: 0,
+      playlistTimer: null,
+      playlistStartTime: null,
+      playlistCurrentDuration: 0,
+      playlistAnimFrame: null,
+
+      // WebSocket
+      ws: null,
+      wsReconnectAttempts: 0,
+
+      // ── Init ─────────────────────────────────────
+      async init() {
+        console.log('%c⚡ MarchogSystemsOps Shell initializing...', 'color: #e74c3c; font-weight: bold');
+
+        this.parseUrlParams();
+        this.updateScreenIdDisplay();
+        this.setupEventListeners();
+        this.showKeyboardHint();
+
+        // Load available pages from server
+        await this.loadPages();
+
+        // Connect WebSocket
+        this.connectWebSocket();
+
+        console.log(`%c✅ Screen '${this.screenId}' ready`, 'color: #2ecc71');
+      },
+
+      // ── URL Params ───────────────────────────────
+      parseUrlParams() {
+        const params = new URLSearchParams(window.location.search);
+        this.screenId = params.get('id') || this.generateId();
+
+        const page = params.get('page');
+        if (page) this.pendingPage = page;
+      },
+
+      generateId() {
+        return 'scr-' + Math.random().toString(36).substr(2, 6);
+      },
+
+      updateScreenIdDisplay() {
+        document.getElementById('screenIdLabel').textContent = `[${this.screenId}]`;
+      },
+
+      // ── Pages ────────────────────────────────────
+      async loadPages() {
+        try {
+          const res = await fetch('/api/pages');
+          this.pages = await res.json();
+          console.log(`Loaded ${this.pages.length} pages:`, this.pages.map(p => p.id));
+
+          // Build page dots
+          this.buildPageDots();
+
+          // Create frames for all pages
+          this.pages.forEach(p => this.ensureFrame(p.id, p.file));
+
+          // Show initial page
+          const initial = this.pendingPage || (this.pages[0] && this.pages[0].id) || null;
+          if (initial) this.showPage(initial, false);
+
+        } catch (e) {
+          console.error('Failed to load pages:', e);
+        }
+      },
+
+      ensureFrame(pageId, file) {
+        if (this.loadedFrames[pageId]) return this.loadedFrames[pageId];
+
+        const iframe = document.createElement('iframe');
+        iframe.className = 'page-frame';
+        iframe.id = `frame-${pageId}`;
+        iframe.src = `pages/${file}`;
+        document.getElementById('pageContent').appendChild(iframe);
+
+        this.loadedFrames[pageId] = iframe;
+        return iframe;
+      },
+
+      buildPageDots() {
+        const container = document.getElementById('pageDots');
+        container.innerHTML = '';
+        this.pages.forEach((p, i) => {
+          const dot = document.createElement('div');
+          dot.className = 'page-dot';
+          dot.dataset.page = p.id;
+          dot.dataset.index = i;
+          dot.title = `${p.name} (${i})`;
+          dot.addEventListener('click', () => this.showPage(p.id));
+          container.appendChild(dot);
+        });
+      },
+
+      showPage(pageId, report = true) {
+        if (!this.loadedFrames[pageId]) return;
+
+        this.currentPage = pageId;
+        this.currentPageIndex = this.pages.findIndex(p => p.id === pageId);
+
+        // Toggle frame visibility
+        Object.entries(this.loadedFrames).forEach(([id, frame]) => {
+          frame.classList.toggle('active', id === pageId);
+        });
+
+        // Update dots
+        document.querySelectorAll('.page-dot').forEach(dot => {
+          dot.classList.toggle('active', dot.dataset.page === pageId);
+        });
+
+        if (report) this.reportPage();
+        console.log(`Showing page: ${pageId}`);
+      },
+
+      nextPage() {
+        if (this.playlistMode) return; // playlist controls nav
+        const idx = (this.currentPageIndex + 1) % this.pages.length;
+        this.showPage(this.pages[idx].id);
+      },
+
+      prevPage() {
+        if (this.playlistMode) return;
+        const idx = (this.currentPageIndex - 1 + this.pages.length) % this.pages.length;
+        this.showPage(this.pages[idx].id);
+      },
+
+      // ── Playlist Engine ──────────────────────────
+      startPlaylist(playlist, loop = true) {
+        if (!playlist || playlist.length === 0) return;
+
+        this.stopPlaylist();
+        this.playlistMode = true;
+        this.playlist = playlist;
+        this.playlistLoop = loop;
+        this.playlistIndex = 0;
+
+        document.getElementById('playlistIndicator').classList.add('visible');
+        this.playPlaylistEntry();
+      },
+
+      stopPlaylist() {
+        this.playlistMode = false;
+        this.playlist = [];
+        clearTimeout(this.playlistTimer);
+        cancelAnimationFrame(this.playlistAnimFrame);
+        document.getElementById('playlistIndicator').classList.remove('visible');
+      },
+
+      playPlaylistEntry() {
+        if (this.playlistIndex >= this.playlist.length) {
+          if (this.playlistLoop) {
+            this.playlistIndex = 0;
+          } else {
+            this.stopPlaylist();
+            return;
+          }
+        }
+
+        const entry = this.playlist[this.playlistIndex];
+        this.showPage(entry.page_id, true);
+
+        // Update indicator
+        const label = `${this.playlistIndex + 1}/${this.playlist.length}`;
+        document.getElementById('playlistLabel').textContent = label;
+
+        // Start duration countdown
+        this.playlistCurrentDuration = entry.duration * 1000;
+        this.playlistStartTime = performance.now();
+        this.updatePlaylistProgress();
+
+        this.playlistTimer = setTimeout(() => {
+          this.playlistIndex++;
+          this.playPlaylistEntry();
+        }, this.playlistCurrentDuration);
+
+        // Report playlist position
+        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+          this.ws.send(`playlist_index:${this.playlistIndex}`);
+        }
+      },
+
+      updatePlaylistProgress() {
+        const elapsed = performance.now() - this.playlistStartTime;
+        const pct = Math.min((elapsed / this.playlistCurrentDuration) * 100, 100);
+        document.getElementById('playlistProgress').style.width = pct + '%';
+
+        const remaining = Math.max(0, Math.ceil((this.playlistCurrentDuration - elapsed) / 1000));
+        document.getElementById('playlistTime').textContent = remaining + 's';
+
+        if (pct < 100) {
+          this.playlistAnimFrame = requestAnimationFrame(() => this.updatePlaylistProgress());
+        }
+      },
+
+      // ── WebSocket ────────────────────────────────
+      connectWebSocket() {
+        const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const url = `${proto}//${location.host}/ws/screen/${this.screenId}`;
+
+        console.log(`Connecting: ${url}`);
+        this.setConnectionStatus('connecting');
+
+        try {
+          this.ws = new WebSocket(url);
+
+          this.ws.onopen = () => {
+            console.log('WebSocket connected');
+            this.wsReconnectAttempts = 0;
+            this.setConnectionStatus('connected');
+            this.reportPage();
+          };
+
+          this.ws.onmessage = (e) => {
+            try {
+              const msg = JSON.parse(e.data);
+              this.handleWSMessage(msg);
+            } catch (err) {
+              console.error('WS parse error:', err);
+            }
+          };
+
+          this.ws.onclose = () => {
+            this.setConnectionStatus('disconnected');
+            this.scheduleReconnect();
+          };
+
+          this.ws.onerror = () => {
+            this.setConnectionStatus('disconnected');
+          };
+
+        } catch (e) {
+          this.setConnectionStatus('disconnected');
+          this.scheduleReconnect();
+        }
+      },
+
+      scheduleReconnect() {
+        this.wsReconnectAttempts++;
+        const delay = Math.min(1000 * Math.pow(2, this.wsReconnectAttempts - 1), 30000);
+        setTimeout(() => this.connectWebSocket(), delay);
+      },
+
+      setConnectionStatus(status) {
+        const el = document.getElementById('connStatus');
+        el.classList.remove('connected', 'disconnected', 'connecting');
+        el.classList.add(status);
+        document.getElementById('connText').textContent = status.toUpperCase();
+      },
+
+      handleWSMessage(msg) {
+        console.log('WS:', msg.type, msg);
+
+        switch (msg.type) {
+          case 'registered':
+            this.notify(`Registered: ${msg.screen_id}`, 'info');
+            break;
+
+          case 'navigate':
+            // Direct navigation command
+            this.stopPlaylist();
+            this.showPage(msg.page);
+            break;
+
+          case 'assignment':
+            // Scene-based assignment
+            this.applyAssignment(msg.config);
+            break;
+
+          case 'pong':
+            break;
+        }
+      },
+
+      applyAssignment(config) {
+        if (!config) return;
+
+        if (config.mode === 'playlist' && config.playlist && config.playlist.length > 0) {
+          this.startPlaylist(config.playlist, !!config.playlist_loop);
+          this.notify(`Playlist: ${config.playlist.length} pages`, 'info');
+        } else if (config.mode === 'static' && config.static_page) {
+          this.stopPlaylist();
+          this.showPage(config.static_page);
+          this.notify(`Page: ${config.static_page}`, 'info');
+        }
+      },
+
+      reportPage() {
+        if (this.ws && this.ws.readyState === WebSocket.OPEN && this.currentPage) {
+          this.ws.send(`page:${this.currentPage}`);
+        }
+      },
+
+      // ── Event Listeners ──────────────────────────
+      setupEventListeners() {
+        document.addEventListener('keydown', (e) => this.handleKey(e));
+        window.addEventListener('message', (e) => this.handleMessage(e));
+      },
+
+      handleKey(e) {
+        if (e.target?.tagName === 'INPUT' || e.target?.tagName === 'TEXTAREA') return;
+
+        switch (e.key) {
+          case 'ArrowRight': this.nextPage(); break;
+          case 'ArrowLeft': this.prevPage(); break;
+          case 'f': case 'F':
+            if (!e.ctrlKey && !e.metaKey) this.toggleFullscreen();
+            break;
+          case 'F11': this.toggleFullscreen(); break;
+          case 'Escape':
+            if (this.playlistMode) this.stopPlaylist();
+            break;
+          default:
+            // Number keys
+            const n = parseInt(e.key);
+            if (!isNaN(n) && n < this.pages.length) {
+              this.stopPlaylist();
+              this.showPage(this.pages[n].id);
+            }
+        }
+      },
+
+      handleMessage(event) {
+        const { type } = event.data;
+        if (type === 'keydown') {
+          this.handleKey(event.data);
+        } else if (type === 'pageReady') {
+          console.log(`Page ready: ${event.data.page}`);
+        }
+      },
+
+      // ── Utilities ────────────────────────────────
+      toggleFullscreen() {
+        if (!document.fullscreenElement) {
+          document.documentElement.requestFullscreen().catch(() => {});
+        } else {
+          document.exitFullscreen();
+        }
+      },
+
+      showKeyboardHint() {
+        const hint = document.getElementById('keyboardHint');
+        hint.classList.add('visible');
+        setTimeout(() => hint.classList.remove('visible'), 4000);
+      },
+
+      notify(message, type = 'info') {
+        const container = document.getElementById('notifications');
+        const el = document.createElement('div');
+        el.className = `notification ${type}`;
+        el.textContent = message;
+        container.appendChild(el);
+        setTimeout(() => el.remove(), 3000);
+      }
+    };
+
+    document.addEventListener('DOMContentLoaded', () => Shell.init());
+  </script>
+</body>
+</html>
