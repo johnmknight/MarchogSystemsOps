@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Viewfinder</title>
+  <style>
+    @font-face { font-family: 'Aurebesh'; src: url('../fonts/Aurebesh.otf') format('opentype'); }
+    @font-face { font-family: 'Aurebesh'; src: url('../fonts/Aurebesh Bold.otf') format('opentype'); font-weight: bold; }
+    @font-face { font-family: 'Aurebesh Condensed'; src: url('../fonts/Aurebesh Condensed.otf') format('opentype'); }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      width: 100%; height: 100%; overflow: hidden;
+      background: #000;
+      font-family: 'Courier New', monospace;
+    }
+    canvas {
+      display: block; width: 100%; height: 100%;
+      position: absolute; top: 0; left: 0;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="viewfinder"></canvas>
+
+  <script>
+    /**
+     * Star Wars Viewfinder / Targeting Computer HUD
+     * 
+     * Recreated from "Create Star Wars Motion Graphics" by The Smugglers Room
+     * Elements:
+     *   - Top bar: Aurebesh label, timecode, status badges
+     *   - Blue segmented signal bar
+     *   - Corner brackets (viewfinder frame)
+     *   - Side rulers with tick marks (L / R)
+     *   - Bottom bar: shutter/aperture, exposure meter, ISO/AWB
+     *   - Circular targeting reticles (left + right)
+     *   - Center crosshair / focus brackets
+     *   - Subtle scan lines and glow effects
+     */
+
+    const canvas = document.getElementById('viewfinder');
+    const ctx = canvas.getContext('2d');
+
+    let W, H;
+    let frame = 0;
+    let startTime = performance.now();
+
+    // ── Color Palette ───────────────────────────────────────
+    const C = {
+      hud:        'rgba(180, 195, 210, 0.85)',
+      hudDim:     'rgba(180, 195, 210, 0.4)',
+      hudFaint:   'rgba(180, 195, 210, 0.15)',
+      blue:       'rgba(60, 140, 220, 0.9)',
+      blueBright: 'rgba(90, 170, 255, 1.0)',
+      blueDim:    'rgba(60, 140, 220, 0.3)',
+      blueGlow:   'rgba(60, 140, 220, 0.15)',
+      amber:      'rgba(230, 160, 40, 0.9)',
+      amberGlow:  'rgba(230, 160, 40, 0.4)',
+      red:        'rgba(180, 40, 30, 0.9)',
+      white:      'rgba(240, 245, 250, 0.9)',
+      bg:         '#080a0f',
+    };
+
+    // ── Layout constants ────────────────────────────────────
+    const L = {
+      margin: 0.04,
+      cornerLen: 0.06,
+      cornerThick: 1.5,
+      rulerWidth: 0.012,
+      topBarY: 0.055,
+      bottomBarY: 0.93,
+      reticleR: 0.065,
+    };
+
+    // ── Resize ──────────────────────────────────────────────
+    function resize() {
+      const dpr = window.devicePixelRatio || 1;
+      W = canvas.width = window.innerWidth * dpr;
+      H = canvas.height = window.innerHeight * dpr;
+      canvas.style.width = window.innerWidth + 'px';
+      canvas.style.height = window.innerHeight + 'px';
+    }
+
+    // ── Utility Drawing ─────────────────────────────────────
+    function setFont(size, family = 'Courier New', weight = '') {
+      ctx.font = `${weight} ${size}px ${family}`.trim();
+    }
+
+    function drawLine(x1, y1, x2, y2, color = C.hud, width = 1) {
+      ctx.beginPath();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = width;
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.stroke();
+    }
+
+    function drawRect(x, y, w, h, color = C.hud, lineWidth = 1) {
+      ctx.beginPath();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = lineWidth;
+      ctx.rect(x, y, w, h);
+      ctx.stroke();
+    }
+
+    function fillRect(x, y, w, h, color) {
+      ctx.fillStyle = color;
+      ctx.fillRect(x, y, w, h);
+    }
+
+    function drawText(text, x, y, color = C.hud, align = 'left', size = 14) {
+      setFont(size);
+      ctx.fillStyle = color;
+      ctx.textAlign = align;
+      ctx.textBaseline = 'middle';
+      ctx.fillText(text, x, y);
+    }
+
+    function drawAurebeshText(text, x, y, color = C.hud, align = 'left', size = 14) {
+      ctx.font = `${size}px Aurebesh`;
+      ctx.fillStyle = color;
+      ctx.textAlign = align;
+      ctx.textBaseline = 'middle';
+      ctx.fillText(text, x, y);
+    }
+
+    // ── Background ──────────────────────────────────────────
+    function drawBackground() {
+      const grad = ctx.createRadialGradient(W * 0.45, H * 0.45, 0, W * 0.5, H * 0.5, W * 0.7);
+      grad.addColorStop(0, '#0d1018');
+      grad.addColorStop(1, '#050709');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, W, H);
+
+      drawPlanet();
+
+      // Scan lines
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.12)';
+      for (let y = 0; y < H; y += 3) {
+        ctx.fillRect(0, y, W, 1);
+      }
+
+      // Vignette
+      const vig = ctx.createRadialGradient(W / 2, H / 2, W * 0.25, W / 2, H / 2, W * 0.75);
+      vig.addColorStop(0, 'rgba(0, 0, 0, 0)');
+      vig.addColorStop(1, 'rgba(0, 0, 0, 0.5)');
+      ctx.fillStyle = vig;
+      ctx.fillRect(0, 0, W, H);
+    }
+
+    function drawPlanet() {
+      const t = (performance.now() - startTime) / 1000;
+      const cx = W * 0.46;
+      const cy = H * 0.46;
+      const r = Math.min(W, H) * 0.18;
+
+      // Planet body
+      const planetGrad = ctx.createRadialGradient(cx - r * 0.3, cy - r * 0.3, 0, cx, cy, r);
+      planetGrad.addColorStop(0, '#6a7a8a');
+      planetGrad.addColorStop(0.4, '#4a5a6a');
+      planetGrad.addColorStop(0.7, '#3a4a5a');
+      planetGrad.addColorStop(1, '#1a2a3a');
+
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.fillStyle = planetGrad;
+      ctx.fill();
+
+      // Surface details
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.clip();
+      ctx.globalAlpha = 0.15;
+      for (let i = 0; i < 8; i++) {
+        const bx = cx + Math.cos(t * 0.02 + i * 0.8) * r * 0.5;
+        const by = cy - r * 0.6 + i * r * 0.18;
+        const bw = r * (0.8 + Math.sin(i * 1.3) * 0.4);
+        const bh = r * 0.12;
+        const bandGrad = ctx.createRadialGradient(bx, by, 0, bx, by, bw);
+        bandGrad.addColorStop(0, 'rgba(140, 160, 180, 0.5)');
+        bandGrad.addColorStop(1, 'rgba(140, 160, 180, 0)');
+        ctx.fillStyle = bandGrad;
+        ctx.fillRect(bx - bw, by - bh, bw * 2, bh * 2);
+      }
+      ctx.globalAlpha = 1;
+      ctx.restore();
+
+      // Atmosphere glow
+      ctx.beginPath();
+      ctx.arc(cx, cy, r + 2, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(100, 140, 180, 0.15)';
+      ctx.lineWidth = 4;
+      ctx.stroke();
+
+      // Terminator shadow
+      const shadowGrad = ctx.createLinearGradient(cx - r, cy, cx + r, cy);
+      shadowGrad.addColorStop(0, 'rgba(0, 0, 0, 0)');
+      shadowGrad.addColorStop(0.6, 'rgba(0, 0, 0, 0)');
+      shadowGrad.addColorStop(1, 'rgba(0, 0, 0, 0.6)');
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.fillStyle = shadowGrad;
+      ctx.fill();
+    }
+
+    // ── Corner Brackets ─────────────────────────────────────
+    function drawCornerBrackets() {
+      const m = W * L.margin;
+      const len = Math.min(W, H) * L.cornerLen;
+      const t = L.cornerThick;
+      const c = C.hud;
+      const cd = C.hudDim;
+
+      // Outer corners
+      drawLine(m, m, m + len, m, c, t);
+      drawLine(m, m, m, m + len, c, t);
+      drawLine(W - m, m, W - m - len, m, c, t);
+      drawLine(W - m, m, W - m, m + len, c, t);
+      drawLine(m, H - m, m + len, H - m, c, t);
+      drawLine(m, H - m, m, H - m - len, c, t);
+      drawLine(W - m, H - m, W - m - len, H - m, c, t);
+      drawLine(W - m, H - m, W - m, H - m - len, c, t);
+
+      // Inner corner ticks
+      const m2 = m + len * 0.15;
+      const len2 = len * 0.4;
+      drawLine(m2, m2, m2 + len2, m2, cd, 1);
+      drawLine(m2, m2, m2, m2 + len2, cd, 1);
+      drawLine(W - m2, m2, W - m2 - len2, m2, cd, 1);
+      drawLine(W - m2, m2, W - m2, m2 + len2, cd, 1);
+      drawLine(m2, H - m2, m2 + len2, H - m2, cd, 1);
+      drawLine(m2, H - m2, m2, H - m2 - len2, cd, 1);
+      drawLine(W - m2, H - m2, W - m2 - len2, H - m2, cd, 1);
+      drawLine(W - m2, H - m2, W - m2, H - m2 - len2, cd, 1);
+    }
+
+    // ── Side Rulers ─────────────────────────────────────────
+    function drawSideRulers() {
+      const m = W * L.margin;
+      const tickW = W * L.rulerWidth;
+      const startY = H * 0.15;
+      const endY = H * 0.85;
+      const numTicks = 40;
+      const spacing = (endY - startY) / numTicks;
+      const fontSize = Math.max(9, W * 0.011);
+
+      // Left ruler
+      drawLine(m, startY, m, endY, C.hudFaint, 0.5);
+      for (let i = 0; i <= numTicks; i++) {
+        const y = startY + i * spacing;
+        const isMajor = i % 5 === 0;
+        const tw = isMajor ? tickW * 1.5 : tickW;
+        const color = isMajor ? C.hudDim : C.hudFaint;
+        drawLine(m - tw, y, m, y, color, isMajor ? 1 : 0.5);
+      }
+      drawText('L', m - tickW * 0.5, startY - fontSize * 1.2, C.hudDim, 'center', fontSize);
+
+      // Right ruler
+      drawLine(W - m, startY, W - m, endY, C.hudFaint, 0.5);
+      for (let i = 0; i <= numTicks; i++) {
+        const y = startY + i * spacing;
+        const isMajor = i % 5 === 0;
+        const tw = isMajor ? tickW * 1.5 : tickW;
+        const color = isMajor ? C.hudDim : C.hudFaint;
+        drawLine(W - m, y, W - m + tw, y, color, isMajor ? 1 : 0.5);
+      }
+      drawText('R', W - m + tickW * 0.5, startY - fontSize * 1.2, C.hudDim, 'center', fontSize);
+    }
+
+    // ── Top Bar ─────────────────────────────────────────────
+    function drawTopBar() {
+      const t = (performance.now() - startTime) / 1000;
+      const y = H * L.topBarY;
+      const m = W * L.margin;
+      const fontSize = Math.max(12, W * 0.014);
+      const smallFont = Math.max(10, W * 0.011);
+
+      // Horizontal rule
+      drawLine(m * 2, y + fontSize * 1.4, W - m * 2, y + fontSize * 1.4, C.hudFaint, 0.5);
+
+      // Aurebesh label (left)
+      drawAurebeshText('MARCHOG SYS', m * 2.5, y, C.hud, 'left', fontSize * 1.1);
+
+      // Timecode (center)
+      const elapsed = t % 3600;
+      const hrs = String(Math.floor(elapsed / 3600)).padStart(2, '0');
+      const mins = String(Math.floor((elapsed % 3600) / 60)).padStart(2, '0');
+      const secs = String(Math.floor(elapsed % 60)).padStart(2, '0');
+      setFont(fontSize * 1.4, 'Courier New', 'bold');
+      ctx.fillStyle = C.white;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(`${hrs}:${mins}:${secs}`, W / 2, y);
+
+      // Status badges (right)
+      const badgeX = W - m * 2.5;
+      drawText('JTU B2', badgeX, y, C.hudDim, 'right', smallFont);
+      drawText('07', badgeX - W * 0.07, y, C.hud, 'right', smallFont);
+
+      ctx.beginPath();
+      ctx.arc(badgeX - W * 0.09, y, smallFont * 0.45, 0, Math.PI * 2);
+      ctx.strokeStyle = C.hud;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      const srX = badgeX - W * 0.13;
+      const srW = smallFont * 2.2;
+      const srH = smallFont * 1.4;
+      fillRect(srX - srW / 2, y - srH / 2, srW, srH, C.blueDim);
+      drawRect(srX - srW / 2, y - srH / 2, srW, srH, C.blue, 0.5);
+      drawText('SR', srX, y, C.blueBright, 'center', smallFont * 0.9);
+
+      // ── Blue Segmented Bar ────────────────────────
+      const barY = y + fontSize * 2.2;
+      const barW = W * 0.28;
+      const barX = (W - barW) / 2;
+      const barH = H * 0.012;
+      const segments = 24;
+      const segW = barW / segments;
+      const gap = segW * 0.15;
+
+      fillRect(barX, barY, barW, barH, 'rgba(20, 40, 60, 0.5)');
+
+      const fillLevel = 0.6 + Math.sin(t * 0.5) * 0.15;
+      const filledSegs = Math.floor(segments * fillLevel);
+
+      for (let i = 0; i < segments; i++) {
+        const sx = barX + i * segW + gap / 2;
+        const sw = segW - gap;
+        if (i < filledSegs) {
+          const intensity = 0.5 + (i / filledSegs) * 0.5;
+          fillRect(sx, barY, sw, barH, `rgba(60, 140, 220, ${intensity * 0.8})`);
+          fillRect(sx, barY, sw, barH * 0.3, `rgba(120, 190, 255, ${intensity * 0.4})`);
+        } else {
+          fillRect(sx, barY, sw, barH, 'rgba(30, 50, 70, 0.3)');
+        }
+      }
+      drawRect(barX, barY, barW, barH, C.blueDim, 0.5);
+      drawLine(barX - 4, barY, barX - 4, barY + barH, C.blue, 1);
+      drawLine(barX + barW + 4, barY, barX + barW + 4, barY + barH, C.blue, 1);
+    }
+
+    // ── Bottom Bar ──────────────────────────────────────────
+    function drawBottomBar() {
+      const y = H * L.bottomBarY;
+      const m = W * L.margin;
+      const fontSize = Math.max(11, W * 0.013);
+      const t = (performance.now() - startTime) / 1000;
+
+      drawLine(m * 2, y - fontSize * 1.5, W - m * 2, y - fontSize * 1.5, C.hudFaint, 0.5);
+
+      // Left: shutter & aperture
+      drawText('1/250', m * 2.5, y, C.hud, 'left', fontSize);
+      drawText('F2.8', m * 2.5 + W * 0.06, y, C.hud, 'left', fontSize);
+
+      // Center: exposure meter
+      const meterX = W * 0.35;
+      const meterW = W * 0.3;
+      const meterY = y + fontSize * 1.2;
+      const tickCount = 13;
+      const tickSpacing = meterW / (tickCount - 1);
+
+      drawLine(meterX, meterY, meterX + meterW, meterY, C.hudDim, 0.5);
+
+      const numbers = ['-3', '-2', '-1', '0', '1', '2', '3'];
+      for (let i = 0; i < tickCount; i++) {
+        const tx = meterX + i * tickSpacing;
+        const isMajor = i % 2 === 0;
+        const tickH = isMajor ? fontSize * 0.6 : fontSize * 0.35;
+        drawLine(tx, meterY - tickH / 2, tx, meterY + tickH / 2, isMajor ? C.hud : C.hudDim, isMajor ? 1 : 0.5);
+        if (isMajor) {
+          drawText(numbers[i / 2], tx, meterY + fontSize * 0.9, C.hudDim, 'center', fontSize * 0.75);
+        }
+      }
+
+      // Amber indicator
+      const indicatorOffset = Math.sin(t * 0.3) * tickSpacing * 0.3;
+      const indicatorX = meterX + meterW / 2 + indicatorOffset;
+      ctx.beginPath();
+      ctx.moveTo(indicatorX, meterY - fontSize * 0.5);
+      ctx.lineTo(indicatorX - fontSize * 0.25, meterY - fontSize * 0.9);
+      ctx.lineTo(indicatorX + fontSize * 0.25, meterY - fontSize * 0.9);
+      ctx.closePath();
+      ctx.fillStyle = C.amber;
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(indicatorX, meterY - fontSize * 0.5, fontSize * 0.4, 0, Math.PI * 2);
+      ctx.fillStyle = C.amberGlow;
+      ctx.fill();
+
+      // Right: AUTO ISO / AUTO AWB
+      const rightX = W - m * 2.5;
+      drawText('AUTO', rightX - W * 0.06, y - fontSize * 0.6, C.hud, 'right', fontSize * 0.85);
+      drawText('AWB', rightX, y - fontSize * 0.6, C.blue, 'left', fontSize * 0.85);
+      drawText('AUTO', rightX - W * 0.06, y + fontSize * 0.6, C.hud, 'right', fontSize * 0.85);
+      drawText('ISO', rightX, y + fontSize * 0.6, C.blue, 'left', fontSize * 0.85);
+    }
+
+    // ── Targeting Reticles ───────────────────────────────────
+    function drawReticle(cx, cy, baseR) {
+      const t = (performance.now() - startTime) / 1000;
+      const rotation = t * 0.15;
+
+      ctx.save();
+      ctx.translate(cx, cy);
+
+      // Outer ring
+      ctx.beginPath();
+      ctx.arc(0, 0, baseR, 0, Math.PI * 2);
+      ctx.strokeStyle = C.hudDim;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      // Second ring
+      ctx.beginPath();
+      ctx.arc(0, 0, baseR * 0.78, 0, Math.PI * 2);
+      ctx.strokeStyle = C.hudFaint;
+      ctx.lineWidth = 0.5;
+      ctx.stroke();
+
+      // Rotating segmented ring
+      ctx.save();
+      ctx.rotate(rotation);
+      const innerR = baseR * 0.6;
+      const segments = 8;
+      const gapAngle = Math.PI / 24;
+      for (let i = 0; i < segments; i++) {
+        const startAngle = (i / segments) * Math.PI * 2 + gapAngle;
+        const endAngle = ((i + 1) / segments) * Math.PI * 2 - gapAngle;
+        ctx.beginPath();
+        ctx.arc(0, 0, innerR, startAngle, endAngle);
+        ctx.strokeStyle = i % 2 === 0 ? C.hud : C.hudDim;
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
+      ctx.restore();
+
+      // Counter-rotating ticks
+      ctx.save();
+      ctx.rotate(-rotation * 0.7);
+      const midR = baseR * 0.42;
+      for (let i = 0; i < 12; i++) {
+        const angle = (i / 12) * Math.PI * 2;
+        const isMajor = i % 3 === 0;
+        const tickLen = isMajor ? baseR * 0.08 : baseR * 0.04;
+        const x1 = Math.cos(angle) * (midR - tickLen);
+        const y1 = Math.sin(angle) * (midR - tickLen);
+        const x2 = Math.cos(angle) * midR;
+        const y2 = Math.sin(angle) * midR;
+        drawLine(x1, y1, x2, y2, isMajor ? C.hud : C.hudDim, isMajor ? 1 : 0.5);
+      }
+      ctx.restore();
+
+      // Innermost ring
+      ctx.beginPath();
+      ctx.arc(0, 0, baseR * 0.22, 0, Math.PI * 2);
+      ctx.strokeStyle = C.hudDim;
+      ctx.lineWidth = 0.5;
+      ctx.stroke();
+
+      // Center cross
+      const crossLen = baseR * 0.15;
+      drawLine(-crossLen, 0, crossLen, 0, C.hudDim, 0.5);
+      drawLine(0, -crossLen, 0, crossLen, C.hudDim, 0.5);
+
+      // Red center dot + glow
+      ctx.beginPath();
+      ctx.arc(0, 0, baseR * 0.045, 0, Math.PI * 2);
+      ctx.fillStyle = C.red;
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(0, 0, baseR * 0.09, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(180, 40, 30, 0.2)';
+      ctx.fill();
+
+      // Decorative dots
+      for (let i = 0; i < 36; i++) {
+        const angle = (i / 36) * Math.PI * 2;
+        const dx = Math.cos(angle) * (baseR * 0.9);
+        const dy = Math.sin(angle) * (baseR * 0.9);
+        ctx.beginPath();
+        ctx.arc(dx, dy, 0.8, 0, Math.PI * 2);
+        ctx.fillStyle = i % 9 === 0 ? C.hud : C.hudFaint;
+        ctx.fill();
+      }
+
+      ctx.restore();
+    }
+
+    function drawReticles() {
+      const r = Math.min(W, H) * L.reticleR;
+      const m = W * L.margin;
+
+      // Right reticle
+      drawReticle(W - m * 2 - r * 1.4, H * 0.62, r);
+      // Left reticle (smaller)
+      drawReticle(m * 2 + r * 1.4, H * 0.58, r * 0.85);
+    }
+
+    // ── Center Crosshair ────────────────────────────────────
+    function drawCenterCrosshair() {
+      const cx = W * 0.46;
+      const cy = H * 0.46;
+      const size = Math.min(W, H) * 0.025;
+      const t = (performance.now() - startTime) / 1000;
+      const pulse = 1 + Math.sin(t * 1.5) * 0.05;
+      const s = size * pulse;
+      const bLen = s * 0.6;
+
+      // Focus brackets
+      drawLine(cx - s, cy - s, cx - s + bLen, cy - s, C.hud, 1);
+      drawLine(cx - s, cy - s, cx - s, cy - s + bLen, C.hud, 1);
+      drawLine(cx + s, cy - s, cx + s - bLen, cy - s, C.hud, 1);
+      drawLine(cx + s, cy - s, cx + s, cy - s + bLen, C.hud, 1);
+      drawLine(cx - s, cy + s, cx - s + bLen, cy + s, C.hud, 1);
+      drawLine(cx - s, cy + s, cx - s, cy + s - bLen, C.hud, 1);
+      drawLine(cx + s, cy + s, cx + s - bLen, cy + s, C.hud, 1);
+      drawLine(cx + s, cy + s, cx + s, cy + s - bLen, C.hud, 1);
+
+      // Center dot
+      ctx.beginPath();
+      ctx.arc(cx, cy, 1.5, 0, Math.PI * 2);
+      ctx.fillStyle = C.hud;
+      ctx.fill();
+    }
+
+    // ── Animated Details ────────────────────────────────────
+    function drawAnimatedDetails() {
+      const t = (performance.now() - startTime) / 1000;
+      const m = W * L.margin;
+      const fontSize = Math.max(9, W * 0.009);
+
+      // Scrolling Aurebesh text (faint)
+      ctx.save();
+      ctx.globalAlpha = 0.12;
+      const scrollY = (t * 20) % (H * 0.6);
+      for (let i = 0; i < 5; i++) {
+        const ly = H * 0.2 + (scrollY + i * 30) % (H * 0.6);
+        drawAurebeshText('MARCHOG SYSTEMS OPS DATA', m * 3.5, ly, C.hud, 'left', fontSize);
+      }
+      ctx.restore();
+
+      // Blinking REC indicator
+      if (Math.sin(t * 3) > 0) {
+        ctx.beginPath();
+        ctx.arc(W * 0.08, H * L.topBarY, fontSize * 0.35, 0, Math.PI * 2);
+        ctx.fillStyle = C.red;
+        ctx.fill();
+        drawText('REC', W * 0.08 + fontSize, H * L.topBarY, C.red, 'left', fontSize);
+      }
+
+      // Data ticks along bottom
+      ctx.save();
+      ctx.globalAlpha = 0.08;
+      for (let i = 0; i < 60; i++) {
+        const x = m * 2 + (i / 60) * (W - m * 4);
+        const h = Math.random() * H * 0.015 + 2;
+        fillRect(x, H * 0.97, 1, -h, C.blue);
+      }
+      ctx.restore();
+    }
+
+    // ── Grid Overlay ────────────────────────────────────────
+    function drawGridOverlay() {
+      ctx.save();
+      ctx.globalAlpha = 0.03;
+      ctx.strokeStyle = C.hud;
+      ctx.lineWidth = 0.5;
+      const gridH = H / 20;
+      for (let y = 0; y < H; y += gridH) {
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+      }
+      const gridW = W / 24;
+      for (let x = 0; x < W; x += gridW) {
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    // ── Main Render Loop ────────────────────────────────────
+    function render() {
+      requestAnimationFrame(render);
+      frame++;
+      ctx.clearRect(0, 0, W, H);
+      drawBackground();
+      drawGridOverlay();
+      drawCornerBrackets();
+      drawSideRulers();
+      drawTopBar();
+      drawBottomBar();
+      drawReticles();
+      drawCenterCrosshair();
+      drawAnimatedDetails();
+    }
+
+    // ── Events ──────────────────────────────────────────────
+    window.addEventListener('resize', resize);
+    document.addEventListener('keydown', (e) => {
+      if (['ArrowLeft', 'ArrowRight'].includes(e.key)) {
+        window.parent.postMessage({ type: 'keydown', key: e.key }, '*');
+      }
+    });
+
+    // ── Boot ────────────────────────────────────────────────
+    resize();
+    requestAnimationFrame(render);
+    window.parent.postMessage({ type: 'pageReady', page: 'viewfinder' }, '*');
+  </script>
+</body>
+</html>

@@ -79,6 +79,7 @@ async def seed_default_pages(db):
     """Register the built-in pages."""
     pages = [
         ("hyperspace", "Hyperspace", "Star Wars hyperspace jump effect", "hyperspace.html", "⟐", "ambient"),
+        ("viewfinder", "Viewfinder", "Targeting computer / camera viewfinder HUD", "viewfinder.html", "◎", "hud"),
     ]
     for page in pages:
         await db.execute("""

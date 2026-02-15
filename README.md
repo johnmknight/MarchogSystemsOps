@@ -57,6 +57,7 @@ start-marchogsystemsops.bat
 | Page | Description |
 |---|---|
 | `hyperspace` | Star Wars hyperspace jump animation (canvas) |
+| `viewfinder` | Targeting computer / camera viewfinder HUD overlay |
 
 ## Port: 8082
 
