@@ -624,7 +624,11 @@
               <div class="card-name">${p.name}</div>
               <div class="card-desc">${p.description}</div>
               <div class="card-desc" style="color:var(--accent-blue);opacity:0.5">${p.file} · ${p.category}</div>
-              ${p.params && Object.keys(p.params).length > 0 ? `<div class="card-desc" style="color:var(--accent);font-size:11px;margin-top:2px"><i class="ti ti-player-play"></i> ${p.params.border || 'none'} · ${p.params.video ? (p.params.video.length > 40 ? p.params.video.slice(0,40)+'…' : p.params.video) : 'no video'}</div>` : ''}
+              ${p.params && Object.keys(p.params).length > 0 ? `<div class="card-desc" style="color:var(--accent);font-size:11px;margin-top:2px">${
+                p.file === 'video.html' ? `<i class="ti ti-player-play"></i> ${p.params.border || 'none'} · ${p.params.video ? (p.params.video.length > 40 ? p.params.video.slice(0,40)+'…' : p.params.video) : 'no video'}` :
+                p.file === 'selfdestruct.html' ? `<i class="ti ti-alert-triangle"></i> ${p.params.countdown || 60}s countdown${p.params.abort_at ? ` · abort at ${p.params.abort_at}s` : ' · no abort'}` :
+                `<i class="ti ti-settings"></i> ${Object.keys(p.params).length} param(s)`
+              }</div>` : ''}
             </div>
           </div>
           <div class="card-actions">
@@ -882,11 +886,14 @@
     }
 
     // ── Add Page ────────────────────────────────────────
-    function toggleVideoParams(mode) {
+    function togglePageParams(mode) {
       const fileInput = document.getElementById(mode === 'add' ? 'pageFile' : 'editPageFile');
-      const paramsDiv = document.getElementById(mode === 'add' ? 'addVideoParams' : 'editVideoParams');
-      if (!fileInput || !paramsDiv) return;
-      paramsDiv.style.display = fileInput.value.trim() === 'video.html' ? 'block' : 'none';
+      if (!fileInput) return;
+      const file = fileInput.value.trim();
+      const videoDiv = document.getElementById(mode === 'add' ? 'addVideoParams' : 'editVideoParams');
+      const sdDiv = document.getElementById(mode === 'add' ? 'addSdParams' : 'editSdParams');
+      if (videoDiv) videoDiv.style.display = file === 'video.html' ? 'block' : 'none';
+      if (sdDiv) sdDiv.style.display = file === 'selfdestruct.html' ? 'block' : 'none';
     }
 
     function showAddPageModal() {
@@ -902,7 +909,7 @@
         </div>
         <div class="form-group">
           <label>HTML File (in pages/)</label>
-          <input id="pageFile" placeholder="e.g. star-map.html" oninput="toggleVideoParams('add')">
+          <input id="pageFile" placeholder="e.g. star-map.html" oninput="togglePageParams('add')">
         </div>
         <div id="addVideoParams" style="display:none">
           <div style="border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:12px;background:rgba(255,200,0,0.03)">
@@ -924,6 +931,19 @@
             </div>
           </div>
         </div>
+        <div id="addSdParams" style="display:none">
+          <div style="border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:12px;background:rgba(200,60,40,0.03)">
+            <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#c83c28;margin-bottom:10px"><i class="ti ti-alert-triangle"></i> Self Destruct Configuration</div>
+            <div class="form-group">
+              <label>Countdown (seconds)</label>
+              <input id="pageSdCountdown" type="number" value="60" min="5" placeholder="e.g. 60">
+            </div>
+            <div class="form-group">
+              <label>Abort at (seconds remaining, 0 = no abort)</label>
+              <input id="pageSdAbort" type="number" value="10" min="0" placeholder="e.g. 10">
+            </div>
+          </div>
+        </div>
         <div class="form-group">
           <label>Description</label>
           <input id="pageDesc" placeholder="Optional description">
@@ -941,6 +961,7 @@
               <option value="hud">HUD</option>
               <option value="maintenance">Maintenance</option>
               <option value="interactive">Interactive</option>
+              <option value="effect">Effect</option>
             </select>
           </div>
         </div>
@@ -968,6 +989,15 @@
         const border = document.getElementById('pageVideoBorder')?.value;
         if (videoUrl) params.video = videoUrl;
         if (border) params.border = border;
+        if (Object.keys(params).length > 0) body.params = params;
+      }
+      // Collect self-destruct params if applicable
+      if (file === 'selfdestruct.html') {
+        const params = {};
+        const countdown = document.getElementById('pageSdCountdown')?.value;
+        const abortAt = document.getElementById('pageSdAbort')?.value;
+        if (countdown) params.countdown = parseInt(countdown, 10);
+        if (abortAt !== undefined) params.abort_at = parseInt(abortAt, 10) || 0;
         if (Object.keys(params).length > 0) body.params = params;
       }
 
@@ -1007,6 +1037,7 @@
               <option value="hud" ${p.category==='hud'?'selected':''}>HUD</option>
               <option value="maintenance" ${p.category==='maintenance'?'selected':''}>Maintenance</option>
               <option value="interactive" ${p.category==='interactive'?'selected':''}>Interactive</option>
+              <option value="effect" ${p.category==='effect'?'selected':''}>Effect</option>
             </select>
           </div>
         </div>
@@ -1029,6 +1060,19 @@
               <option value="targeting" ${p.params?.border==='targeting'?'selected':''}>Targeting</option>
               <option value="datastream" ${p.params?.border==='datastream'?'selected':''}>Data Feed</option>
             </select>
+          </div>
+        </div>
+        ` : ''}
+        ${p.file === 'selfdestruct.html' ? `
+        <div style="border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:12px;background:rgba(200,60,40,0.03)">
+          <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#c83c28;margin-bottom:10px"><i class="ti ti-alert-triangle"></i> Self Destruct Configuration</div>
+          <div class="form-group">
+            <label>Countdown (seconds)</label>
+            <input id="editSdCountdown" type="number" value="${p.params?.countdown || 60}" min="5">
+          </div>
+          <div class="form-group">
+            <label>Abort at (seconds remaining, 0 = no abort)</label>
+            <input id="editSdAbort" type="number" value="${p.params?.abort_at ?? 10}" min="0">
           </div>
         </div>
         ` : ''}
@@ -1056,6 +1100,15 @@
         const border = document.getElementById('editPageVideoBorder')?.value;
         if (videoUrl) params.video = videoUrl;
         if (border) params.border = border;
+        body.params = params;
+      }
+      // Collect self-destruct params if applicable
+      if (file === 'selfdestruct.html') {
+        const params = {};
+        const countdown = document.getElementById('editSdCountdown')?.value;
+        const abortAt = document.getElementById('editSdAbort')?.value;
+        if (countdown) params.countdown = parseInt(countdown, 10);
+        if (abortAt !== undefined) params.abort_at = parseInt(abortAt, 10) || 0;
         body.params = params;
       }
 
