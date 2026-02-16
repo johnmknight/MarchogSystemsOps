@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Marchog Systems — Hangar Scan</title>
+  <style>
+    @font-face { font-family: 'Aurebesh'; src: url('../fonts/Aurebesh.otf') format('opentype'); }
+    @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600&family=Share+Tech+Mono&display=swap');
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      width: 100%; height: 100%; overflow: hidden;
+      background: #000;
+      font-family: 'Share Tech Mono', monospace;
+    }
+    canvas {
+      display: block;
+      width: 100%; height: 100%;
+    }
+  </style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+let W, H;
+
+function resize() {
+  const dpr = window.devicePixelRatio || 1;
+  W = canvas.width = window.innerWidth * dpr;
+  H = canvas.height = window.innerHeight * dpr;
+  canvas.style.width = window.innerWidth + 'px';
+  canvas.style.height = window.innerHeight + 'px';
+}
+window.addEventListener('resize', resize);
+resize();
+
+// ── Colors ──
+const blue = '#4a9eff';
+const blueDim = 'rgba(74, 158, 255, 0.35)';
+const blueFaint = 'rgba(74, 158, 255, 0.12)';
+const blueGlow = 'rgba(74, 158, 255, 0.6)';
+const red = '#cc3333';
+const redDim = 'rgba(204, 51, 51, 0.5)';
+const white = '#c8dce8';
+
+function setGlow(color, blur) { ctx.shadowColor = color; ctx.shadowBlur = blur; }
+function clearGlow() { ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0; }
+
+function line(x1, y1, x2, y2, color, w) {
+  ctx.beginPath(); ctx.strokeStyle = color; ctx.lineWidth = w || 2;
+  ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+}
+
+function dashedLine(x1, y1, x2, y2, color, w, dash) {
+  ctx.beginPath(); ctx.strokeStyle = color; ctx.lineWidth = w || 2;
+  ctx.setLineDash(dash || [12, 8]);
+  ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+  ctx.setLineDash([]);
+}
+
+// ── Main render ──
+function render() {
+  requestAnimationFrame(render);
+  ctx.clearRect(0, 0, W, H);
+  const t = performance.now() / 1000;
+
+  const pad = Math.min(W, H) * 0.08;
+  const bx = pad;
+  const by = pad;
+  const bw = W - pad * 2;
+  const bh = H - pad * 2;
+
+  const vx = bx + bw * 0.5;
+  const vy = by + bh * 0.55;
+
+  const iw = bw * 0.14;
+  const ih = bh * 0.18;
+  const ix = vx - iw / 2;
+  const iy = vy - ih / 2;
+
+  drawBackgroundArcs(t, vx, vy, bw, bh);
+  drawOuterFrame(bx, by, bw, bh);
+  drawPerspectiveWires(bx, by, bw, bh, ix, iy, iw, ih, vx, vy);
+  drawHorizontalGrid(bx, by, bw, bh, ix, iy, iw, ih, vx, vy, t);
+  drawScanBeam(t, bx, by, bw, bh, vx, vy);
+  drawRedScanLine(t, bx, by, bw, bh);
+  drawShipMarker(vx, vy);
+  drawTopTicks(bx, by, bw);
+  drawCornerHUD(bx, by, bw, bh, t);
+  drawBottomLabels(bx, by, bw, bh, t);
+  drawRightScale(bx, by, bw, bh, t);
+}
+
+// ─────────────────────────────────────────
+function drawBackgroundArcs(t, cx, cy, bw, bh) {
+  const maxR = Math.max(bw, bh) * 0.6;
+  ctx.save();
+  ctx.globalAlpha = 0.08;
+  for (let i = 1; i <= 4; i++) {
+    const r = maxR * (i / 4);
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, -Math.PI * 0.8, -Math.PI * 0.2);
+    ctx.strokeStyle = blue; ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+  const sweepAngle = t * 0.15;
+  ctx.beginPath();
+  ctx.arc(cx, cy, maxR * 0.9, sweepAngle, sweepAngle + 0.3);
+  ctx.strokeStyle = blueDim; ctx.lineWidth = 4;
+  ctx.stroke();
+  ctx.restore();
+}
+
+// ─────────────────────────────────────────
+function drawOuterFrame(x, y, w, h) {
+  const bev = Math.min(w, h) * 0.04;
+  setGlow(blue, 12);
+  ctx.beginPath();
+  ctx.strokeStyle = blue; ctx.lineWidth = 4;
+  ctx.moveTo(x, y);
+  ctx.lineTo(x + w, y);
+  ctx.lineTo(x + w, y + h - bev);
+  ctx.lineTo(x + w - bev, y + h);
+  ctx.lineTo(x + bev, y + h);
+  ctx.lineTo(x, y + h - bev);
+  ctx.closePath();
+  ctx.stroke();
+  clearGlow();
+}
+
+// ─────────────────────────────────────────
+function drawPerspectiveWires(bx, by, bw, bh, ix, iy, iw, ih, vx, vy) {
+  setGlow(blue, 6);
+  ctx.strokeStyle = blue; ctx.lineWidth = 3;
+  ctx.strokeRect(ix, iy, iw, ih);
+
+  // Perspective edges from outer to inner corners
+  line(bx, by, ix, iy, blue, 2.4);
+  line(bx + bw, by, ix + iw, iy, blue, 2.4);
+  const bev = Math.min(bw, bh) * 0.04;
+  line(bx, by + bh - bev, ix, iy + ih, blue, 2.4);
+  line(bx + bw, by + bh - bev, ix + iw, iy + ih, blue, 2.4);
+
+  // Mid-depth structural frames
+  for (let d = 0.3; d <= 0.7; d += 0.2) {
+    const mx1 = bx + (ix - bx) * d;
+    const my1 = by + (iy - by) * d;
+    const mx2 = (bx + bw) + ((ix + iw) - (bx + bw)) * d;
+    const my2 = by + (iy - by) * d;
+    const mx3 = (bx + bw) + ((ix + iw) - (bx + bw)) * d;
+    const my3 = (by + bh - bev) + ((iy + ih) - (by + bh - bev)) * d;
+    const mx4 = bx + (ix - bx) * d;
+    const my4 = (by + bh - bev) + ((iy + ih) - (by + bh - bev)) * d;
+
+    ctx.strokeStyle = blueDim; ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.moveTo(mx1, my1); ctx.lineTo(mx2, my2);
+    ctx.lineTo(mx3, my3); ctx.lineTo(mx4, my4);
+    ctx.closePath();
+    ctx.stroke();
+  }
+
+  // Ceiling/floor center lines
+  line(bx + bw * 0.5, by, vx, iy, blueFaint, 1.6);
+  line(bx + bw * 0.5, by + bh, vx, iy + ih, blueFaint, 1.6);
+
+  // Back wall cross lines
+  line(vx, iy, vx, iy + ih, blueDim, 1.2);
+  line(ix, vy, ix + iw, vy, blueDim, 1.2);
+
+  clearGlow();
+}
+
+// ─────────────────────────────────────────
+function drawHorizontalGrid(bx, by, bw, bh, ix, iy, iw, ih, vx, vy, t) {
+  const bev = Math.min(bw, bh) * 0.04;
+  for (let i = 1; i <= 5; i++) {
+    const d = i / 6;
+    const ty = by + (iy - by) * d;
+    const txL = bx + (ix - bx) * d;
+    const txR = (bx + bw) + ((ix + iw) - (bx + bw)) * d;
+    line(txL, ty, txR, ty, blueFaint, 1);
+
+    const byy = (by + bh - bev) + ((iy + ih) - (by + bh - bev)) * d;
+    const bxL = bx + (ix - bx) * d;
+    const bxR = (bx + bw) + ((ix + iw) - (bx + bw)) * d;
+    line(bxL, byy, bxR, byy, blueFaint, 1);
+  }
+}
+
+// ─────────────────────────────────────────
+function drawScanBeam(t, bx, by, bw, bh, vx, vy) {
+  const sweepAngle = ((t * 0.4) % 1) * Math.PI * 2 - Math.PI;
+  const beamWidth = 0.35;
+  const beamLen = Math.max(bw, bh) * 0.7;
+
+  ctx.save();
+  const bev = Math.min(bw, bh) * 0.04;
+  ctx.beginPath();
+  ctx.moveTo(bx, by); ctx.lineTo(bx + bw, by);
+  ctx.lineTo(bx + bw, by + bh - bev); ctx.lineTo(bx + bw - bev, by + bh);
+  ctx.lineTo(bx + bev, by + bh); ctx.lineTo(bx, by + bh - bev);
+  ctx.closePath();
+  ctx.clip();
+
+  const grad = ctx.createRadialGradient(vx, vy, 0, vx, vy, beamLen);
+  grad.addColorStop(0, 'rgba(74, 158, 255, 0.3)');
+  grad.addColorStop(0.5, 'rgba(74, 158, 255, 0.1)');
+  grad.addColorStop(1, 'rgba(74, 158, 255, 0)');
+
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.moveTo(vx, vy);
+  ctx.arc(vx, vy, beamLen, sweepAngle - beamWidth / 2, sweepAngle + beamWidth / 2);
+  ctx.closePath();
+  ctx.fill();
+
+  setGlow(blue, 16);
+  const edgeX = vx + Math.cos(sweepAngle) * beamLen;
+  const edgeY = vy + Math.sin(sweepAngle) * beamLen;
+  ctx.beginPath();
+  ctx.strokeStyle = blueGlow; ctx.lineWidth = 3;
+  ctx.moveTo(vx, vy);
+  ctx.lineTo(edgeX, edgeY);
+  ctx.stroke();
+  clearGlow();
+
+  ctx.restore();
+}
+
+// ─────────────────────────────────────────
+function drawRedScanLine(t, bx, by, bw, bh) {
+  const cycle = (t * 0.12) % 1;
+  const bev = Math.min(bw, bh) * 0.04;
+  const yPos = by + bh * 0.15 + (bh * 0.7) * cycle;
+
+  const progress = (yPos - by) / bh;
+  const narrowFactor = 0.5 - Math.abs(progress - 0.55) * 0.6;
+  const xL = bx + bw * narrowFactor * 0.3;
+  const xR = bx + bw - bw * narrowFactor * 0.3;
+
+  dashedLine(xL, yPos, xR, yPos, redDim, 2, [12, 8]);
+
+  const cx = (xL + xR) / 2;
+  line(cx - 8, yPos, cx + 8, yPos, red, 3);
+  line(cx, yPos - 8, cx, yPos + 8, red, 3);
+}
+
+// ─────────────────────────────────────────
+function drawShipMarker(vx, vy) {
+  const s = Math.min(W, H) * 0.025;
+  setGlow(white, 12);
+  ctx.fillStyle = white;
+  ctx.beginPath();
+  ctx.moveTo(vx, vy - s);
+  ctx.lineTo(vx + s * 0.6, vy + s * 0.6);
+  ctx.lineTo(vx, vy + s * 0.3);
+  ctx.lineTo(vx - s * 0.6, vy + s * 0.6);
+  ctx.closePath();
+  ctx.fill();
+  clearGlow();
+}
+
+// ─────────────────────────────────────────
+function drawTopTicks(bx, by, bw) {
+  const count = 15;
+  const span = bw * 0.5;
+  const startX = bx + bw * 0.25;
+  for (let i = 0; i <= count; i++) {
+    const x = startX + (span / count) * i;
+    const h = (i % 5 === 0) ? 12 : 6;
+    line(x, by + 8, x, by + 8 + h, blueDim, 1.6);
+  }
+  const t = performance.now() / 1000;
+  const markerX = startX + ((t * 40) % span);
+  ctx.fillStyle = blue; ctx.fillRect(markerX - 2, by + 6, 4, 16);
+  ctx.fillStyle = blueDim;
+  ctx.fillRect(bx + bw * 0.48, by + 6, 4, 10);
+  ctx.fillRect(bx + bw * 0.52, by + 6, 4, 10);
+}
+
+// ─────────────────────────────────────────
+function drawCornerHUD(bx, by, bw, bh, t) {
+  const hudW = bw * 0.1;
+  const hudPad = bw * 0.015;
+
+  // ── Top-left HUD ──
+  const tlx = bx + hudPad;
+  const tly = by + hudPad;
+  const barW = hudW * 0.7;
+  const barH = 6;
+  const gap = 8;
+
+  ctx.fillStyle = blueFaint;
+  ctx.fillRect(tlx, tly, barW, barH);
+  ctx.fillStyle = blue;
+  ctx.fillRect(tlx, tly, barW * 0.6, barH);
+
+  ctx.fillStyle = blueFaint;
+  ctx.fillRect(tlx, tly + barH + gap, barW, barH);
+  ctx.fillStyle = blue;
+  ctx.fillRect(tlx, tly + barH + gap, barW * 0.35, barH);
+
+  ctx.fillStyle = red;
+  ctx.fillRect(tlx + barW * 0.65, tly, 8, 8);
+
+  ctx.fillStyle = blueDim;
+  ctx.fillRect(tlx, tly + (barH + gap) * 2, barW * 0.5, 4);
+  ctx.fillRect(tlx, tly + (barH + gap) * 2 + 8, barW * 0.8, 4);
+
+  // ── Top-right HUD (mirrored) ──
+  const trx = bx + bw - hudPad - hudW;
+  const try_ = by + hudPad;
+
+  ctx.fillStyle = blueFaint;
+  ctx.fillRect(trx + hudW * 0.3, try_, barW, barH);
+  ctx.fillStyle = blue;
+  ctx.fillRect(trx + hudW * 0.3 + barW * 0.4, try_, barW * 0.6, barH);
+
+  ctx.fillStyle = blueFaint;
+  ctx.fillRect(trx + hudW * 0.3, try_ + barH + gap, barW, barH);
+  ctx.fillStyle = blue;
+  ctx.fillRect(trx + hudW * 0.3 + barW * 0.55, try_ + barH + gap, barW * 0.45, barH);
+
+  ctx.fillStyle = red;
+  ctx.fillRect(trx + hudW * 0.3 + barW * 0.3, try_, 8, 8);
+
+  ctx.fillStyle = blueDim;
+  ctx.fillRect(trx + hudW * 0.5, try_ + (barH + gap) * 2, barW * 0.5, 4);
+  ctx.fillRect(trx + hudW * 0.2, try_ + (barH + gap) * 2 + 8, barW * 0.8, 4);
+}
+
+// ─────────────────────────────────────────
+function drawBottomLabels(bx, by, bw, bh, t) {
+  const bev = Math.min(bw, bh) * 0.04;
+  const fontSize = Math.max(18, Math.min(W, H) * 0.036);
+  const lineGap = fontSize * 1.3;
+
+  // Left label — Aurebesh "MAIN VIEW" + coordinates
+  ctx.font = `${fontSize}px "Aurebesh", monospace`;
+  ctx.fillStyle = blueDim;
+  ctx.textAlign = 'left'; ctx.textBaseline = 'bottom';
+  ctx.fillText('MAIN VIEW', bx + 16, by + bh - bev - lineGap);
+
+  ctx.font = `${fontSize * 0.85}px "Aurebesh", monospace`;
+  ctx.fillStyle = blueFaint;
+  const coord = `${(42.3 + Math.sin(t * 0.3) * 2).toFixed(1)} AZ`;
+  ctx.fillText(coord, bx + 16, by + bh - bev - 4);
+
+  // Right label — "TRACKING" + numbers
+  ctx.font = `${fontSize}px "Aurebesh", monospace`;
+  ctx.fillStyle = blueDim;
+  ctx.textAlign = 'right';
+  ctx.fillText('TRACKING', bx + bw - 16, by + bh - bev - lineGap);
+
+  ctx.font = `${fontSize * 0.85}px "Share Tech Mono", monospace`;
+  ctx.fillStyle = blue;
+  const v1 = `P${Math.floor(13 + Math.sin(t * 0.5) * 2).toString().padStart(3, '0')}`;
+  const v2 = `P${Math.floor(450 + Math.cos(t * 0.7) * 30).toString().padStart(3, '0')}`;
+  ctx.fillText(`${v1}  ${v2}`, bx + bw - 16, by + bh - bev - 4);
+}
+
+// ─────────────────────────────────────────
+function drawRightScale(bx, by, bw, bh, t) {
+  const x = bx + bw + 12;
+  const scaleTop = by + bh * 0.15;
+  const scaleBot = by + bh * 0.85;
+  const scaleH = scaleBot - scaleTop;
+
+  line(x, scaleTop, x, scaleBot, blueFaint, 2);
+
+  const ticks = 12;
+  for (let i = 0; i <= ticks; i++) {
+    const y = scaleTop + (scaleH / ticks) * i;
+    const tw = (i % 3 === 0) ? 12 : 6;
+    line(x - tw, y, x, y, blueDim, 1.6);
+  }
+
+  const level = 0.3 + Math.sin(t * 0.5) * 0.15;
+  const ly = scaleTop + scaleH * (1 - level);
+  ctx.fillStyle = blue;
+  ctx.fillRect(x - 16, ly - 4, 20, 8);
+
+  for (let i = 0; i <= ticks; i++) {
+    const y = scaleTop + (scaleH / ticks) * i;
+    if (y > ly) {
+      ctx.fillStyle = blueDim;
+      ctx.beginPath(); ctx.arc(x - 20, y, 3, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+}
+
+render();
+</script>
+</body>
+</html>
