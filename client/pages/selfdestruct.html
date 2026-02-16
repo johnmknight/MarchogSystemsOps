@@ -1,0 +1,657 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Marchog Systems — Self Destruct</title>
+  <style>
+    @font-face { font-family: 'Aurebesh'; src: url('../fonts/Aurebesh.otf') format('opentype'); }
+    @font-face { font-family: 'Aurebesh'; src: url('../fonts/Aurebesh Bold.otf') format('opentype'); font-weight: bold; }
+    @font-face { font-family: 'Aurebesh Condensed'; src: url('../fonts/Aurebesh Condensed.otf') format('opentype'); }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    html, body {
+      width: 100%; height: 100%; overflow: hidden;
+      background: #020509;
+      font-family: 'Courier New', monospace;
+      cursor: none;
+    }
+
+    /* ── Overlays ──────────────────────────────── */
+    .scanlines {
+      position: absolute; inset: 0;
+      background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.05) 2px, rgba(0,0,0,0.05) 4px);
+      pointer-events: none; z-index: 80;
+    }
+    .vignette {
+      position: absolute; inset: 0;
+      background: radial-gradient(ellipse at center, transparent 30%, rgba(0,0,0,0.7) 100%);
+      pointer-events: none; z-index: 81;
+    }
+
+    /* ── Phase: ACTIVE countdown ─────────────── */
+
+    /* Main countdown digits */
+    .countdown-wrap {
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      z-index: 10;
+    }
+
+    .label-top {
+      font-family: 'Aurebesh Condensed', monospace;
+      font-size: clamp(10px, 1.4vw, 16px);
+      letter-spacing: 0.5em;
+      color: rgba(200,60,40,0.5);
+      margin-bottom: 8px;
+    }
+
+    .label-self-destruct {
+      font-family: Michroma, 'Courier New', monospace;
+      font-size: clamp(12px, 1.8vw, 22px);
+      letter-spacing: 0.6em;
+      color: rgba(200,60,40,0.7);
+      text-transform: uppercase;
+      margin-bottom: 24px;
+      text-shadow: 0 0 20px rgba(200,60,40,0.3);
+    }
+
+    .digits {
+      font-family: Michroma, 'Courier New', monospace;
+      font-size: clamp(80px, 18vw, 260px);
+      font-weight: bold;
+      letter-spacing: 0.08em;
+      color: rgba(200,60,40,0.9);
+      text-shadow:
+        0 0 40px rgba(200,60,40,0.5),
+        0 0 80px rgba(200,60,40,0.2),
+        0 0 120px rgba(200,60,40,0.1);
+      line-height: 1;
+      transition: color 0.3s, text-shadow 0.3s;
+    }
+    .digits.critical {
+      animation: digitPulse 0.5s ease-in-out infinite;
+    }
+    @keyframes digitPulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.6; }
+    }
+
+    .digits-aurebesh {
+      font-family: 'Aurebesh', monospace;
+      font-size: clamp(20px, 4vw, 50px);
+      letter-spacing: 0.3em;
+      color: rgba(200,60,40,0.35);
+      margin-top: 12px;
+    }
+
+    .label-bottom {
+      font-family: Michroma, 'Courier New', monospace;
+      font-size: clamp(8px, 1vw, 12px);
+      letter-spacing: 0.4em;
+      color: rgba(200,60,40,0.35);
+      margin-top: 20px;
+    }
+
+    /* ── Progress ring ────────────────────────── */
+    .ring-container {
+      position: absolute; inset: 0;
+      display: flex; align-items: center; justify-content: center;
+      z-index: 5; pointer-events: none;
+    }
+    .ring-container svg {
+      width: min(70vh, 70vw);
+      height: min(70vh, 70vw);
+      transform: rotate(-90deg);
+    }
+    .ring-track {
+      fill: none;
+      stroke: rgba(200,60,40,0.08);
+      stroke-width: 2;
+    }
+    .ring-progress {
+      fill: none;
+      stroke: rgba(200,60,40,0.5);
+      stroke-width: 3;
+      stroke-linecap: round;
+      transition: stroke-dashoffset 1s linear;
+      filter: drop-shadow(0 0 6px rgba(200,60,40,0.4));
+    }
+    .ring-ticks {
+      fill: none;
+      stroke: rgba(200,60,40,0.15);
+      stroke-width: 0.5;
+    }
+
+    /* ── Hazard stripes (top + bottom) ────────── */
+    .hazard {
+      position: absolute; left: 0; right: 0; height: 6px;
+      z-index: 60; pointer-events: none;
+      background: repeating-linear-gradient(
+        -45deg,
+        rgba(200,60,40,0.6), rgba(200,60,40,0.6) 8px,
+        rgba(10,2,2,0.9) 8px, rgba(10,2,2,0.9) 16px
+      );
+      animation: hazardScroll 1s linear infinite;
+    }
+    .hazard.top { top: 0; }
+    .hazard.bot { bottom: 0; }
+    @keyframes hazardScroll {
+      from { background-position: 0 0; }
+      to { background-position: 22.6px 0; }
+    }
+
+    /* ── Corner warning triangles ─────────────── */
+    .warn-corner {
+      position: absolute; z-index: 50; pointer-events: none;
+      opacity: 0.5;
+    }
+    .warn-corner.tl { top: 20px; left: 20px; }
+    .warn-corner.tr { top: 20px; right: 20px; }
+    .warn-corner.bl { bottom: 20px; left: 20px; }
+    .warn-corner.br { bottom: 20px; right: 20px; }
+    .warn-corner svg { width: 28px; height: 28px; }
+
+    /* ── Side data columns ────────────────────── */
+    .side-data {
+      position: absolute; top: 30px; bottom: 30px;
+      width: clamp(80px, 10vw, 140px);
+      z-index: 20; pointer-events: none;
+      display: flex; flex-direction: column;
+      gap: 4px; overflow: hidden;
+      opacity: 0.6;
+    }
+    .side-data.left { left: 14px; }
+    .side-data.right { right: 14px; text-align: right; }
+    .side-data .row {
+      font-family: 'Aurebesh Condensed', monospace;
+      font-size: clamp(7px, 0.8vw, 10px);
+      line-height: 1.6;
+      color: rgba(200,60,40,0.35);
+      white-space: nowrap;
+    }
+
+    /* ── Red warning flash overlay ────────────── */
+    .flash-overlay {
+      position: absolute; inset: 0;
+      background: radial-gradient(ellipse at center, rgba(200,60,40,0.15), rgba(200,60,40,0.04));
+      z-index: 3; pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.15s;
+    }
+    .flash-overlay.on { opacity: 1; }
+
+    /* ── Alarm klaxon bars ────────────────────── */
+    .klaxon-bar {
+      position: absolute; left: 0; right: 0; height: 3px;
+      background: rgba(200,60,40,0.8);
+      z-index: 55; pointer-events: none;
+      opacity: 0;
+      box-shadow: 0 0 12px rgba(200,60,40,0.5);
+    }
+    .klaxon-bar.top { top: 6px; }
+    .klaxon-bar.bot { bottom: 6px; }
+
+    /* ════════════════════════════════════════════
+       Phase: ABORTED — All Clear
+       ════════════════════════════════════════════ */
+    .allclear-wrap {
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      z-index: 10;
+      opacity: 0;
+      transition: opacity 1.5s ease;
+      pointer-events: none;
+    }
+    .allclear-wrap.visible {
+      opacity: 1;
+    }
+
+    .allclear-aurebesh {
+      font-family: 'Aurebesh', monospace;
+      font-size: clamp(16px, 2.5vw, 30px);
+      letter-spacing: 0.5em;
+      color: rgba(54,214,231,0.5);
+      margin-bottom: 8px;
+    }
+    .allclear-text {
+      font-family: Michroma, 'Courier New', monospace;
+      font-size: clamp(30px, 7vw, 90px);
+      letter-spacing: 0.3em;
+      color: rgba(54,214,231,0.9);
+      text-shadow:
+        0 0 30px rgba(54,214,231,0.4),
+        0 0 60px rgba(54,214,231,0.15);
+      text-transform: uppercase;
+    }
+    .allclear-sub {
+      font-family: Michroma, 'Courier New', monospace;
+      font-size: clamp(8px, 1.2vw, 14px);
+      letter-spacing: 0.5em;
+      color: rgba(54,214,231,0.35);
+      margin-top: 16px;
+    }
+    .allclear-sub2 {
+      font-family: 'Aurebesh Condensed', monospace;
+      font-size: clamp(8px, 1vw, 12px);
+      letter-spacing: 0.3em;
+      color: rgba(54,214,231,0.25);
+      margin-top: 8px;
+    }
+
+    /* ── All-clear ring ───────────────────────── */
+    .ring-progress.clear {
+      stroke: rgba(54,214,231,0.5);
+      filter: drop-shadow(0 0 6px rgba(54,214,231,0.4));
+    }
+    .ring-track.clear {
+      stroke: rgba(54,214,231,0.08);
+    }
+
+    /* ════════════════════════════════════════════
+       Phase: DETONATION flash
+       ════════════════════════════════════════════ */
+    .deton-flash {
+      position: absolute; inset: 0;
+      background: white;
+      z-index: 200;
+      opacity: 0;
+      pointer-events: none;
+    }
+    .deton-flash.fire {
+      animation: detonFlash 4s ease-out forwards;
+    }
+    @keyframes detonFlash {
+      0% { opacity: 0; }
+      5% { opacity: 1; background: white; }
+      15% { opacity: 1; background: rgba(255,160,60,1); }
+      40% { opacity: 0.8; background: rgba(200,60,40,0.8); }
+      70% { opacity: 0.4; background: rgba(200,60,40,0.3); }
+      100% { opacity: 0; background: black; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="scanlines"></div>
+  <div class="vignette"></div>
+
+  <!-- Hazard stripes -->
+  <div class="hazard top"></div>
+  <div class="hazard bot"></div>
+
+  <!-- Red flash overlay (pulses on each tick) -->
+  <div class="flash-overlay" id="flash"></div>
+
+  <!-- Klaxon bars -->
+  <div class="klaxon-bar top" id="klaxonTop"></div>
+  <div class="klaxon-bar bot" id="klaxonBot"></div>
+
+  <!-- Corner warnings -->
+  <div class="warn-corner tl"><svg viewBox="0 0 24 24" fill="none" stroke="rgba(200,60,40,0.7)" stroke-width="1.5"><path d="M12 2L1 21h22L12 2z"/><line x1="12" y1="9" x2="12" y2="14"/><circle cx="12" cy="17" r="0.5" fill="rgba(200,60,40,0.7)"/></svg></div>
+  <div class="warn-corner tr"><svg viewBox="0 0 24 24" fill="none" stroke="rgba(200,60,40,0.7)" stroke-width="1.5"><path d="M12 2L1 21h22L12 2z"/><line x1="12" y1="9" x2="12" y2="14"/><circle cx="12" cy="17" r="0.5" fill="rgba(200,60,40,0.7)"/></svg></div>
+  <div class="warn-corner bl"><svg viewBox="0 0 24 24" fill="none" stroke="rgba(200,60,40,0.7)" stroke-width="1.5"><path d="M12 2L1 21h22L12 2z"/><line x1="12" y1="9" x2="12" y2="14"/><circle cx="12" cy="17" r="0.5" fill="rgba(200,60,40,0.7)"/></svg></div>
+  <div class="warn-corner br"><svg viewBox="0 0 24 24" fill="none" stroke="rgba(200,60,40,0.7)" stroke-width="1.5"><path d="M12 2L1 21h22L12 2z"/><line x1="12" y1="9" x2="12" y2="14"/><circle cx="12" cy="17" r="0.5" fill="rgba(200,60,40,0.7)"/></svg></div>
+
+  <!-- Side data columns -->
+  <div class="side-data left" id="sideLeft"></div>
+  <div class="side-data right" id="sideRight"></div>
+
+  <!-- Progress ring -->
+  <div class="ring-container">
+    <svg viewBox="0 0 200 200" id="ringSvg">
+      <!-- Tick marks -->
+      <g id="ringTicks"></g>
+      <circle class="ring-track" id="ringTrack" cx="100" cy="100" r="90"/>
+      <circle class="ring-progress" id="ringProgress" cx="100" cy="100" r="90"/>
+    </svg>
+  </div>
+
+  <!-- Countdown display -->
+  <div class="countdown-wrap" id="countdownWrap">
+    <div class="label-top">self destruct sequence</div>
+    <div class="label-self-destruct">SELF DESTRUCT</div>
+    <div class="digits" id="digits">01:00</div>
+    <div class="digits-aurebesh" id="digitsAurebesh">01:00</div>
+    <div class="label-bottom" id="labelBottom">SEQUENCE INITIATED</div>
+  </div>
+
+  <!-- All clear display -->
+  <div class="allclear-wrap" id="allclearWrap">
+    <div class="allclear-aurebesh">all clear</div>
+    <div class="allclear-text">ALL CLEAR</div>
+    <div class="allclear-sub">SELF DESTRUCT ABORTED</div>
+    <div class="allclear-sub2">systems nominal</div>
+  </div>
+
+  <!-- Detonation flash -->
+  <div class="deton-flash" id="detonFlash"></div>
+
+  <script>
+    // ═══════════════════════════════════════════════════
+    //  CONFIG — overridable via postMessage configure
+    // ═══════════════════════════════════════════════════
+    let COUNTDOWN_SECS = 60;   // total countdown seconds
+    let ABORT_AT = 0;          // seconds remaining to trigger abort (0 = no abort, detonate)
+
+    // ═══════════════════════════════════════════════════
+    //  STATE
+    // ═══════════════════════════════════════════════════
+    let remaining = COUNTDOWN_SECS;
+    let phase = 'countdown';   // countdown | aborted | detonated
+    let timerInterval = null;
+    let flashInterval = null;
+
+    // ═══════════════════════════════════════════════════
+    //  FONT LOADING
+    // ═══════════════════════════════════════════════════
+    async function loadFonts() {
+      try {
+        const aurebesh = new FontFace('Aurebesh', "url('../fonts/Aurebesh.otf')");
+        const aurebeshBold = new FontFace('Aurebesh', "url('../fonts/Aurebesh Bold.otf')", { weight: 'bold' });
+        const michroma = new FontFace('Michroma', "url('https://fonts.gstatic.com/s/michroma/v19/PN_zRfy9qWD8fEagAPg9pTk.woff2')");
+        await Promise.all([aurebesh.load(), aurebeshBold.load(), michroma.load()]);
+        document.fonts.add(aurebesh);
+        document.fonts.add(aurebeshBold);
+        document.fonts.add(michroma);
+      } catch (e) {
+        console.warn('Font load failed, using fallback', e);
+      }
+    }
+
+    // ═══════════════════════════════════════════════════
+    //  RING SETUP
+    // ═══════════════════════════════════════════════════
+    const ringProgress = document.getElementById('ringProgress');
+    const ringTrack = document.getElementById('ringTrack');
+    const circumference = 2 * Math.PI * 90;
+    ringProgress.style.strokeDasharray = circumference;
+    ringProgress.style.strokeDashoffset = '0';
+
+    // Draw tick marks
+    (function drawTicks() {
+      const g = document.getElementById('ringTicks');
+      for (let i = 0; i < 60; i++) {
+        const angle = (i / 60) * 360 - 90;
+        const rad = angle * Math.PI / 180;
+        const isMajor = i % 5 === 0;
+        const r1 = isMajor ? 82 : 85;
+        const r2 = 88;
+        const x1 = 100 + Math.cos(rad) * r1;
+        const y1 = 100 + Math.sin(rad) * r1;
+        const x2 = 100 + Math.cos(rad) * r2;
+        const y2 = 100 + Math.sin(rad) * r2;
+        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        line.setAttribute('x1', x1); line.setAttribute('y1', y1);
+        line.setAttribute('x2', x2); line.setAttribute('y2', y2);
+        line.setAttribute('stroke', `rgba(200,60,40,${isMajor ? 0.25 : 0.1})`);
+        line.setAttribute('stroke-width', isMajor ? '1' : '0.5');
+        g.appendChild(line);
+      }
+    })();
+
+    function updateRing(fraction) {
+      const offset = circumference * (1 - fraction);
+      ringProgress.style.strokeDashoffset = offset;
+    }
+
+    // ═══════════════════════════════════════════════════
+    //  SIDE DATA STREAMS
+    // ═══════════════════════════════════════════════════
+    const dangerWords = [
+      'CRITICAL','DESTRUCT','OVERRIDE','WARNING','BREACH','EVACUATE',
+      'CORE','REACTOR','THERMAL','OVERLOAD','CASCADE','MELTDOWN',
+      'CONTAINMENT','FAILURE','PURGE','LOCKDOWN','EMERGENCY','ABORT',
+      'EJECT','COMPROMISED','UNSTABLE','FLUX','DECAY','TERMINAL',
+    ];
+
+    function genSideLine() {
+      const r = Math.random();
+      if (r < 0.35) {
+        let hex = ''; for (let i = 0; i < 6; i++) hex += '0123456789ABCDEF'[Math.floor(Math.random()*16)];
+        return hex;
+      } else if (r < 0.65) {
+        return dangerWords[Math.floor(Math.random()*dangerWords.length)] + '-' +
+               String(Math.floor(Math.random()*999)).padStart(3,'0');
+      } else {
+        const p = ['PWR','THR','COR','RCT','SHD','EVA'];
+        return p[Math.floor(Math.random()*p.length)] + ':' + (Math.random()*100).toFixed(1);
+      }
+    }
+
+    const MAX_SIDE_ROWS = 40;
+    let leftRows = [], rightRows = [];
+    for (let i = 0; i < MAX_SIDE_ROWS; i++) { leftRows.push(genSideLine()); rightRows.push(genSideLine()); }
+
+    function renderSideData() {
+      document.getElementById('sideLeft').innerHTML = leftRows.map(d => `<div class="row">${d}</div>`).join('');
+      document.getElementById('sideRight').innerHTML = rightRows.map(d => `<div class="row">${d}</div>`).join('');
+    }
+    renderSideData();
+    setInterval(() => {
+      leftRows.unshift(genSideLine()); if (leftRows.length > MAX_SIDE_ROWS) leftRows.pop();
+      rightRows.unshift(genSideLine()); if (rightRows.length > MAX_SIDE_ROWS) rightRows.pop();
+      renderSideData();
+    }, 1800);
+
+    // ═══════════════════════════════════════════════════
+    //  FORMAT TIME
+    // ═══════════════════════════════════════════════════
+    function formatTime(secs) {
+      if (secs >= 3600) {
+        const h = Math.floor(secs / 3600);
+        const m = Math.floor((secs % 3600) / 60);
+        const s = secs % 60;
+        return String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
+      }
+      const m = Math.floor(secs / 60);
+      const s = secs % 60;
+      return String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
+    }
+
+    // ═══════════════════════════════════════════════════
+    //  DISPLAY UPDATE
+    // ═══════════════════════════════════════════════════
+    const digitsEl = document.getElementById('digits');
+    const digitsAurebeshEl = document.getElementById('digitsAurebesh');
+    const labelBottom = document.getElementById('labelBottom');
+    const flashEl = document.getElementById('flash');
+    const klaxonTop = document.getElementById('klaxonTop');
+    const klaxonBot = document.getElementById('klaxonBot');
+
+    function updateDisplay() {
+      const timeStr = formatTime(remaining);
+      digitsEl.textContent = timeStr;
+      digitsAurebeshEl.textContent = timeStr;
+
+      // Ring: fraction of time elapsed
+      const fraction = 1 - (remaining / COUNTDOWN_SECS);
+      updateRing(fraction);
+
+      // Critical mode under 10 seconds
+      if (remaining <= 10 && remaining > 0) {
+        digitsEl.classList.add('critical');
+        labelBottom.textContent = 'DETONATION IMMINENT';
+      } else {
+        digitsEl.classList.remove('critical');
+      }
+    }
+
+    // ═══════════════════════════════════════════════════
+    //  FLASH + KLAXON EFFECTS
+    // ═══════════════════════════════════════════════════
+    function doFlash() {
+      flashEl.classList.add('on');
+      klaxonTop.style.opacity = '1';
+      klaxonBot.style.opacity = '1';
+      setTimeout(() => {
+        flashEl.classList.remove('on');
+        klaxonTop.style.opacity = '0';
+        klaxonBot.style.opacity = '0';
+      }, 150);
+    }
+
+    function startFlashCycle() {
+      // Flash every second, speeding up under 10s
+      if (flashInterval) clearInterval(flashInterval);
+      flashInterval = setInterval(() => {
+        if (phase !== 'countdown') return;
+        doFlash();
+      }, remaining <= 10 ? 500 : 1000);
+    }
+
+    // ═══════════════════════════════════════════════════
+    //  ABORT SEQUENCE
+    // ═══════════════════════════════════════════════════
+    function triggerAbort() {
+      phase = 'aborted';
+      clearInterval(timerInterval);
+      clearInterval(flashInterval);
+
+      // Transition colors to teal
+      document.body.style.background = '#020509';
+      ringProgress.classList.add('clear');
+      ringTrack.classList.add('clear');
+
+      // Hide hazard stripes
+      document.querySelectorAll('.hazard').forEach(el => el.style.opacity = '0');
+      document.querySelectorAll('.warn-corner').forEach(el => el.style.opacity = '0');
+
+      // Fade out countdown, fade in all-clear
+      document.getElementById('countdownWrap').style.transition = 'opacity 1s ease';
+      document.getElementById('countdownWrap').style.opacity = '0';
+
+      // Change side data color to teal
+      document.querySelectorAll('.side-data .row').forEach(el => {
+        el.style.color = 'rgba(54,214,231,0.3)';
+      });
+
+      setTimeout(() => {
+        document.getElementById('allclearWrap').classList.add('visible');
+        // Full ring
+        updateRing(1);
+        ringProgress.style.transition = 'stroke-dashoffset 1.5s ease';
+      }, 800);
+    }
+
+    // ═══════════════════════════════════════════════════
+    //  DETONATION
+    // ═══════════════════════════════════════════════════
+    function triggerDetonation() {
+      phase = 'detonated';
+      clearInterval(timerInterval);
+      clearInterval(flashInterval);
+
+      digitsEl.textContent = '00:00';
+      digitsAurebeshEl.textContent = '00:00';
+      labelBottom.textContent = 'DETONATION';
+      updateRing(1);
+
+      // White flash then fade to black
+      const detonFlash = document.getElementById('detonFlash');
+      detonFlash.classList.add('fire');
+
+      // After flash, go dark
+      setTimeout(() => {
+        document.body.style.background = '#000';
+        document.getElementById('countdownWrap').style.opacity = '0';
+        document.querySelectorAll('.hazard, .warn-corner, .side-data, .ring-container, .scanlines, .vignette')
+          .forEach(el => el.style.opacity = '0');
+      }, 3500);
+    }
+
+    // ═══════════════════════════════════════════════════
+    //  MAIN TIMER
+    // ═══════════════════════════════════════════════════
+    function startCountdown() {
+      remaining = COUNTDOWN_SECS;
+      phase = 'countdown';
+      updateDisplay();
+      startFlashCycle();
+
+      timerInterval = setInterval(() => {
+        if (phase !== 'countdown') return;
+
+        remaining--;
+
+        if (remaining <= 0) {
+          remaining = 0;
+          updateDisplay();
+          triggerDetonation();
+          return;
+        }
+
+        // Check for abort point
+        if (ABORT_AT > 0 && remaining <= ABORT_AT) {
+          updateDisplay();
+          triggerAbort();
+          return;
+        }
+
+        updateDisplay();
+
+        // Speed up flash under 10s
+        if (remaining === 10) {
+          startFlashCycle();
+        }
+      }, 1000);
+    }
+
+    // ═══════════════════════════════════════════════════
+    //  CONFIGURE VIA postMessage
+    // ═══════════════════════════════════════════════════
+    window.addEventListener('message', (event) => {
+      const { type } = event.data;
+      if (type === 'configure') {
+        if (event.data.countdown !== undefined) {
+          COUNTDOWN_SECS = parseInt(event.data.countdown, 10) || 60;
+        }
+        if (event.data.abort_at !== undefined) {
+          ABORT_AT = parseInt(event.data.abort_at, 10) || 0;
+        }
+        // Restart with new config
+        clearInterval(timerInterval);
+        clearInterval(flashInterval);
+        // Reset visuals
+        document.getElementById('countdownWrap').style.opacity = '1';
+        document.getElementById('allclearWrap').classList.remove('visible');
+        document.getElementById('detonFlash').classList.remove('fire');
+        document.body.style.background = '#020509';
+        ringProgress.classList.remove('clear');
+        ringTrack.classList.remove('clear');
+        document.querySelectorAll('.hazard').forEach(el => el.style.opacity = '1');
+        document.querySelectorAll('.warn-corner').forEach(el => el.style.opacity = '0.5');
+        digitsEl.classList.remove('critical');
+        startCountdown();
+      }
+    });
+
+    // ═══════════════════════════════════════════════════
+    //  KEYBOARD — forward to parent shell
+    // ═══════════════════════════════════════════════════
+    document.addEventListener('keydown', (e) => {
+      if (['ArrowLeft', 'ArrowRight'].includes(e.key)) {
+        window.parent.postMessage({ type: 'keydown', key: e.key }, '*');
+      }
+    });
+
+    // ═══════════════════════════════════════════════════
+    //  INIT
+    // ═══════════════════════════════════════════════════
+    loadFonts().then(() => {
+      // Check URL params as fallback
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('countdown')) COUNTDOWN_SECS = parseInt(params.get('countdown'), 10) || 60;
+      if (params.get('abort_at')) ABORT_AT = parseInt(params.get('abort_at'), 10) || 0;
+
+      startCountdown();
+    });
+
+    // Signal ready to parent shell
+    window.parent.postMessage({ type: 'pageReady', page: 'selfdestruct' }, '*');
+  </script>
+</body>
+</html>
