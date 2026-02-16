@@ -224,7 +224,7 @@
   <div id="urlPrompt">
     <h2>VIDEO FEED</h2>
     <input id="urlInput" type="text" placeholder="Paste YouTube URL or Video ID" autofocus>
-    <div class="hint">e.g. https://youtube.com/watch?v=dQw4w9WgXcQ or just the ID</div>
+    <div class="hint">YouTube URL/ID or direct video URL (.mp4, .webm, etc.)</div>
   </div>
 
   <!-- Video Player -->
@@ -303,7 +303,7 @@
     };
 
     // ═══════════════════════════════════════════════════
-    //  YOUTUBE PLAYER
+    //  VIDEO PLAYER (YouTube + Direct URL)
     // ═══════════════════════════════════════════════════
     function extractVideoId(input) {
       if (!input) return null;
@@ -322,6 +322,27 @@
       return null;
     }
 
+    function isDirectVideoUrl(input) {
+      if (!input) return false;
+      input = input.trim();
+      // Has a protocol and doesn't match YouTube
+      if (/^https?:\/\//i.test(input) && !extractVideoId(input)) return true;
+      // Common video extensions
+      if (/\.(mp4|webm|ogg|m3u8|mov)(\?.*)?$/i.test(input)) return true;
+      return false;
+    }
+
+    function getSourceType(input) {
+      if (!input) return null;
+      input = input.trim();
+      const ytId = extractVideoId(input);
+      if (ytId) return { type: 'youtube', id: ytId };
+      if (isDirectVideoUrl(input)) return { type: 'direct', url: input };
+      // Fallback: if it looks like a URL, treat as direct
+      if (/^https?:\/\//i.test(input)) return { type: 'direct', url: input };
+      return null;
+    }
+
     function loadYouTubeAPI() {
       return new Promise(resolve => {
         if (window.YT && window.YT.Player) { resolve(); return; }
@@ -332,20 +353,42 @@
       });
     }
 
-    async function loadVideo(videoId) {
-      if (!videoId) return;
-      currentVideoId = videoId;
+    function destroyCurrentPlayer() {
+      // Remove YouTube player
+      if (ytPlayer) {
+        try { ytPlayer.destroy(); } catch(e) {}
+        ytPlayer = null;
+      }
+      // Remove any native video element
+      const existing = document.getElementById('nativeVideo');
+      if (existing) existing.remove();
+      // Recreate the player div for YouTube (it gets replaced by iframe)
+      const wrap = document.getElementById('videoWrap');
+      if (!wrap.querySelector('#player')) {
+        const div = document.createElement('div');
+        div.id = 'player';
+        wrap.appendChild(div);
+      }
+    }
+
+    async function loadVideo(input) {
+      if (!input) return;
+      const source = getSourceType(input);
+      if (!source) return;
+
       document.getElementById('urlPrompt').classList.add('hidden');
-      document.getElementById('videoUrl').value = videoId;
+
+      // Store display string
+      currentVideoId = source.type === 'youtube' ? source.id : source.url;
+      document.getElementById('videoUrl').value = currentVideoId;
       updateNowPlaying();
 
-      await loadYouTubeAPI();
+      destroyCurrentPlayer();
 
-      if (ytPlayer) {
-        ytPlayer.loadVideoById(videoId);
-      } else {
+      if (source.type === 'youtube') {
+        await loadYouTubeAPI();
         ytPlayer = new YT.Player('player', {
-          videoId: videoId,
+          videoId: source.id,
           width: '100%',
           height: '100%',
           playerVars: {
@@ -357,6 +400,26 @@
             iv_load_policy: 3,
             origin: window.location.origin
           }
+        });
+      } else {
+        // Direct video URL — use native <video>
+        const playerDiv = document.getElementById('player');
+        if (playerDiv) playerDiv.remove();
+
+        const video = document.createElement('video');
+        video.id = 'nativeVideo';
+        video.src = source.url;
+        video.autoplay = true;
+        video.loop = true;
+        video.muted = false;
+        video.controls = true;
+        video.playsInline = true;
+        video.style.cssText = 'width:100%;height:100%;object-fit:contain;background:#000;';
+        document.getElementById('videoWrap').appendChild(video);
+        video.play().catch(() => {
+          // Autoplay may be blocked — try muted
+          video.muted = true;
+          video.play().catch(() => {});
         });
       }
     }
@@ -720,10 +783,9 @@
     }
 
     function applySettings() {
-      const url = document.getElementById('videoUrl').value;
-      const videoId = extractVideoId(url);
-      if (videoId && videoId !== currentVideoId) {
-        loadVideo(videoId);
+      const url = document.getElementById('videoUrl').value.trim();
+      if (url && url !== currentVideoId) {
+        loadVideo(url);
       }
       toggleSettings();
     }
@@ -745,15 +807,13 @@
       if (!msg || typeof msg !== 'object') return;
 
       if (msg.type === 'videoConfig' || msg.type === 'configure') {
-        // Accept: { type: 'videoConfig', video: 'ID', border: 'imperial' }
         if (msg.border && BORDERS[msg.border]) {
           currentBorder = msg.border;
           buildBorderGrid();
           resizeCanvas();
         }
         if (msg.video) {
-          const id = extractVideoId(msg.video);
-          if (id) loadVideo(id);
+          loadVideo(msg.video);
         }
       }
     });
@@ -785,14 +845,14 @@
     // Handle URL input on prompt screen
     document.getElementById('urlInput').addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
-        const id = extractVideoId(e.target.value);
-        if (id) loadVideo(id);
+        const val = e.target.value.trim();
+        if (val) loadVideo(val);
       }
     });
 
-    // Check for video ID in URL params
+    // Check for video source in URL params
     const params = new URLSearchParams(window.location.search);
-    const paramVideo = params.get('video') || params.get('v');
+    const paramVideo = params.get('video') || params.get('v') || params.get('src');
     const paramBorder = params.get('border');
 
     if (paramBorder && BORDERS[paramBorder]) {
@@ -805,7 +865,7 @@
     requestAnimationFrame(render);
 
     if (paramVideo) {
-      loadVideo(extractVideoId(paramVideo));
+      loadVideo(paramVideo);
     }
 
     // Forward keyboard events to parent shell
