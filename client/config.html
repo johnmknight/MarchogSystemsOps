@@ -623,6 +623,7 @@
               <div class="card-name">${p.name}</div>
               <div class="card-desc">${p.description}</div>
               <div class="card-desc" style="color:var(--accent-blue);opacity:0.5">${p.file} · ${p.category}</div>
+              ${p.params && Object.keys(p.params).length > 0 ? `<div class="card-desc" style="color:var(--accent);font-size:11px;margin-top:2px">▶ ${p.params.border || 'none'} · ${p.params.video ? (p.params.video.length > 40 ? p.params.video.slice(0,40)+'…' : p.params.video) : 'no video'}</div>` : ''}
             </div>
           </div>
           <div class="card-actions">
@@ -880,6 +881,13 @@
     }
 
     // ── Add Page ────────────────────────────────────────
+    function toggleVideoParams(mode) {
+      const fileInput = document.getElementById(mode === 'add' ? 'pageFile' : 'editPageFile');
+      const paramsDiv = document.getElementById(mode === 'add' ? 'addVideoParams' : 'editVideoParams');
+      if (!fileInput || !paramsDiv) return;
+      paramsDiv.style.display = fileInput.value.trim() === 'video.html' ? 'block' : 'none';
+    }
+
     function showAddPageModal() {
       openModal(`
         <h3>REGISTER NEW PAGE</h3>
@@ -893,7 +901,27 @@
         </div>
         <div class="form-group">
           <label>HTML File (in pages/)</label>
-          <input id="pageFile" placeholder="e.g. star-map.html">
+          <input id="pageFile" placeholder="e.g. star-map.html" oninput="toggleVideoParams('add')">
+        </div>
+        <div id="addVideoParams" style="display:none">
+          <div style="border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:12px;background:rgba(255,200,0,0.03)">
+            <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--accent);margin-bottom:10px">▶ Video Configuration</div>
+            <div class="form-group">
+              <label>Video URL</label>
+              <input id="pageVideoUrl" placeholder="YouTube URL or direct .mp4/.webm URL">
+            </div>
+            <div class="form-group">
+              <label>Border Style</label>
+              <select id="pageVideoBorder">
+                <option value="">None</option>
+                <option value="hud">HUD</option>
+                <option value="imperial">Imperial</option>
+                <option value="hologram">Hologram</option>
+                <option value="targeting">Targeting</option>
+                <option value="datastream">Data Feed</option>
+              </select>
+            </div>
+          </div>
         </div>
         <div class="form-group">
           <label>Description</label>
@@ -931,7 +959,18 @@
       const cat = document.getElementById('pageCat').value;
       if (!name || !id || !file) return;
 
-      await api('POST', '/api/pages', { id, name, file, description: desc, icon, category: cat });
+      const body = { id, name, file, description: desc, icon, category: cat };
+      // Collect video params if applicable
+      if (file === 'video.html') {
+        const params = {};
+        const videoUrl = document.getElementById('pageVideoUrl')?.value.trim();
+        const border = document.getElementById('pageVideoBorder')?.value;
+        if (videoUrl) params.video = videoUrl;
+        if (border) params.border = border;
+        if (Object.keys(params).length > 0) body.params = params;
+      }
+
+      await api('POST', '/api/pages', body);
       closeModal();
       await loadAll();
     }
@@ -971,6 +1010,27 @@
           </div>
         </div>
         <input type="hidden" id="editPageId" value="${p.id}">
+        <input type="hidden" id="editPageFile" value="${p.file}">
+        ${p.file === 'video.html' ? `
+        <div style="border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:12px;background:rgba(255,200,0,0.03)">
+          <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--accent);margin-bottom:10px">▶ Video Configuration</div>
+          <div class="form-group">
+            <label>Video URL</label>
+            <input id="editPageVideoUrl" value="${p.params?.video || ''}" placeholder="YouTube URL or direct .mp4/.webm URL">
+          </div>
+          <div class="form-group">
+            <label>Border Style</label>
+            <select id="editPageVideoBorder">
+              <option value="" ${!p.params?.border?'selected':''}>None</option>
+              <option value="hud" ${p.params?.border==='hud'?'selected':''}>HUD</option>
+              <option value="imperial" ${p.params?.border==='imperial'?'selected':''}>Imperial</option>
+              <option value="hologram" ${p.params?.border==='hologram'?'selected':''}>Hologram</option>
+              <option value="targeting" ${p.params?.border==='targeting'?'selected':''}>Targeting</option>
+              <option value="datastream" ${p.params?.border==='datastream'?'selected':''}>Data Feed</option>
+            </select>
+          </div>
+        </div>
+        ` : ''}
         <div class="modal-actions">
           <button class="btn" onclick="closeModal()">CANCEL</button>
           <button class="btn btn-primary" onclick="submitEditPage()">SAVE</button>
@@ -980,13 +1040,25 @@
 
     async function submitEditPage() {
       const id = document.getElementById('editPageId').value;
+      const file = document.getElementById('editPageFile')?.value || '';
       const name = document.getElementById('editPageName').value.trim();
       const desc = document.getElementById('editPageDesc').value.trim();
       const icon = document.getElementById('editPageIcon').value.trim();
       const cat = document.getElementById('editPageCat').value;
       if (!name) return;
 
-      await api('PUT', `/api/pages/${id}`, { name, description: desc, icon, category: cat });
+      const body = { name, description: desc, icon, category: cat };
+      // Collect video params if applicable
+      if (file === 'video.html') {
+        const params = {};
+        const videoUrl = document.getElementById('editPageVideoUrl')?.value.trim();
+        const border = document.getElementById('editPageVideoBorder')?.value;
+        if (videoUrl) params.video = videoUrl;
+        if (border) params.border = border;
+        body.params = params;
+      }
+
+      await api('PUT', `/api/pages/${id}`, body);
       closeModal();
       await loadAll();
     }
