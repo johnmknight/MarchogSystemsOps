@@ -1,138 +1,61 @@
-# Pages JSON Migration — Design Notes
+# Pages & Rooms JSON Migration — Status
 
-## Decision
-Move page definitions from SQLite `pages` table to a `pages.json` file.
-Rooms/Zones will follow as a second migration.
+## ✅ COMPLETED: Pages → pages.json
 
-## Why
-- Adding fields (like `params`) requires DB migration, Pydantic model updates, API changes across 4 files
-- Page definitions are static config — rarely change, benefit from hand-editing and version control
-- JSON is instantly extensible — just add a key
+**Commit:** `bf987c5` Pages: migrate from SQLite to JSON file with params support
 
-## Current State (SQLite)
-- **DB table**: `pages` (id, name, description, file, icon, category, created_at)
-- **DB functions** in `database.py`: get_all_pages, get_page, create_page, update_page, delete_page, scan_pages_directory, seed_default_pages
-- **API endpoints** in `main.py`: GET/POST /api/pages, GET/PUT/DELETE /api/pages/{id}, POST /api/pages/scan
-- **Pydantic models**: PageCreate(id, name, file, description, icon, category), PageUpdate(name, description, icon, category)
-- **Shell** (`index.html`): fetches GET /api/pages, calls ensureFrame(p.id, p.file) setting iframe.src = `pages/${file}`
-- **Config UI** (`config.html`): renders page cards, Add/Edit/Delete modals, SCAN DIR button, PREVIEW links
+### What moved
+- Page definitions from SQLite `pages` table → `client/pages/pages.json`
+- New `server/pages.py` with JSON-backed CRUD (get/create/update/delete/scan)
+- Added `params` field (dict) for page-specific config (video URL, border style)
+- Shell sends params via postMessage on `pageReady` event
+- Config UI has video params sub-form in Add/Edit modals
 
-## Target State (JSON)
+### What stayed in SQLite
+- Scenes, screen_configs, playlists (relational, dynamic)
 
-### File: `client/pages/pages.json`
-```json
-[
-  {
-    "id": "hyperspace",
-    "name": "Hyperspace",
-    "description": "Star Wars hyperspace jump effect",
-    "file": "hyperspace.html",
-    "icon": "⟐",
-    "category": "ambient",
-    "params": {}
-  },
-  {
-    "id": "cantina-tv",
-    "name": "Cantina TV",
-    "description": "Red throne room video loop",
-    "file": "video.html",
-    "icon": "▶",
-    "category": "ambient",
-    "params": {
-      "video": "https://www.blindltd.com/media/lastjedi/vids/red_05.mp4",
-      "border": "imperial"
-    }
-  }
-]
-```
+### Cleanup remaining
+- The `pages` table still gets created in `init_db()` — inert, not used. Can remove when convenient.
 
-### New field: `params` (object)
-- Generic key-value config passed to the page iframe via postMessage
-- For video.html: `{ "video": "url", "border": "style" }`
-- For future parameterized pages: any keys the page understands
-- Pages with no params: `{}` or omitted
+---
 
-### Server changes — new `server/pages.py`
-- Replace all page DB functions with JSON file read/write
-- `get_all_pages()` → read & parse pages.json
-- `get_page(id)` → filter from list
-- `create_page(...)` → append to list, write file
-- `update_page(id, ...)` → find & update in list, write file
-- `delete_page(id)` → remove from list, write file
-- `scan_pages_directory(dir)` → glob *.html, add any not in JSON
-- No more seed_default_pages (defaults baked into initial pages.json)
-- File locking: simple write-after-read, no concurrent writers expected
+## ✅ COMPLETED: Rooms/Zones → rooms.json
 
-### API changes (`main.py`)
-- Same endpoints, same surface
-- PageCreate model adds: `params: Optional[dict] = None`
-- PageUpdate model adds: `params: Optional[dict] = None`
-- Import new pages module instead of DB functions
-- Remove pages table from init_db (or leave inert)
-- Remove seed_default_pages call
-- Startup auto-scan still works (reads JSON + globs dir)
+**Commit:** `2db3979` Rooms/Zones: migrate from SQLite to JSON file
 
-### Shell changes (`index.html`)
-- `handleMessage` for `pageReady`: look up page params, send via postMessage
-```js
-} else if (type === 'pageReady') {
-  const page = this.pages.find(p => p.id === event.data.page);
-  if (page && page.params && Object.keys(page.params).length > 0) {
-    const frame = this.loadedFrames[page.id];
-    if (frame && frame.contentWindow) {
-      frame.contentWindow.postMessage({ type: 'configure', ...page.params }, '*');
-    }
-  }
-}
-```
+### What moved
+- Room and zone definitions from SQLite → `server/rooms.json`
+- New `server/rooms.py` with JSON-backed CRUD
+- Nested structure: rooms contain zones array
 
-### Config UI changes (`config.html`)
-- Add Page modal: add `oninput="onFileFieldChange()"` on file field
-- When file = video.html, show VIDEO PARAMS sub-form (video URL + border picker)
-- Edit Page modal: same — detect video.html, show params fields pre-filled
-- `submitPage()` / `submitEditPage()`: collect params, include in API call
-- Page cards: show params summary for video pages (e.g. "imperial · red_05.mp4")
+### What stayed in SQLite
+- Screen assignments within zones (tied to scenes)
+- Zone-screen relationships in `screen_configs` table
 
-### video.html
-- Already has postMessage listener for `{ type: 'videoConfig', video, border }`
-- Need to also accept `{ type: 'configure', video, border }` (the generic name)
-- OR: shell sends type: 'videoConfig' specifically — either works
+---
 
-## Migration Path
-1. On first startup: if pages.json doesn't exist, export current DB pages → JSON
-2. Remove pages table creation from init_db (leave it for now, just stop using it)
-3. All page API calls go through new JSON-backed functions
+## ✅ COMPLETED: Tabler Icons (emoji replacement)
 
-## Execution Order
-1. Create `pages.json` with current page definitions + params field
-2. Create `server/pages.py` with JSON-backed CRUD functions
-3. Update `main.py` imports and models (add params)
-4. Update shell `index.html` (postMessage params on pageReady)
-5. Update config UI `config.html` (video params in Add/Edit modals)
-6. Update `video.html` to accept `configure` message type
-7. Test: create a video page with params, verify it loads correctly
-8. Clean up: remove page DB functions from database.py, remove seed
+**Commit:** `d36f747` Replace all emoji with Tabler Icons font
 
-## Future: Rooms/Zones → `rooms.json`
-Same pattern. Nested structure:
-```json
-[
-  {
-    "id": "smugglers-room",
-    "name": "Smuggler's Room",
-    "icon": "🚀",
-    "description": "Main Area",
-    "zones": [
-      {
-        "id": "bar",
-        "name": "Bar",
-        "icon": "📍",
-        "screens": [
-          { "screen_id": "Beer Menu", "label": "Over Bar", "static_page": "video" }
-        ]
-      }
-    ]
-  }
-]
-```
-Scenes stay in DB for now (more relational, references screens dynamically).
+### Changes
+- All user-facing emoji replaced with Tabler Icons font-based `<i>` elements
+- Icon values stored as class names (`ti-rocket`, `ti-player-play`, etc.) in JSON
+- Tabler webfont files hosted locally in `client/fonts/`
+- Python defaults updated across database.py, main.py, pages.py, rooms.py
+
+---
+
+## Design Decision Log
+
+### Why JSON over SQLite for pages/rooms?
+- Page and room definitions are static config — they rarely change at runtime
+- JSON is hand-editable, version-controllable, and instantly extensible (just add a key)
+- Adding fields to SQLite requires DB migration + Pydantic model updates + API changes across 4 files
+- JSON eliminates seed functions and simplifies the startup path
+
+### Why SQLite for scenes/configs/playlists?
+- Scenes reference screens dynamically — screens connect/disconnect at runtime
+- Screen configs need relational joins (scene → screen → page)
+- Playlists are ordered entries tied to screen configs (foreign key relationships)
+- These are genuinely relational data, not static config
