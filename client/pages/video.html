@@ -158,6 +158,30 @@
       border-color: #4a9eff;
     }
 
+    .now-playing {
+      padding: 6px 8px;
+      margin-bottom: 8px;
+      background: rgba(74, 158, 255, 0.06);
+      border: 1px solid rgba(74, 158, 255, 0.15);
+      border-radius: 3px;
+      font-size: 11px;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .now-playing-label {
+      color: #5a6a7a;
+      font-family: 'Orbitron', sans-serif;
+      font-size: 9px;
+      letter-spacing: 0.08em;
+    }
+    .now-playing-id {
+      color: #4a9eff;
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 12px;
+      word-break: break-all;
+    }
+
     /* ── URL Prompt Overlay ───────────────────── */
     #urlPrompt {
       position: absolute; inset: 0;
@@ -212,11 +236,16 @@
   <canvas id="borderCanvas"></canvas>
 
   <!-- Settings Toggle -->
-  <button id="settingsToggle" onclick="toggleSettings()">⚙</button>
+  <button id="settingsToggle" onclick="toggleSettings()">&#9881;</button>
 
   <!-- Settings Panel -->
   <div id="settingsPanel">
     <div class="settings-title">Video Settings</div>
+
+    <div id="nowPlaying" class="now-playing" style="display:none;">
+      <span class="now-playing-label">NOW PLAYING</span>
+      <span id="nowPlayingId" class="now-playing-id"></span>
+    </div>
 
     <div class="setting-group">
       <label>YouTube URL / Video ID</label>
@@ -308,6 +337,7 @@
       currentVideoId = videoId;
       document.getElementById('urlPrompt').classList.add('hidden');
       document.getElementById('videoUrl').value = videoId;
+      updateNowPlaying();
 
       await loadYouTubeAPI();
 
@@ -697,6 +727,36 @@
       }
       toggleSettings();
     }
+
+    function updateNowPlaying() {
+      const el = document.getElementById('nowPlaying');
+      const idEl = document.getElementById('nowPlayingId');
+      if (currentVideoId) {
+        idEl.textContent = currentVideoId;
+        el.style.display = '';
+      } else {
+        el.style.display = 'none';
+      }
+    }
+
+    // ── Remote control via postMessage ──
+    window.addEventListener('message', (event) => {
+      const msg = event.data;
+      if (!msg || typeof msg !== 'object') return;
+
+      if (msg.type === 'videoConfig' || msg.type === 'configure') {
+        // Accept: { type: 'videoConfig', video: 'ID', border: 'imperial' }
+        if (msg.border && BORDERS[msg.border]) {
+          currentBorder = msg.border;
+          buildBorderGrid();
+          resizeCanvas();
+        }
+        if (msg.video) {
+          const id = extractVideoId(msg.video);
+          if (id) loadVideo(id);
+        }
+      }
+    });
 
     // ═══════════════════════════════════════════════════
     //  RENDER LOOP
