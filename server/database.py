@@ -354,7 +354,7 @@ async def scan_pages_directory(pages_dir: Path):
                 VALUES (?, ?, ?, ?, ?, ?)
             """, (page_id, page_name, f"Auto-discovered: {filename}", filename, "◻", "general"))
             discovered.append(page_id)
-            print(f"  📄 Auto-registered page: {page_id} ({filename})")
+            print(f"  [+] Auto-registered page: {page_id} ({filename})")
 
         if discovered:
             await db.commit()

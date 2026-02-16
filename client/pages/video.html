@@ -1,0 +1,761 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Marchog Systems — Video</title>
+  <style>
+    @font-face { font-family: 'Aurebesh'; src: url('../fonts/Aurebesh.otf') format('opentype'); }
+    @font-face { font-family: 'Aurebesh'; src: url('../fonts/Aurebesh Bold.otf') format('opentype'); font-weight: bold; }
+    @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600&family=Share+Tech+Mono&display=swap');
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      width: 100%; height: 100%; overflow: hidden;
+      background: #000;
+      font-family: 'Share Tech Mono', monospace;
+      color: #c8d6e5;
+    }
+
+    /* ── Video Container ──────────────────────── */
+    #videoWrap {
+      position: absolute; inset: 0;
+      display: flex; align-items: center; justify-content: center;
+      z-index: 1;
+    }
+    #player {
+      width: 100%; height: 100%;
+      border: none;
+    }
+
+    /* ── Border Overlay Canvas ────────────────── */
+    #borderCanvas {
+      position: absolute; inset: 0;
+      z-index: 10;
+      pointer-events: none;
+    }
+
+    /* ── Settings Panel ──────────────────────── */
+    #settingsToggle {
+      position: absolute; top: 12px; right: 12px;
+      z-index: 100;
+      width: 36px; height: 36px;
+      background: rgba(10, 16, 28, 0.7);
+      border: 1px solid rgba(100, 140, 200, 0.2);
+      border-radius: 4px;
+      color: #5a6a7a;
+      font-size: 18px;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: all 0.2s;
+      opacity: 0;
+    }
+    body:hover #settingsToggle { opacity: 1; }
+    #settingsToggle:hover {
+      color: #4a9eff;
+      border-color: #4a9eff;
+      background: rgba(74, 158, 255, 0.1);
+    }
+
+    #settingsPanel {
+      position: absolute; top: 56px; right: 12px;
+      z-index: 100;
+      width: 320px;
+      background: rgba(10, 16, 28, 0.95);
+      border: 1px solid rgba(100, 140, 200, 0.2);
+      border-radius: 6px;
+      padding: 16px;
+      display: none;
+      backdrop-filter: blur(10px);
+    }
+    #settingsPanel.open { display: block; }
+
+    .settings-title {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 0.7em; font-weight: 600;
+      letter-spacing: 0.12em;
+      color: #4a9eff;
+      margin-bottom: 14px;
+      text-transform: uppercase;
+    }
+    .setting-group {
+      margin-bottom: 14px;
+    }
+    .setting-group label {
+      display: block;
+      font-size: 0.72em;
+      color: #5a6a7a;
+      margin-bottom: 6px;
+      letter-spacing: 0.06em;
+    }
+    .setting-group input,
+    .setting-group select {
+      width: 100%;
+      background: rgba(8, 14, 26, 0.8);
+      border: 1px solid rgba(100, 140, 200, 0.15);
+      color: #c8d6e5;
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 0.8em;
+      padding: 6px 10px;
+      border-radius: 3px;
+    }
+    .setting-group input:focus,
+    .setting-group select:focus {
+      outline: none;
+      border-color: #4a9eff;
+    }
+
+    .border-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
+    }
+    .border-option {
+      aspect-ratio: 16/9;
+      background: rgba(8, 14, 26, 0.6);
+      border: 2px solid rgba(100, 140, 200, 0.12);
+      border-radius: 3px;
+      cursor: pointer;
+      position: relative;
+      overflow: hidden;
+      transition: all 0.15s;
+    }
+    .border-option:hover {
+      border-color: rgba(74, 158, 255, 0.4);
+    }
+    .border-option.active {
+      border-color: #4a9eff;
+      box-shadow: 0 0 8px rgba(74, 158, 255, 0.3);
+    }
+    .border-option canvas {
+      width: 100%; height: 100%;
+    }
+    .border-option .border-name {
+      position: absolute; bottom: 2px; left: 0; right: 0;
+      text-align: center;
+      font-size: 0.55em;
+      color: #5a6a7a;
+      letter-spacing: 0.04em;
+    }
+    .border-option.active .border-name { color: #4a9eff; }
+
+    .btn-apply {
+      width: 100%;
+      background: rgba(74, 158, 255, 0.1);
+      border: 1px solid rgba(74, 158, 255, 0.3);
+      color: #4a9eff;
+      font-family: 'Orbitron', sans-serif;
+      font-size: 0.65em;
+      font-weight: 500;
+      letter-spacing: 0.1em;
+      padding: 8px;
+      border-radius: 3px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .btn-apply:hover {
+      background: rgba(74, 158, 255, 0.2);
+      border-color: #4a9eff;
+    }
+
+    /* ── URL Prompt Overlay ───────────────────── */
+    #urlPrompt {
+      position: absolute; inset: 0;
+      z-index: 50;
+      display: flex; align-items: center; justify-content: center;
+      flex-direction: column; gap: 16px;
+      background: rgba(5, 8, 14, 0.95);
+    }
+    #urlPrompt.hidden { display: none; }
+    #urlPrompt h2 {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 1em; font-weight: 500;
+      letter-spacing: 0.15em;
+      color: #4a9eff;
+    }
+    #urlPrompt input {
+      width: 500px; max-width: 80vw;
+      background: rgba(8, 14, 26, 0.8);
+      border: 1px solid rgba(100, 140, 200, 0.25);
+      color: #e8f0ff;
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 0.9em;
+      padding: 10px 14px;
+      border-radius: 4px;
+      text-align: center;
+    }
+    #urlPrompt input:focus {
+      outline: none;
+      border-color: #4a9eff;
+    }
+    #urlPrompt .hint {
+      font-size: 0.7em;
+      color: #5a6a7a;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- URL Entry Prompt -->
+  <div id="urlPrompt">
+    <h2>VIDEO FEED</h2>
+    <input id="urlInput" type="text" placeholder="Paste YouTube URL or Video ID" autofocus>
+    <div class="hint">e.g. https://youtube.com/watch?v=dQw4w9WgXcQ or just the ID</div>
+  </div>
+
+  <!-- Video Player -->
+  <div id="videoWrap">
+    <div id="player"></div>
+  </div>
+
+  <!-- Border Overlay -->
+  <canvas id="borderCanvas"></canvas>
+
+  <!-- Settings Toggle -->
+  <button id="settingsToggle" onclick="toggleSettings()">⚙</button>
+
+  <!-- Settings Panel -->
+  <div id="settingsPanel">
+    <div class="settings-title">Video Settings</div>
+
+    <div class="setting-group">
+      <label>YouTube URL / Video ID</label>
+      <input id="videoUrl" type="text" placeholder="Paste URL or ID">
+    </div>
+
+    <div class="setting-group">
+      <label>Border Style</label>
+      <div class="border-grid" id="borderGrid"></div>
+    </div>
+
+    <button class="btn-apply" onclick="applySettings()">APPLY</button>
+  </div>
+
+  <script>
+    // ═══════════════════════════════════════════════════
+    //  STATE
+    // ═══════════════════════════════════════════════════
+    let currentBorder = 'none';
+    let ytPlayer = null;
+    let currentVideoId = null;
+    const canvas = document.getElementById('borderCanvas');
+    const ctx = canvas.getContext('2d');
+    let W, H;
+    let animFrame;
+
+    // ═══════════════════════════════════════════════════
+    //  BORDER DEFINITIONS
+    // ═══════════════════════════════════════════════════
+    const BORDERS = {
+      none: {
+        name: 'None',
+        draw: () => {}
+      },
+      hud: {
+        name: 'HUD',
+        draw: drawHudBorder
+      },
+      imperial: {
+        name: 'Imperial',
+        draw: drawImperialBorder
+      },
+      hologram: {
+        name: 'Hologram',
+        draw: drawHologramBorder
+      },
+      targeting: {
+        name: 'Targeting',
+        draw: drawTargetingBorder
+      },
+      datastream: {
+        name: 'Data Feed',
+        draw: drawDatastreamBorder
+      }
+    };
+
+    // ═══════════════════════════════════════════════════
+    //  YOUTUBE PLAYER
+    // ═══════════════════════════════════════════════════
+    function extractVideoId(input) {
+      if (!input) return null;
+      input = input.trim();
+      // Direct ID (11 chars, alphanumeric + dash/underscore)
+      if (/^[a-zA-Z0-9_-]{11}$/.test(input)) return input;
+      // Full URL patterns
+      const patterns = [
+        /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/v\/)([a-zA-Z0-9_-]{11})/,
+        /youtube\.com\/live\/([a-zA-Z0-9_-]{11})/
+      ];
+      for (const p of patterns) {
+        const m = input.match(p);
+        if (m) return m[1];
+      }
+      return null;
+    }
+
+    function loadYouTubeAPI() {
+      return new Promise(resolve => {
+        if (window.YT && window.YT.Player) { resolve(); return; }
+        const tag = document.createElement('script');
+        tag.src = 'https://www.youtube.com/iframe_api';
+        document.head.appendChild(tag);
+        window.onYouTubeIframeAPIReady = resolve;
+      });
+    }
+
+    async function loadVideo(videoId) {
+      if (!videoId) return;
+      currentVideoId = videoId;
+      document.getElementById('urlPrompt').classList.add('hidden');
+      document.getElementById('videoUrl').value = videoId;
+
+      await loadYouTubeAPI();
+
+      if (ytPlayer) {
+        ytPlayer.loadVideoById(videoId);
+      } else {
+        ytPlayer = new YT.Player('player', {
+          videoId: videoId,
+          width: '100%',
+          height: '100%',
+          playerVars: {
+            autoplay: 1,
+            controls: 1,
+            modestbranding: 1,
+            rel: 0,
+            fs: 1,
+            iv_load_policy: 3,
+            origin: window.location.origin
+          }
+        });
+      }
+    }
+
+    // ═══════════════════════════════════════════════════
+    //  DRAWING HELPERS
+    // ═══════════════════════════════════════════════════
+    const C = {
+      blue: '#4a9eff',
+      blueDim: 'rgba(74, 158, 255, 0.3)',
+      blueFaint: 'rgba(74, 158, 255, 0.1)',
+      cyan: '#36d6e7',
+      cyanDim: 'rgba(54, 214, 231, 0.3)',
+      white: '#c8d6e5',
+      whiteDim: 'rgba(200, 214, 229, 0.3)',
+      orange: '#e88a30',
+      orangeDim: 'rgba(232, 138, 48, 0.4)',
+      red: '#e74c3c',
+    };
+
+    function setGlow(color, blur) { ctx.shadowColor = color; ctx.shadowBlur = blur; }
+    function clearGlow() { ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0; }
+    function line(x1, y1, x2, y2, color = C.blue, w = 1) {
+      ctx.beginPath(); ctx.strokeStyle = color; ctx.lineWidth = w;
+      ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+    }
+
+    // ═══════════════════════════════════════════════════
+    //  BORDER: HUD — corner brackets + top/bottom bars
+    // ═══════════════════════════════════════════════════
+    function drawHudBorder() {
+      const t = performance.now() / 1000;
+      const e = 2; // edge inset (pixels from true edge)
+      const bLen = Math.min(W, H) * 0.08;
+      const bw = 2;
+
+      setGlow(C.blue, 6);
+      // Corner brackets at viewport edge
+      [[e, e, 1, 1], [W - e, e, -1, 1], [e, H - e, 1, -1], [W - e, H - e, -1, -1]].forEach(([x, y, dx, dy]) => {
+        line(x, y, x + bLen * dx, y, C.blue, bw);
+        line(x, y, x, y + bLen * dy, C.blue, bw);
+      });
+
+      // Top bar
+      const barW = W * 0.3;
+      line(W/2 - barW/2, e, W/2 + barW/2, e, C.blueDim, 1);
+      // Animated scan tick on top bar
+      const tickX = W/2 - barW/2 + ((t * 80) % barW);
+      line(tickX, e - 4, tickX, e + 4, C.blue, 2);
+
+      // Bottom bar
+      line(W/2 - barW/2, H - e, W/2 + barW/2, H - e, C.blueDim, 1);
+
+      // Side tick marks
+      for (let i = 0; i < 5; i++) {
+        const y = e + bLen + i * (H - 2*e - 2*bLen) / 4;
+        line(e, y, e + 8, y, C.blueDim, 1);
+        line(W - e, y, W - e - 8, y, C.blueDim, 1);
+      }
+      clearGlow();
+    }
+
+    // ═══════════════════════════════════════════════════
+    //  BORDER: IMPERIAL — heavy frame, data readouts
+    // ═══════════════════════════════════════════════════
+    function drawImperialBorder() {
+      const t = performance.now() / 1000;
+      const e = 2; // edge inset
+      const fw = 3;
+      const barH = Math.min(H * 0.045, 32); // header/footer bar height
+
+      // Outer frame flush to edges
+      setGlow(C.blue, 4);
+      ctx.strokeStyle = C.blue; ctx.lineWidth = fw;
+      ctx.strokeRect(e, e, W - 2*e, H - 2*e);
+      clearGlow();
+
+      // Inner frame
+      ctx.strokeStyle = C.blueDim; ctx.lineWidth = 1;
+      ctx.strokeRect(e + 6, e + 6, W - 2*e - 12, H - 2*e - 12);
+
+      // Top header bar — flush to frame edge
+      ctx.fillStyle = 'rgba(10, 20, 40, 0.85)';
+      ctx.fillRect(e, e, W - 2*e, barH);
+      ctx.fillStyle = C.blueDim;
+      ctx.font = `${Math.max(10, W * 0.009)}px "Orbitron", monospace`;
+      ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+      ctx.fillText('IMPERIAL HOLONET FEED', e + 12, e + barH * 0.5);
+      ctx.textAlign = 'right';
+      ctx.fillText(`SIGNAL: ${(92 + Math.sin(t) * 3).toFixed(1)}%`, W - e - 12, e + barH * 0.5);
+
+      // Bottom status bar — flush to frame edge
+      ctx.fillStyle = 'rgba(10, 20, 40, 0.85)';
+      ctx.fillRect(e, H - e - barH, W - 2*e, barH);
+      ctx.fillStyle = C.blueDim;
+      ctx.textAlign = 'left';
+      const fontSize = Math.max(9, W * 0.008);
+      ctx.font = `${fontSize}px "Share Tech Mono", monospace`;
+      ctx.fillText(`FREQ: ${(2187.4 + Math.sin(t * 0.7) * 2).toFixed(1)} MHz`, e + 12, H - e - barH * 0.5);
+      ctx.textAlign = 'center';
+      ctx.fillText('ENCRYPTED CHANNEL', W/2, H - e - barH * 0.5);
+      ctx.textAlign = 'right';
+      const ts = new Date().toLocaleTimeString('en-US', {hour12: false});
+      ctx.fillText(ts, W - e - 12, H - e - barH * 0.5);
+
+      // Corner accents (small filled squares)
+      const sq = 6;
+      setGlow(C.blue, 4);
+      [[e, e], [W-e-sq, e], [e, H-e-sq], [W-e-sq, H-e-sq]].forEach(([x, y]) => {
+        ctx.fillStyle = C.blue; ctx.fillRect(x, y, sq, sq);
+      });
+      clearGlow();
+    }
+
+    // ═══════════════════════════════════════════════════
+    //  BORDER: HOLOGRAM — scan lines + flicker + blue tint
+    // ═══════════════════════════════════════════════════
+    function drawHologramBorder() {
+      const t = performance.now() / 1000;
+
+      // Scan lines over entire viewport
+      ctx.fillStyle = 'rgba(50, 140, 255, 0.02)';
+      for (let y = 0; y < H; y += 3) {
+        ctx.fillRect(0, y, W, 1);
+      }
+
+      // Moving scan beam
+      const scanY = (t * 60) % H;
+      const grad = ctx.createLinearGradient(0, scanY - 30, 0, scanY + 30);
+      grad.addColorStop(0, 'rgba(50, 180, 255, 0)');
+      grad.addColorStop(0.5, 'rgba(50, 180, 255, 0.06)');
+      grad.addColorStop(1, 'rgba(50, 180, 255, 0)');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, scanY - 30, W, 60);
+
+      // Edge vignette (blue tint)
+      const vig = ctx.createRadialGradient(W/2, H/2, Math.min(W,H)*0.3, W/2, H/2, Math.max(W,H)*0.7);
+      vig.addColorStop(0, 'rgba(0, 0, 0, 0)');
+      vig.addColorStop(1, 'rgba(20, 60, 140, 0.15)');
+      ctx.fillStyle = vig;
+      ctx.fillRect(0, 0, W, H);
+
+      // Subtle corner glitch lines (flicker)
+      if (Math.random() > 0.95) {
+        const gy = Math.random() * H;
+        const gh = 2 + Math.random() * 4;
+        ctx.fillStyle = `rgba(50, 180, 255, ${0.05 + Math.random() * 0.1})`;
+        ctx.fillRect(0, gy, W, gh);
+      }
+
+      // Corner triangles
+      const triSize = Math.min(W, H) * 0.04;
+      setGlow(C.cyan, 4);
+      ctx.strokeStyle = C.cyanDim; ctx.lineWidth = 1;
+      // Top-left
+      ctx.beginPath(); ctx.moveTo(0, triSize); ctx.lineTo(0, 0); ctx.lineTo(triSize, 0); ctx.stroke();
+      // Top-right
+      ctx.beginPath(); ctx.moveTo(W - triSize, 0); ctx.lineTo(W, 0); ctx.lineTo(W, triSize); ctx.stroke();
+      // Bottom-left
+      ctx.beginPath(); ctx.moveTo(0, H - triSize); ctx.lineTo(0, H); ctx.lineTo(triSize, H); ctx.stroke();
+      // Bottom-right
+      ctx.beginPath(); ctx.moveTo(W - triSize, H); ctx.lineTo(W, H); ctx.lineTo(W, H - triSize); ctx.stroke();
+      clearGlow();
+    }
+
+    // ═══════════════════════════════════════════════════
+    //  BORDER: TARGETING — reticle overlay + distance readout
+    // ═══════════════════════════════════════════════════
+    function drawTargetingBorder() {
+      const t = performance.now() / 1000;
+      const cx = W / 2, cy = H / 2;
+      const r = Math.min(W, H) * 0.35;
+      const fontSize = Math.max(9, W * 0.008);
+
+      setGlow(C.blue, 4);
+      // Outer rotating ring
+      ctx.beginPath(); ctx.strokeStyle = C.blueDim; ctx.lineWidth = 1;
+      const segments = 36;
+      for (let i = 0; i < segments; i++) {
+        if (i % 3 === 0) continue; // gaps
+        const a1 = (i / segments) * Math.PI * 2 + t * 0.3;
+        const a2 = ((i + 0.7) / segments) * Math.PI * 2 + t * 0.3;
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, a1, a2);
+        ctx.stroke();
+      }
+
+      // Inner ring (counter-rotating)
+      for (let i = 0; i < 24; i++) {
+        if (i % 4 === 0) continue;
+        const a1 = (i / 24) * Math.PI * 2 - t * 0.5;
+        const a2 = ((i + 0.5) / 24) * Math.PI * 2 - t * 0.5;
+        ctx.beginPath();
+        ctx.arc(cx, cy, r * 0.7, a1, a2);
+        ctx.strokeStyle = C.blueDim; ctx.lineWidth = 1;
+        ctx.stroke();
+      }
+
+      // Crosshair
+      const chLen = r * 0.15;
+      const chGap = r * 0.05;
+      line(cx - chLen, cy, cx - chGap, cy, C.blue, 1.5);
+      line(cx + chGap, cy, cx + chLen, cy, C.blue, 1.5);
+      line(cx, cy - chLen, cx, cy - chGap, C.blue, 1.5);
+      line(cx, cy + chGap, cx, cy + chLen, C.blue, 1.5);
+
+      // Corner brackets
+      const e = 4;
+      const bLen = Math.min(W, H) * 0.06;
+      [[e, e, 1, 1], [W - e, e, -1, 1], [e, H - e, 1, -1], [W - e, H - e, -1, -1]].forEach(([x, y, dx, dy]) => {
+        line(x, y, x + bLen * dx, y, C.blue, 1.5);
+        line(x, y, x, y + bLen * dy, C.blue, 1.5);
+      });
+
+      // Distance readout top-right
+      ctx.font = `${fontSize}px "Share Tech Mono", monospace`;
+      ctx.fillStyle = C.blueDim; ctx.textAlign = 'right'; ctx.textBaseline = 'top';
+      ctx.fillText(`DIST: ${(1247 + Math.sin(t * 0.8) * 50).toFixed(0)} m`, W - e - 4, e + 4);
+      ctx.fillText(`AZ: ${(45.2 + Math.sin(t * 0.3) * 5).toFixed(1)}°`, W - e - 4, e + 4 + fontSize * 1.4);
+      ctx.fillText(`EL: ${(12.8 + Math.cos(t * 0.4) * 3).toFixed(1)}°`, W - e - 4, e + 4 + fontSize * 2.8);
+      clearGlow();
+    }
+
+    // ═══════════════════════════════════════════════════
+    //  BORDER: DATASTREAM — side data columns + aurebesh
+    // ═══════════════════════════════════════════════════
+    function drawDatastreamBorder() {
+      const t = performance.now() / 1000;
+      const m = Math.min(W, H) * 0.02;
+      const colW = W * 0.04;
+      const fontSize = Math.max(8, W * 0.007);
+
+      // Left data column
+      ctx.fillStyle = 'rgba(5, 10, 20, 0.75)';
+      ctx.fillRect(0, 0, colW + m, H);
+
+      // Right data column
+      ctx.fillRect(W - colW - m, 0, colW + m, H);
+
+      // Scrolling data in left column
+      ctx.font = `${fontSize}px "Aurebesh", monospace`;
+      ctx.fillStyle = C.blueDim;
+      ctx.textAlign = 'left';
+      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+      const lineH = fontSize * 1.6;
+      const lines = Math.ceil(H / lineH);
+      for (let i = 0; i < lines; i++) {
+        const y = ((i * lineH + t * 30) % (H + lineH)) - lineH;
+        let str = '';
+        for (let j = 0; j < 4; j++) str += chars[Math.floor(Math.random() * 100 + i * 7 + j) % chars.length];
+        ctx.fillStyle = `rgba(74, 158, 255, ${0.15 + (i % 3) * 0.1})`;
+        ctx.fillText(str, m + 2, y);
+      }
+
+      // Right column — hex-like data
+      ctx.textAlign = 'right';
+      for (let i = 0; i < lines; i++) {
+        const y = ((i * lineH - t * 25 + H * 2) % (H + lineH)) - lineH;
+        const val = ((i * 0x1F3 + Math.floor(t)) & 0xFFFF).toString(16).toUpperCase().padStart(4, '0');
+        ctx.fillStyle = `rgba(74, 158, 255, ${0.12 + (i % 4) * 0.08})`;
+        ctx.fillText(val, W - m - 2, y);
+      }
+
+      // Top/bottom thin lines
+      setGlow(C.blue, 3);
+      line(colW + m, 2, W - colW - m, 2, C.blueDim, 1);
+      line(colW + m, H - 2, W - colW - m, H - 2, C.blueDim, 1);
+      clearGlow();
+
+      // Signal strength bars bottom-right
+      const barX = W - colW - m + 4;
+      const barW = colW - 8;
+      for (let i = 0; i < 6; i++) {
+        const bh = 3;
+        const by = H - 10 - i * (bh + 2);
+        const alpha = i < (3 + Math.sin(t * 2) * 2) ? 0.5 : 0.1;
+        ctx.fillStyle = `rgba(74, 158, 255, ${alpha})`;
+        ctx.fillRect(barX, by, barW, bh);
+      }
+    }
+
+    // ═══════════════════════════════════════════════════
+    //  SETTINGS UI
+    // ═══════════════════════════════════════════════════
+    function toggleSettings() {
+      document.getElementById('settingsPanel').classList.toggle('open');
+    }
+
+    function buildBorderGrid() {
+      const grid = document.getElementById('borderGrid');
+      grid.innerHTML = '';
+      Object.entries(BORDERS).forEach(([key, border]) => {
+        const opt = document.createElement('div');
+        opt.className = `border-option ${key === currentBorder ? 'active' : ''}`;
+        opt.onclick = () => selectBorder(key);
+
+        // Mini preview canvas
+        const miniCanvas = document.createElement('canvas');
+        miniCanvas.width = 160; miniCanvas.height = 90;
+        drawMiniPreview(miniCanvas, key);
+        opt.appendChild(miniCanvas);
+
+        const name = document.createElement('div');
+        name.className = 'border-name';
+        name.textContent = border.name;
+        opt.appendChild(name);
+
+        grid.appendChild(opt);
+      });
+    }
+
+    function drawMiniPreview(miniCanvas, borderKey) {
+      const mctx = miniCanvas.getContext('2d');
+      const mw = miniCanvas.width, mh = miniCanvas.height;
+      mctx.fillStyle = '#0a0f18';
+      mctx.fillRect(0, 0, mw, mh);
+
+      // Draw a simplified preview
+      mctx.strokeStyle = 'rgba(74, 158, 255, 0.4)';
+      mctx.lineWidth = 1;
+
+      if (borderKey === 'none') {
+        // Just a screen shape
+        mctx.strokeRect(8, 6, mw - 16, mh - 12);
+      } else if (borderKey === 'hud') {
+        const bL = 16;
+        [[4,4,1,1],[mw-4,4,-1,1],[4,mh-4,1,-1],[mw-4,mh-4,-1,-1]].forEach(([x,y,dx,dy]) => {
+          mctx.beginPath(); mctx.moveTo(x+bL*dx,y); mctx.lineTo(x,y); mctx.lineTo(x,y+bL*dy); mctx.stroke();
+        });
+      } else if (borderKey === 'imperial') {
+        mctx.strokeRect(6, 6, mw - 12, mh - 12);
+        mctx.strokeRect(9, 9, mw - 18, mh - 18);
+        mctx.fillStyle = 'rgba(74, 158, 255, 0.15)';
+        mctx.fillRect(6, 6, mw - 12, 10);
+      } else if (borderKey === 'hologram') {
+        // Scan lines
+        mctx.fillStyle = 'rgba(50, 180, 255, 0.08)';
+        for (let y = 0; y < mh; y += 3) mctx.fillRect(0, y, mw, 1);
+        [[0,0,12],[mw,0,-12],[0,mh,12],[mw,mh,-12]].forEach(([x,y,s]) => {
+          mctx.beginPath(); mctx.moveTo(x,y); mctx.lineTo(x+s,y); mctx.lineTo(x,y+(y===0?s:-s)); mctx.stroke();
+        });
+      } else if (borderKey === 'targeting') {
+        mctx.beginPath(); mctx.arc(mw/2, mh/2, 25, 0, Math.PI*2); mctx.stroke();
+        mctx.beginPath(); mctx.moveTo(mw/2-8,mh/2); mctx.lineTo(mw/2+8,mh/2); mctx.stroke();
+        mctx.beginPath(); mctx.moveTo(mw/2,mh/2-8); mctx.lineTo(mw/2,mh/2+8); mctx.stroke();
+      } else if (borderKey === 'datastream') {
+        mctx.fillStyle = 'rgba(5, 15, 30, 0.8)';
+        mctx.fillRect(0, 0, 12, mh);
+        mctx.fillRect(mw - 12, 0, 12, mh);
+        mctx.fillStyle = 'rgba(74, 158, 255, 0.2)';
+        for (let i = 0; i < 8; i++) {
+          mctx.fillText('AB', 1, 8 + i * 10);
+        }
+      }
+    }
+
+    function selectBorder(key) {
+      currentBorder = key;
+      buildBorderGrid();
+      resizeCanvas();
+    }
+
+    function applySettings() {
+      const url = document.getElementById('videoUrl').value;
+      const videoId = extractVideoId(url);
+      if (videoId && videoId !== currentVideoId) {
+        loadVideo(videoId);
+      }
+      toggleSettings();
+    }
+
+    // ═══════════════════════════════════════════════════
+    //  RENDER LOOP
+    // ═══════════════════════════════════════════════════
+    function resizeCanvas() {
+      const dpr = window.devicePixelRatio || 1;
+      W = canvas.width = window.innerWidth * dpr;
+      H = canvas.height = window.innerHeight * dpr;
+      canvas.style.width = window.innerWidth + 'px';
+      canvas.style.height = window.innerHeight + 'px';
+    }
+
+    function render() {
+      animFrame = requestAnimationFrame(render);
+      if (currentBorder === 'none') {
+        ctx.clearRect(0, 0, W, H);
+        return;
+      }
+      ctx.clearRect(0, 0, W, H);
+      BORDERS[currentBorder].draw();
+    }
+
+    // ═══════════════════════════════════════════════════
+    //  INIT
+    // ═══════════════════════════════════════════════════
+    // Handle URL input on prompt screen
+    document.getElementById('urlInput').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        const id = extractVideoId(e.target.value);
+        if (id) loadVideo(id);
+      }
+    });
+
+    // Check for video ID in URL params
+    const params = new URLSearchParams(window.location.search);
+    const paramVideo = params.get('video') || params.get('v');
+    const paramBorder = params.get('border');
+
+    if (paramBorder && BORDERS[paramBorder]) {
+      currentBorder = paramBorder;
+    }
+
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+    buildBorderGrid();
+    requestAnimationFrame(render);
+
+    if (paramVideo) {
+      loadVideo(extractVideoId(paramVideo));
+    }
+
+    // Forward keyboard events to parent shell
+    document.addEventListener('keydown', (e) => {
+      if (['ArrowLeft', 'ArrowRight'].includes(e.key)) {
+        window.parent.postMessage({ type: 'keydown', key: e.key }, '*');
+      }
+    });
+
+    window.parent.postMessage({ type: 'pageReady', page: 'video' }, '*');
+  </script>
+</body>
+</html>

@@ -458,6 +458,19 @@
             break;
 
           case 'navigate':
+            // Special commands from config panel
+            if (msg.page === '__fullscreen__') {
+              if (document.fullscreenElement) {
+                document.exitFullscreen();
+              } else {
+                document.documentElement.requestFullscreen().catch(() => {});
+              }
+              break;
+            }
+            if (msg.page === '__identify__') {
+              this.flashIdentify();
+              break;
+            }
             // Direct navigation command
             this.stopPlaylist();
             this.showPage(msg.page);
@@ -543,6 +556,32 @@
         const hint = document.getElementById('keyboardHint');
         hint.classList.add('visible');
         setTimeout(() => hint.classList.remove('visible'), 4000);
+      },
+
+      flashIdentify() {
+        // Flash the screen with the screen ID for visual identification
+        const overlay = document.createElement('div');
+        overlay.style.cssText = `
+          position: fixed; inset: 0; z-index: 99999;
+          display: flex; align-items: center; justify-content: center;
+          flex-direction: column; gap: 12px;
+          background: rgba(74, 158, 255, 0.85);
+          font-family: 'Orbitron', 'Courier New', monospace;
+          animation: idFlash 2s ease-out forwards;
+        `;
+        overlay.innerHTML = `
+          <div style="font-size:5vw;font-weight:700;color:#fff;text-shadow:0 0 30px rgba(255,255,255,0.8)">
+            ${this.screenId || 'SCREEN'}
+          </div>
+          <div style="font-size:1.5vw;color:rgba(255,255,255,0.7);letter-spacing:0.2em">IDENTIFY</div>
+        `;
+        const style = document.createElement('style');
+        style.textContent = `@keyframes idFlash {
+          0% { opacity: 1; } 70% { opacity: 1; } 100% { opacity: 0; }
+        }`;
+        document.head.appendChild(style);
+        document.body.appendChild(overlay);
+        setTimeout(() => { overlay.remove(); style.remove(); }, 2000);
       },
 
       notify(message, type = 'info') {

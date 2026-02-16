@@ -1,0 +1,948 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Beer Scanner</title>
+  <style>
+    @font-face { font-family: 'Aurebesh'; src: url('../fonts/Aurebesh.otf') format('opentype'); }
+    @font-face { font-family: 'Aurebesh'; src: url('../fonts/Aurebesh Bold.otf') format('opentype'); font-weight: bold; }
+    @font-face { font-family: 'Aurebesh Condensed'; src: url('../fonts/Aurebesh Condensed.otf') format('opentype'); }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #000; }
+    canvas { display: block; width: 100%; height: 100%; position: absolute; top: 0; left: 0; }
+  </style>
+</head>
+<body>
+  <canvas id="scanner"></canvas>
+  <script>
+    /**
+     * Beer Scanner HUD — Star Wars Cantina Style
+     * Inspired by The Smugglers Room
+     *
+     * Elements:
+     *   - Decorative outer frame with corner nodes + connection lines
+     *   - Top bar with center hexagonal pill shape
+     *   - Left panel: scan-lined brewery logo with "SCANNING..." label
+     *   - Center: molecule diagram + glowing data flow lines
+     *   - Right panel: B.E.E.R Menu System with logo + beer mug
+     *   - Top-right: B-417 code box + signal bars
+     *   - Bottom: LOADING bar with segmented brackets
+     */
+
+    const canvas = document.getElementById('scanner');
+    const ctx = canvas.getContext('2d');
+    let W, H;
+    let startTime = performance.now();
+    let frame = 0;
+
+    // ═══════════════════════════════════════════════════════
+    //  COLOR PALETTE
+    // ═══════════════════════════════════════════════════════
+    const C = {
+      blue:       '#2a8aff',
+      blueBright: '#4aa8ff',
+      blueGlow:   '#1a6ae0',
+      blueDim:    'rgba(42, 138, 255, 0.3)',
+      blueFaint:  'rgba(42, 138, 255, 0.12)',
+      cyan:       '#36d6e7',
+      cyanDim:    'rgba(54, 214, 231, 0.4)',
+      teal:       '#00c8b4',
+      tealDim:    'rgba(0, 200, 180, 0.5)',
+      white:      '#e0e8f0',
+      whiteDim:   'rgba(224, 232, 240, 0.5)',
+      orange:     '#e88a30',
+      orangeDim:  'rgba(232, 138, 48, 0.5)',
+      bg:         '#020408',
+      scanLine:   'rgba(120, 160, 200, 0.06)',
+    };
+
+    // ═══════════════════════════════════════════════════════
+    //  RESIZE
+    // ═══════════════════════════════════════════════════════
+    function resize() {
+      const dpr = window.devicePixelRatio || 1;
+      W = canvas.width = window.innerWidth * dpr;
+      H = canvas.height = window.innerHeight * dpr;
+      canvas.style.width = window.innerWidth + 'px';
+      canvas.style.height = window.innerHeight + 'px';
+    }
+
+    // ═══════════════════════════════════════════════════════
+    //  DRAWING UTILITIES
+    // ═══════════════════════════════════════════════════════
+    function setGlow(color, blur) {
+      ctx.shadowColor = color;
+      ctx.shadowBlur = blur;
+    }
+    function clearGlow() {
+      ctx.shadowColor = 'transparent';
+      ctx.shadowBlur = 0;
+    }
+    function line(x1, y1, x2, y2, color = C.blue, width = 1) {
+      ctx.beginPath();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = width;
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.stroke();
+    }
+    function rect(x, y, w, h, color = C.blue, width = 1) {
+      ctx.beginPath();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = width;
+      ctx.rect(x, y, w, h);
+      ctx.stroke();
+    }
+    function fillR(x, y, w, h, color) {
+      ctx.fillStyle = color;
+      ctx.fillRect(x, y, w, h);
+    }
+    function text(str, x, y, color = C.blue, align = 'left', size = 14, font = 'Courier New') {
+      ctx.font = `${size}px "${font}", monospace`;
+      ctx.fillStyle = color;
+      ctx.textAlign = align;
+      ctx.textBaseline = 'middle';
+      ctx.fillText(str, x, y);
+    }
+    function textBold(str, x, y, color = C.blue, align = 'left', size = 14, font = 'Courier New') {
+      ctx.font = `bold ${size}px "${font}", monospace`;
+      ctx.fillStyle = color;
+      ctx.textAlign = align;
+      ctx.textBaseline = 'middle';
+      ctx.fillText(str, x, y);
+    }
+
+    function roundedRect(x, y, w, h, r, color = C.blue, width = 1.5) {
+      ctx.beginPath();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = width;
+      ctx.moveTo(x + r, y);
+      ctx.lineTo(x + w - r, y);
+      ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+      ctx.lineTo(x + w, y + h - r);
+      ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+      ctx.lineTo(x + r, y + h);
+      ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+      ctx.lineTo(x, y + r);
+      ctx.quadraticCurveTo(x, y, x + r, y);
+      ctx.closePath();
+      ctx.stroke();
+    }
+
+    // Chamfered/angled corner rect (Star Wars style)
+    function chamferedRect(x, y, w, h, c, color = C.blue, width = 1.5) {
+      ctx.beginPath();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = width;
+      ctx.moveTo(x + c, y);
+      ctx.lineTo(x + w - c, y);
+      ctx.lineTo(x + w, y + c);
+      ctx.lineTo(x + w, y + h - c);
+      ctx.lineTo(x + w - c, y + h);
+      ctx.lineTo(x + c, y + h);
+      ctx.lineTo(x, y + h - c);
+      ctx.lineTo(x, y + c);
+      ctx.closePath();
+      ctx.stroke();
+    }
+
+    function chamferedRectFill(x, y, w, h, c, color) {
+      ctx.beginPath();
+      ctx.fillStyle = color;
+      ctx.moveTo(x + c, y);
+      ctx.lineTo(x + w - c, y);
+      ctx.lineTo(x + w, y + c);
+      ctx.lineTo(x + w, y + h - c);
+      ctx.lineTo(x + w - c, y + h);
+      ctx.lineTo(x + c, y + h);
+      ctx.lineTo(x, y + h - c);
+      ctx.lineTo(x, y + c);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    // ═══════════════════════════════════════════════════════
+    //  BACKGROUND + SCAN LINES
+    // ═══════════════════════════════════════════════════════
+    function drawBackground() {
+      // Gradient bg
+      const grad = ctx.createRadialGradient(W*0.5, H*0.4, 0, W*0.5, H*0.5, W*0.7);
+      grad.addColorStop(0, '#060c14');
+      grad.addColorStop(1, '#010306');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, W, H);
+
+      // Subtle scan lines
+      ctx.fillStyle = C.scanLine;
+      for (let y = 0; y < H; y += 3) {
+        ctx.fillRect(0, y, W, 1);
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════
+    //  OUTER FRAME — decorative border with corner nodes
+    // ═══════════════════════════════════════════════════════
+    function drawOuterFrame() {
+      const m = Math.min(W, H) * 0.035;
+      const nodeSize = Math.min(W, H) * 0.018;
+      const t = (performance.now() - startTime) / 1000;
+
+      // Corner nodes (small filled squares with glow)
+      const corners = [
+        [m, m], [W - m, m], [m, H - m], [W - m, H - m]
+      ];
+      corners.forEach(([cx, cy]) => {
+        setGlow(C.blue, 8);
+        fillR(cx - nodeSize/2, cy - nodeSize/2, nodeSize, nodeSize, C.white);
+        clearGlow();
+        rect(cx - nodeSize/2 - 2, cy - nodeSize/2 - 2, nodeSize + 4, nodeSize + 4, C.blueDim, 1);
+      });
+
+      // Vertical lines from corners
+      setGlow(C.blue, 4);
+      // Left side
+      line(m, m + nodeSize, m, H * 0.25, C.blue, 2);
+      line(m, H * 0.75, m, H - m - nodeSize, C.blue, 2);
+      // Right side
+      line(W - m, m + nodeSize, W - m, H * 0.25, C.blue, 2);
+      line(W - m, H * 0.75, W - m, H - m - nodeSize, C.blue, 2);
+
+      // Top horizontal line
+      line(m + nodeSize, m, W * 0.32, m, C.blue, 2);
+      line(W * 0.68, m, W - m - nodeSize, m, C.blue, 2);
+
+      // Bottom horizontal line
+      line(m + nodeSize, H - m, W * 0.2, H - m, C.blue, 2);
+      line(W * 0.8, H - m, W - m - nodeSize, H - m, C.blue, 2);
+      clearGlow();
+
+      // Small circles on line endpoints
+      const dotR = 3;
+      [
+        [m, H * 0.25], [m, H * 0.75],
+        [W - m, H * 0.25], [W - m, H * 0.75],
+      ].forEach(([x, y]) => {
+        ctx.beginPath();
+        ctx.arc(x, y, dotR, 0, Math.PI * 2);
+        ctx.fillStyle = C.blue;
+        ctx.fill();
+      });
+
+      // Curved corner connections (L-shaped bends near corners)
+      const bendR = Math.min(W, H) * 0.03;
+      // Bottom-left L-bend
+      ctx.beginPath();
+      ctx.strokeStyle = C.blue;
+      ctx.lineWidth = 2;
+      setGlow(C.blue, 4);
+      ctx.moveTo(m, H - m - nodeSize * 3);
+      ctx.lineTo(m, H - m);
+      ctx.lineTo(m + nodeSize * 3, H - m);
+      ctx.stroke();
+      clearGlow();
+    }
+
+    // ═══════════════════════════════════════════════════════
+    //  TOP BAR — center hexagonal pill shape
+    // ═══════════════════════════════════════════════════════
+    function drawTopBar() {
+      const y = H * 0.06;
+      const cx = W * 0.5;
+      const pillW = W * 0.22;
+      const pillH = H * 0.04;
+      const chamfer = pillH * 0.6;
+
+      // Connection lines to pill
+      setGlow(C.blue, 6);
+      line(W * 0.12, y, cx - pillW/2 - W*0.02, y, C.blue, 2);
+      line(cx + pillW/2 + W*0.02, y, W * 0.88, y, C.blue, 2);
+
+      // Segmented bars along the lines
+      const segW = W * 0.04;
+      const segH = H * 0.008;
+      const segY = y - segH / 2;
+      for (let i = 0; i < 3; i++) {
+        const sx = W * 0.15 + i * (segW + W * 0.015);
+        fillR(sx, segY, segW, segH, C.blue);
+      }
+      for (let i = 0; i < 3; i++) {
+        const sx = W * 0.7 + i * (segW + W * 0.015);
+        fillR(sx, segY, segW, segH, C.blue);
+      }
+
+      // Center pill shape
+      chamferedRect(cx - pillW/2, y - pillH/2, pillW, pillH, chamfer, C.blue, 2);
+      chamferedRectFill(cx - pillW/2 + 2, y - pillH/2 + 2, pillW - 4, pillH - 4, chamfer - 2, 'rgba(42, 138, 255, 0.04)');
+
+      // Chevron arrows inside pill
+      const arrSize = pillH * 0.3;
+      const arrX1 = cx - pillW * 0.15;
+      const arrX2 = cx + pillW * 0.15;
+      // Left chevron <
+      ctx.beginPath();
+      ctx.strokeStyle = C.blueDim;
+      ctx.lineWidth = 1.5;
+      ctx.moveTo(arrX1 + arrSize, y - arrSize);
+      ctx.lineTo(arrX1, y);
+      ctx.lineTo(arrX1 + arrSize, y + arrSize);
+      ctx.stroke();
+      // Right chevron >
+      ctx.beginPath();
+      ctx.moveTo(arrX2 - arrSize, y - arrSize);
+      ctx.lineTo(arrX2, y);
+      ctx.lineTo(arrX2 - arrSize, y + arrSize);
+      ctx.stroke();
+
+      // Center line inside pill
+      line(cx - pillW * 0.35, y, cx - pillW * 0.2, y, C.blueDim, 1);
+      line(cx + pillW * 0.2, y, cx + pillW * 0.35, y, C.blueDim, 1);
+      clearGlow();
+    }
+
+    // ═══════════════════════════════════════════════════════
+    //  LEFT PANEL — Scan-lined brewery logo
+    // ═══════════════════════════════════════════════════════
+    function drawLeftPanel() {
+      const t = (performance.now() - startTime) / 1000;
+      const px = W * 0.08;
+      const py = H * 0.16;
+      const pw = W * 0.24;
+      const ph = H * 0.55;
+      const fontSize = Math.max(10, W * 0.012);
+
+      // Double border frame
+      setGlow(C.blue, 8);
+      rect(px, py, pw, ph, C.blue, 2);
+      clearGlow();
+      rect(px + 4, py + 4, pw - 8, ph - 8, C.blueDim, 1);
+
+      // "SCANNING..." label
+      const scanDots = '.'.repeat(Math.floor(t * 2) % 4);
+      text('SCANNING' + scanDots, px + 8, py - fontSize, C.blueDim, 'left', fontSize);
+
+      // Scan lines inside panel
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(px + 5, py + 5, pw - 10, ph - 10);
+      ctx.clip();
+      for (let sy = py; sy < py + ph; sy += 4) {
+        fillR(px + 5, sy, pw - 10, 1.5, 'rgba(80, 110, 140, 0.08)');
+      }
+      // Moving scan beam
+      const scanY = py + ((t * 40) % ph);
+      fillR(px + 5, scanY, pw - 10, 2, 'rgba(42, 138, 255, 0.15)');
+
+      // ── Bantha silhouette (simplified) ──
+      const cx = px + pw / 2;
+      const cy = py + ph * 0.42;
+      const logoR = Math.min(pw, ph) * 0.28;
+
+      // Circle border
+      ctx.beginPath();
+      ctx.arc(cx, cy, logoR, 0, Math.PI * 2);
+      ctx.strokeStyle = C.white;
+      ctx.lineWidth = 2;
+      setGlow('#fff', 6);
+      ctx.stroke();
+      clearGlow();
+
+      // Bantha body (simplified silhouette using arcs and shapes)
+      ctx.fillStyle = C.white;
+      setGlow('#fff', 4);
+
+      // Body — main round shape
+      const bx = cx - logoR * 0.15;
+      const by = cy + logoR * 0.1;
+      ctx.beginPath();
+      ctx.ellipse(bx, by, logoR * 0.5, logoR * 0.35, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Head — smaller circle on right
+      ctx.beginPath();
+      ctx.arc(bx + logoR * 0.4, by - logoR * 0.2, logoR * 0.22, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Horns — two circles above head
+      ctx.beginPath();
+      ctx.arc(bx + logoR * 0.25, by - logoR * 0.55, logoR * 0.1, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(bx + logoR * 0.55, by - logoR * 0.5, logoR * 0.08, 0, Math.PI * 2);
+      ctx.fill();
+      // Horn arc connecting
+      ctx.beginPath();
+      ctx.arc(bx + logoR * 0.4, by - logoR * 0.35, logoR * 0.25, -Math.PI * 0.9, -Math.PI * 0.1);
+      ctx.strokeStyle = C.white;
+      ctx.lineWidth = logoR * 0.08;
+      ctx.stroke();
+
+      // Legs
+      const legW = logoR * 0.07;
+      fillR(bx - logoR * 0.3, by + logoR * 0.25, legW, logoR * 0.25, C.white);
+      fillR(bx - logoR * 0.1, by + logoR * 0.28, legW, logoR * 0.22, C.white);
+      fillR(bx + logoR * 0.15, by + logoR * 0.25, legW, logoR * 0.25, C.white);
+      fillR(bx + logoR * 0.35, by + logoR * 0.22, legW, logoR * 0.22, C.white);
+
+      // Ground grass tufts
+      for (let i = -3; i <= 3; i++) {
+        const gx = cx + i * logoR * 0.15;
+        const gy = cy + logoR * 0.55;
+        line(gx, gy, gx - 3, gy - logoR * 0.08, C.white, 1.5);
+        line(gx, gy, gx + 3, gy - logoR * 0.06, C.white, 1.5);
+      }
+      clearGlow();
+
+      // Text labels below logo
+      const labelY = cy + logoR * 0.9;
+      const labelSize = Math.max(12, pw * 0.075);
+      textBold('FAT BANTHA', cx, labelY, C.white, 'center', labelSize, 'Aurebesh');
+      text('FAT BANTHA', cx, labelY + labelSize * 1.4, C.white, 'center', labelSize * 0.55);
+      text('MOS EISLEY BREWING COMPANY', cx, labelY + labelSize * 2.2, C.whiteDim, 'center', labelSize * 0.4);
+
+      ctx.restore();
+
+      // Corner detail ticks on frame
+      const tickLen = 8;
+      line(px, py + tickLen, px + tickLen, py, C.blue, 1);
+      line(px + pw, py + tickLen, px + pw - tickLen, py, C.blue, 1);
+    }
+
+    // ═══════════════════════════════════════════════════════
+    //  MOLECULE DIAGRAM — "Bantha Extract"
+    // ═══════════════════════════════════════════════════════
+    function drawMolecule() {
+      const cx = W * 0.4;
+      const cy = H * 0.25;
+      const scale = Math.min(W, H) * 0.0012;
+      const fontSize = Math.max(9, W * 0.009);
+
+      setGlow(C.blue, 6);
+
+      // Draw a complex organic molecule shape (hexagonal rings)
+      const hexR = 22 * scale;
+      const rings = [
+        { x: 0, y: 0 },         // center ring
+        { x: hexR * 1.7, y: 0 }, // right ring
+        { x: hexR * 0.85, y: -hexR * 1.5 }, // top ring
+        { x: -hexR * 0.85, y: -hexR * 1.5 }, // top-left ring
+        { x: -hexR * 1.7, y: 0 }, // left ring
+      ];
+
+      rings.forEach(ring => {
+        const rx = cx + ring.x;
+        const ry = cy + ring.y;
+        ctx.beginPath();
+        for (let i = 0; i < 6; i++) {
+          const angle = (i / 6) * Math.PI * 2 - Math.PI / 6;
+          const px = rx + Math.cos(angle) * hexR;
+          const py = ry + Math.sin(angle) * hexR;
+          if (i === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        }
+        ctx.closePath();
+        ctx.strokeStyle = C.blue;
+        ctx.lineWidth = 1.2;
+        ctx.stroke();
+      });
+
+      // Atom labels on molecule
+      const atomSize = fontSize * 0.9;
+      const atoms = [
+        { label: 'S', x: -hexR * 0.85, y: -hexR * 3 },
+        { label: 'F', x: hexR * 2.2, y: -hexR * 1.8 },
+        { label: 'F', x: hexR * 2.8, y: -hexR * 0.5 },
+        { label: 'H', x: hexR * 1.2, y: -hexR * 2.5 },
+        { label: 'N', x: 0, y: -hexR * 1 },
+        { label: 'N', x: hexR * 0.85, y: hexR * 0.3 },
+        { label: 'N', x: -hexR * 0.85, y: hexR * 0.3 },
+        { label: 'O', x: -hexR * 2.5, y: hexR * 1.5 },
+        { label: 'O', x: -hexR * 1.5, y: hexR * 2 },
+        { label: 'O', x: -hexR * 0.5, y: hexR * 2 },
+        { label: 'O', x: hexR * 0.5, y: hexR * 1.5 },
+      ];
+
+      atoms.forEach(a => {
+        text(a.label, cx + a.x, cy + a.y, C.blueBright, 'center', atomSize);
+      });
+
+      // Connecting bonds from atoms
+      atoms.forEach(a => {
+        line(cx + a.x, cy + a.y + atomSize * 0.4, cx + a.x, cy + a.y + atomSize * 1.2, C.blueDim, 0.8);
+      });
+
+      clearGlow();
+
+      // Label below
+      text('BANTHA EXTRACT', cx, cy + hexR * 3.2, C.blueBright, 'center', fontSize * 1.1);
+    }
+
+    // ═══════════════════════════════════════════════════════
+    //  CONNECTION LINES — data flow from left to right panel
+    // ═══════════════════════════════════════════════════════
+    function drawConnectionLines() {
+      const t = (performance.now() - startTime) / 1000;
+      const y = H * 0.52;
+      const x1 = W * 0.32;
+      const x2 = W * 0.52;
+
+      // Two converging lines from left panel
+      setGlow(C.blue, 6);
+      ctx.beginPath();
+      ctx.strokeStyle = C.blue;
+      ctx.lineWidth = 2.5;
+      ctx.moveTo(x1, y - H * 0.04);
+      ctx.lineTo(x2 - W * 0.03, y);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(x1, y + H * 0.04);
+      ctx.lineTo(x2 - W * 0.03, y);
+      ctx.stroke();
+
+      // Main horizontal line to right panel
+      line(x2 - W * 0.03, y, W * 0.56, y, C.blue, 2.5);
+
+      // Dark teal/dark strip along center of line
+      fillR(x2 - W * 0.02, y - 3, W * 0.08, 6, 'rgba(0, 80, 70, 0.5)');
+
+      // Glowing junction point (diamond shape)
+      const jx = W * 0.525;
+      const jy = y;
+      const jSize = 6;
+      ctx.beginPath();
+      ctx.moveTo(jx, jy - jSize);
+      ctx.lineTo(jx + jSize, jy);
+      ctx.lineTo(jx, jy + jSize);
+      ctx.lineTo(jx - jSize, jy);
+      ctx.closePath();
+      setGlow(C.cyan, 12);
+      ctx.fillStyle = C.cyan;
+      ctx.fill();
+
+      // Horizontal line continues from junction into right panel
+      line(jx + jSize, y, W * 0.56, y, C.blue, 2);
+
+      // Multiple thin parallel lines into right panel (data bus effect)
+      for (let i = -2; i <= 2; i++) {
+        line(W * 0.54, y + i * 3, W * 0.58, y + i * 3, C.blueDim, 1);
+      }
+      clearGlow();
+    }
+
+    // ═══════════════════════════════════════════════════════
+    //  RIGHT PANEL — B.E.E.R Menu System
+    // ═══════════════════════════════════════════════════════
+    function drawRightPanel() {
+      const t = (performance.now() - startTime) / 1000;
+      const px = W * 0.52;
+      const py = H * 0.24;
+      const pw = W * 0.36;
+      const ph = H * 0.46;
+      const fontSize = Math.max(10, W * 0.011);
+
+      // Outer chamfered frame with glow
+      setGlow(C.blue, 10);
+      chamferedRect(px, py, pw, ph, Math.min(pw, ph) * 0.08, C.blue, 2.5);
+      clearGlow();
+
+      // Inner cyan border
+      const inset = 6;
+      chamferedRect(px + inset, py + inset, pw - inset*2, ph - inset*2,
+        Math.min(pw, ph) * 0.06, C.cyan, 1.5);
+
+      // "HAND SCANNING" header
+      text('HAND SCANNING', px + 14, py - fontSize * 0.8, C.whiteDim, 'left', fontSize * 0.85);
+      text('3948-/', px + pw - 14, py - fontSize * 0.8, C.whiteDim, 'right', fontSize * 0.85);
+
+      // Dark header bar inside
+      const barY = py + inset + 4;
+      const barH = ph * 0.1;
+      fillR(px + inset + 4, barY, pw - inset*2 - 8, barH, 'rgba(20, 50, 80, 0.6)');
+
+      // B.E.E.R MENU SYSTEM text
+      const headerCx = px + pw / 2;
+      textBold('B.E.E.R', headerCx, barY + barH * 0.35, C.orange, 'center', fontSize * 1.4);
+      text('MENU SYSTEM', headerCx, barY + barH * 0.75, C.whiteDim, 'center', fontSize * 0.85);
+
+      // Triangle icon next to header
+      const triX = headerCx + pw * 0.2;
+      const triY = barY + barH * 0.4;
+      const triSize = fontSize * 0.6;
+      ctx.beginPath();
+      ctx.moveTo(triX, triY - triSize);
+      ctx.lineTo(triX + triSize * 0.8, triY + triSize * 0.5);
+      ctx.lineTo(triX - triSize * 0.8, triY + triSize * 0.5);
+      ctx.closePath();
+      ctx.fillStyle = C.whiteDim;
+      ctx.fill();
+
+      // Left side — small dark panel with button icons
+      const sideW = pw * 0.08;
+      const contentY = barY + barH + 6;
+      const contentH = ph - barH - inset * 2 - 14;
+      fillR(px + inset + 4, contentY, sideW, contentH, 'rgba(10, 30, 50, 0.7)');
+      rect(px + inset + 4, contentY, sideW, contentH, C.blueDim, 0.5);
+
+      // Small icon indicators on side panel
+      const iconY1 = contentY + contentH * 0.3;
+      ctx.beginPath();
+      ctx.arc(px + inset + 4 + sideW / 2, iconY1, 4, 0, Math.PI * 2);
+      ctx.fillStyle = C.cyan;
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(px + inset + 4 + sideW / 2, iconY1 + 18, 4, 0, Math.PI * 2);
+      ctx.strokeStyle = C.blueDim;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      // Main content area — two sub-panels
+      const subX = px + inset + 4 + sideW + 6;
+      const subW = (pw - inset*2 - sideW - 20) / 2;
+      const subH = contentH - 24;
+      const subY = contentY + 4;
+
+      // Left sub-panel: bantha logo (smaller version)
+      rect(subX, subY, subW, subH, C.blueDim, 1);
+      fillR(subX + 1, subY + 1, subW - 2, subH - 2, 'rgba(5, 15, 25, 0.6)');
+
+      // Mini bantha in circle
+      const miniCx = subX + subW / 2;
+      const miniCy = subY + subH * 0.45;
+      const miniR = Math.min(subW, subH) * 0.3;
+      ctx.beginPath();
+      ctx.arc(miniCx, miniCy, miniR, 0, Math.PI * 2);
+      ctx.strokeStyle = C.white;
+      ctx.lineWidth = 1.5;
+      setGlow('#fff', 4);
+      ctx.stroke();
+      clearGlow();
+
+      // Simplified mini bantha
+      ctx.fillStyle = C.white;
+      setGlow('#fff', 3);
+      ctx.beginPath();
+      ctx.ellipse(miniCx, miniCy + miniR * 0.1, miniR * 0.5, miniR * 0.35, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(miniCx + miniR * 0.35, miniCy - miniR * 0.15, miniR * 0.2, 0, Math.PI * 2);
+      ctx.fill();
+      // Horn
+      ctx.beginPath();
+      ctx.arc(miniCx + miniR * 0.3, miniCy - miniR * 0.35, miniR * 0.2, -Math.PI * 0.8, -Math.PI * 0.1);
+      ctx.strokeStyle = C.white;
+      ctx.lineWidth = miniR * 0.1;
+      ctx.stroke();
+      clearGlow();
+
+      // Label under mini logo
+      text('FAT BANTHA', miniCx, miniCy + miniR + fontSize * 0.8, C.white, 'center', fontSize * 0.7, 'Aurebesh');
+      text('MOS EISLEY BREWING COMPANY', miniCx, miniCy + miniR + fontSize * 1.8, C.whiteDim, 'center', fontSize * 0.45);
+
+      // Right sub-panel: beer mug icon
+      const mugX = subX + subW + 8;
+      rect(mugX, subY, subW, subH, C.blueDim, 1);
+      fillR(mugX + 1, subY + 1, subW - 2, subH - 2, 'rgba(5, 15, 25, 0.6)');
+
+      // Beer mug drawing
+      drawBeerMug(mugX + subW / 2, subY + subH * 0.5, Math.min(subW, subH) * 0.35);
+
+      // "F2" label bottom-left of content
+      const f2Size = fontSize * 1.2;
+      fillR(px + inset + 4, contentY + contentH - f2Size * 1.8, sideW, f2Size * 1.8, C.orange);
+      textBold('F2', px + inset + 4 + sideW / 2, contentY + contentH - f2Size * 0.6, '#000', 'center', f2Size);
+
+      // Orange accent bar at bottom of content
+      fillR(subX, contentY + contentH - 4, pw * 0.65, 4, C.orangeDim);
+
+      // "ACCESS GRANTED" — rotated text on right side
+      ctx.save();
+      const agX = px + pw - inset - 4;
+      const agY = contentY + contentH / 2;
+      ctx.translate(agX, agY);
+      ctx.rotate(-Math.PI / 2);
+      textBold('ACCESS GRANTED', 0, 0, C.orangeDim, 'center', fontSize * 0.9);
+      ctx.restore();
+
+      // Teal circle below panel
+      const circX = px + pw * 0.55;
+      const circY = py + ph + H * 0.04;
+      ctx.beginPath();
+      ctx.arc(circX, circY, 8, 0, Math.PI * 2);
+      setGlow(C.cyan, 8);
+      ctx.fillStyle = C.cyan;
+      ctx.fill();
+      clearGlow();
+      ctx.beginPath();
+      ctx.arc(circX, circY, 12, 0, Math.PI * 2);
+      ctx.strokeStyle = C.cyanDim;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+
+    // ═══════════════════════════════════════════════════════
+    //  BEER MUG ICON
+    // ═══════════════════════════════════════════════════════
+    function drawBeerMug(cx, cy, size) {
+      setGlow('#fff', 5);
+      ctx.strokeStyle = C.white;
+      ctx.fillStyle = C.white;
+      ctx.lineWidth = 2;
+
+      // Mug body
+      const bw = size * 0.7;
+      const bh = size * 1.1;
+      const bx = cx - bw / 2;
+      const by = cy - bh / 2;
+      ctx.beginPath();
+      ctx.moveTo(bx, by);
+      ctx.lineTo(bx, by + bh);
+      ctx.lineTo(bx + bw, by + bh);
+      ctx.lineTo(bx + bw, by);
+      ctx.stroke();
+
+      // Handle
+      ctx.beginPath();
+      ctx.arc(bx + bw + size * 0.15, cy + size * 0.1, size * 0.25, -Math.PI * 0.4, Math.PI * 0.4);
+      ctx.stroke();
+
+      // Foam on top
+      const foamY = by - size * 0.05;
+      ctx.beginPath();
+      ctx.arc(bx + bw * 0.2, foamY, size * 0.18, Math.PI, 0);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(bx + bw * 0.5, foamY - size * 0.05, size * 0.2, Math.PI, 0);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(bx + bw * 0.8, foamY, size * 0.16, Math.PI, 0);
+      ctx.fill();
+
+      // Beer level lines
+      for (let i = 1; i <= 3; i++) {
+        const ly = by + bh * (i / 4);
+        line(bx + 4, ly, bx + bw - 4, ly, C.whiteDim, 0.8);
+      }
+      clearGlow();
+    }
+
+    // ═══════════════════════════════════════════════════════
+    //  TOP-RIGHT INFO BOX — B-417 + signal bars
+    // ═══════════════════════════════════════════════════════
+    function drawTopRightInfo() {
+      const t = (performance.now() - startTime) / 1000;
+      const bx = W * 0.72;
+      const by = H * 0.1;
+      const bw = W * 0.1;
+      const bh = H * 0.12;
+      const fontSize = Math.max(10, W * 0.011);
+
+      // Info box
+      rect(bx, by, bw, bh, C.blueDim, 1.5);
+      fillR(bx + 1, by + 1, bw - 2, bh - 2, 'rgba(20, 60, 100, 0.3)');
+
+      // Header labels
+      text('BLOCK J/1', bx + 4, by + fontSize * 0.7, C.whiteDim, 'left', fontSize * 0.6);
+      text('AUDIT - 4', bx + bw - 4, by + fontSize * 0.7, C.whiteDim, 'right', fontSize * 0.6);
+
+      // B-417 code
+      textBold('> B-417', bx + 6, by + bh * 0.45, C.white, 'left', fontSize * 1.8);
+
+      // Bottom labels
+      text('STATUS', bx + 4, by + bh - fontSize * 1.2, C.whiteDim, 'left', fontSize * 0.5);
+      textBold('OVERLOAD', bx + 4, by + bh - fontSize * 0.5, C.orange, 'left', fontSize * 0.6);
+      text('TYPE: B', bx + bw - 4, by + bh - fontSize * 0.5, C.whiteDim, 'right', fontSize * 0.5);
+
+      // Signal bars to the right
+      const barX = bx + bw + W * 0.015;
+      const barW = W * 0.13;
+      const barH = bh * 0.3;
+
+      // Bar 1 — segmented
+      const segments = 6;
+      const segW = barW / segments;
+      const gap = 3;
+      for (let i = 0; i < segments; i++) {
+        const sx = barX + i * segW;
+        const alpha = 0.3 + (i / segments) * 0.5 + Math.sin(t * 2 + i * 0.5) * 0.1;
+        fillR(sx, by + bh * 0.15, segW - gap, barH, `rgba(42, 138, 255, ${alpha})`);
+      }
+      rect(barX, by + bh * 0.15, barW, barH, C.blueDim, 0.5);
+      text('RANDOM INTENSITY', barX, by + bh * 0.05, C.whiteDim, 'left', fontSize * 0.45);
+
+      // Bar 2
+      for (let i = 0; i < segments; i++) {
+        const sx = barX + i * segW;
+        const alpha = 0.2 + (i / segments) * 0.6 + Math.sin(t * 1.5 + i * 0.7) * 0.1;
+        fillR(sx, by + bh * 0.6, segW - gap, barH, `rgba(42, 138, 255, ${alpha})`);
+      }
+      rect(barX, by + bh * 0.6, barW, barH, C.blueDim, 0.5);
+    }
+
+    // ═══════════════════════════════════════════════════════
+    //  BOTTOM — Loading bar + segmented brackets
+    // ═══════════════════════════════════════════════════════
+    function drawBottomBar() {
+      const t = (performance.now() - startTime) / 1000;
+      const fontSize = Math.max(10, W * 0.011);
+      const y = H * 0.78;
+
+      // "— LOADING... —" text
+      const loadDots = '.'.repeat(Math.floor(t * 3) % 4);
+      text('\u2014 LOADING' + loadDots + ' \u2014', W * 0.5, y, C.whiteDim, 'center', fontSize);
+
+      // Thin line under text
+      line(W * 0.15, y + fontSize * 0.8, W * 0.85, y + fontSize * 0.8, C.blueFaint, 0.5);
+
+      // Segmented loading brackets
+      const barY = y + fontSize * 2;
+      const barH = H * 0.055;
+      const totalW = W * 0.7;
+      const startX = (W - totalW) / 2;
+      const segments = 5;
+      const segW = totalW / segments;
+      const gap = 8;
+      const bracketW = 6;
+
+      for (let i = 0; i < segments; i++) {
+        const sx = startX + i * segW + gap / 2;
+        const sw = segW - gap;
+
+        // Each segment is a bracket shape [ ]
+        // Left bracket
+        line(sx, barY, sx + bracketW, barY, C.blueDim, 1);
+        line(sx, barY, sx, barY + barH, C.blueDim, 1);
+        line(sx, barY + barH, sx + bracketW, barY + barH, C.blueDim, 1);
+        // Right bracket
+        line(sx + sw, barY, sx + sw - bracketW, barY, C.blueDim, 1);
+        line(sx + sw, barY, sx + sw, barY + barH, C.blueDim, 1);
+        line(sx + sw, barY + barH, sx + sw - bracketW, barY + barH, C.blueDim, 1);
+
+        // Fill progress (animated)
+        const fillPct = Math.max(0, Math.min(1, (t * 0.15 + i * 0.08) % 1));
+        if (fillPct > 0) {
+          fillR(sx + bracketW + 2, barY + 3, (sw - bracketW * 2 - 4) * fillPct, barH - 6,
+            `rgba(42, 138, 255, ${0.08 + fillPct * 0.12})`);
+        }
+
+        // Accent line at bottom
+        if (i >= 3) {
+          fillR(sx + sw * 0.2, barY + barH - 3, sw * 0.6, 3, C.orangeDim);
+        }
+      }
+
+      // Center hexagon icon on bar
+      const hexX = W * 0.5;
+      const hexY = barY - 3;
+      const hexSize = 6;
+      ctx.beginPath();
+      for (let i = 0; i < 6; i++) {
+        const a = (i / 6) * Math.PI * 2 - Math.PI / 6;
+        const px = hexX + Math.cos(a) * hexSize;
+        const py = hexY + Math.sin(a) * hexSize;
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+      ctx.strokeStyle = C.white;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+
+    // ═══════════════════════════════════════════════════════
+    //  BOTTOM FRAME — decorative brackets and lines
+    // ═══════════════════════════════════════════════════════
+    function drawBottomFrame() {
+      const m = Math.min(W, H) * 0.035;
+      const y = H - m;
+      const bracketW = W * 0.06;
+      const bracketH = H * 0.04;
+
+      setGlow(C.blue, 4);
+
+      // Center horizontal line with breaks
+      line(W * 0.15, y, W * 0.35, y, C.blue, 2);
+      line(W * 0.4, y, W * 0.6, y, C.blue, 2);
+      line(W * 0.65, y, W * 0.85, y, C.blue, 2);
+
+      // Angled connections
+      ctx.beginPath();
+      ctx.strokeStyle = C.blue;
+      ctx.lineWidth = 2;
+      ctx.moveTo(W * 0.2, y);
+      ctx.lineTo(W * 0.22, y - bracketH * 0.5);
+      ctx.lineTo(W * 0.28, y - bracketH * 0.5);
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.moveTo(W * 0.72, y);
+      ctx.lineTo(W * 0.74, y - bracketH * 0.5);
+      ctx.lineTo(W * 0.8, y - bracketH * 0.5);
+      ctx.stroke();
+
+      // Bottom bracket shapes ┌ ┐
+      const lbx = W * 0.38;
+      const rbx = W * 0.55;
+      line(lbx, y + 4, lbx, y - bracketH, C.blue, 2);
+      line(lbx, y - bracketH, lbx + bracketW, y - bracketH, C.blue, 2);
+      line(rbx, y + 4, rbx, y - bracketH, C.blue, 2);
+      line(rbx, y - bracketH, rbx - bracketW, y - bracketH, C.blue, 2);
+
+      clearGlow();
+    }
+
+    // ═══════════════════════════════════════════════════════
+    //  VIGNETTE + GLOW EFFECTS
+    // ═══════════════════════════════════════════════════════
+    function drawEffects() {
+      // Vignette
+      const vig = ctx.createRadialGradient(W/2, H/2, W * 0.2, W/2, H/2, W * 0.75);
+      vig.addColorStop(0, 'rgba(0, 0, 0, 0)');
+      vig.addColorStop(1, 'rgba(0, 0, 0, 0.5)');
+      ctx.fillStyle = vig;
+      ctx.fillRect(0, 0, W, H);
+
+      // Subtle blue ambient glow in center
+      const glow = ctx.createRadialGradient(W * 0.45, H * 0.45, 0, W * 0.45, H * 0.45, W * 0.35);
+      glow.addColorStop(0, 'rgba(20, 60, 120, 0.04)');
+      glow.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      ctx.fillStyle = glow;
+      ctx.fillRect(0, 0, W, H);
+    }
+
+    // ═══════════════════════════════════════════════════════
+    //  RENDER LOOP
+    // ═══════════════════════════════════════════════════════
+    function render() {
+      requestAnimationFrame(render);
+      frame++;
+      ctx.clearRect(0, 0, W, H);
+
+      drawBackground();
+      drawOuterFrame();
+      drawTopBar();
+      drawLeftPanel();
+      drawMolecule();
+      drawConnectionLines();
+      drawRightPanel();
+      drawTopRightInfo();
+      drawBottomBar();
+      drawBottomFrame();
+      drawEffects();
+    }
+
+    // ═══════════════════════════════════════════════════════
+    //  BOOT
+    // ═══════════════════════════════════════════════════════
+    window.addEventListener('resize', resize);
+    document.addEventListener('keydown', (e) => {
+      if (['ArrowLeft', 'ArrowRight'].includes(e.key)) {
+        window.parent.postMessage({ type: 'keydown', key: e.key }, '*');
+      }
+    });
+
+    resize();
+    requestAnimationFrame(render);
+    window.parent.postMessage({ type: 'pageReady', page: 'beer-scanner' }, '*');
+  </script>
+</body>
+</html>

@@ -151,6 +151,20 @@
     .screen-id { color: var(--text-bright); font-weight: 500; }
     .screen-label { font-size: 0.9em; color: var(--text-dim); font-style: italic; }
     .screen-page { color: var(--text-dim); margin-left: auto; }
+    .screen-page-select {
+      margin-left: auto;
+      background: var(--bg-input);
+      border: 1px solid var(--border-dim);
+      color: var(--text-primary);
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 0.95em;
+      padding: 2px 6px;
+      border-radius: 3px;
+      cursor: pointer;
+      transition: border-color 0.2s;
+    }
+    .screen-page-select:hover { border-color: var(--accent-blue); }
+    .screen-page-select:focus { border-color: var(--accent-cyan); outline: none; }
     .screen-remove {
       cursor: pointer; opacity: 0.3;
       transition: all 0.15s;
@@ -275,21 +289,72 @@
 
     /* ── Connected screens bar ───────────────── */
     .connected-bar {
-      display: flex; flex-wrap: wrap; gap: 8px;
-      padding: 12px 14px;
+      display: flex; flex-direction: column; gap: 0;
+      padding: 0;
       background: var(--bg-card);
       border: 1px solid var(--border-dim);
       border-radius: 4px;
       margin-bottom: 10px;
+      overflow: hidden;
     }
-    .conn-chip {
-      display: flex; align-items: center; gap: 6px;
-      padding: 4px 10px;
-      background: rgba(46, 204, 113, 0.06);
-      border: 1px solid rgba(46, 204, 113, 0.15);
-      border-radius: 3px; font-size: 0.7em;
+    .conn-screen {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 14px;
+      font-size: 0.72em;
+      border-bottom: 1px solid var(--border-dim);
+      transition: background 0.15s;
     }
-    .conn-chip .screen-dot { width: 5px; height: 5px; }
+    .conn-screen:last-child { border-bottom: none; }
+    .conn-screen:hover { background: rgba(46, 204, 113, 0.03); }
+    .conn-screen .screen-dot { width: 6px; height: 6px; flex-shrink: 0; }
+    .conn-id {
+      color: var(--text-bright); font-weight: 500;
+      min-width: 100px;
+    }
+    .conn-page-select {
+      background: var(--bg-input);
+      border: 1px solid var(--border-dim);
+      color: var(--text-primary);
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 1em;
+      padding: 3px 8px;
+      border-radius: 3px;
+      cursor: pointer;
+      transition: border-color 0.2s;
+      min-width: 130px;
+    }
+    .conn-page-select:hover { border-color: var(--accent-blue); }
+    .conn-page-select:focus { border-color: var(--accent-cyan); outline: none; }
+    .conn-actions {
+      display: flex; gap: 6px; margin-left: auto;
+    }
+    .conn-btn {
+      background: rgba(74, 158, 255, 0.06);
+      border: 1px solid var(--border-dim);
+      color: var(--text-dim);
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 0.9em;
+      padding: 3px 8px;
+      border-radius: 3px;
+      cursor: pointer;
+      letter-spacing: 0.04em;
+      transition: all 0.15s;
+      white-space: nowrap;
+    }
+    .conn-btn:hover {
+      color: var(--accent-blue);
+      border-color: var(--accent-blue);
+      background: rgba(74, 158, 255, 0.1);
+    }
+    .conn-btn.danger:hover {
+      color: var(--accent-red);
+      border-color: var(--accent-red);
+      background: rgba(231, 76, 60, 0.1);
+    }
+    .conn-meta {
+      color: var(--text-dim);
+      font-size: 0.85em;
+    }
     .empty-state {
       text-align: center; padding: 30px;
       color: var(--text-dim); font-size: 0.8em;
@@ -409,13 +474,29 @@
         el.innerHTML = '<span class="empty-state" style="padding:8px">No screens connected</span>';
         return;
       }
-      el.innerHTML = screens.map(s => `
-        <div class="conn-chip">
+      el.innerHTML = screens.map(s => {
+        const pageOptions = pages.map(p =>
+          `<option value="${p.id}" ${p.file === s.page ? 'selected' : ''}>${p.icon} ${p.name}</option>`
+        ).join('');
+        // Find page name for display
+        const pg = pages.find(p => p.file === s.page);
+        const uptime = s.connected_at ? timeSince(s.connected_at) : '';
+        return `
+        <div class="conn-screen">
           <span class="screen-dot online"></span>
-          <span style="color:var(--text-bright)">${s.screen_id}</span>
-          <span style="color:var(--text-dim)">${s.page || '—'}</span>
+          <span class="conn-id">${s.screen_id}</span>
+          <select class="conn-page-select" onchange="navigateScreen('${s.screen_id}', this.value)">
+            <option value="" disabled ${!s.page ? 'selected' : ''}>— select page —</option>
+            ${pageOptions}
+          </select>
+          <span class="conn-meta">${uptime}</span>
+          <div class="conn-actions">
+            <button class="conn-btn" onclick="openScreen('${s.screen_id}')" title="Open screen in new tab">OPEN ↗</button>
+            <button class="conn-btn" onclick="sendFullscreen('${s.screen_id}')" title="Send fullscreen command">⛶ FS</button>
+            <button class="conn-btn" onclick="identifyScreen('${s.screen_id}')" title="Flash screen to identify">ID</button>
+          </div>
         </div>
-      `).join('');
+      `}).join('');
     }
 
     function renderRooms() {
@@ -451,12 +532,17 @@
                   const pg = pageMap[sc.static_page];
                   const pageName = pg ? pg.name : (sc.static_page || '—');
                   const pageIcon = pg ? pg.icon : '';
+                  const pageOptions = pages.map(p =>
+                    `<option value="${p.id}" ${p.id === sc.static_page ? 'selected' : ''}>${p.icon} ${p.name}</option>`
+                  ).join('');
                   return `
                     <div class="screen-row">
                       <span class="screen-dot ${online ? 'online' : 'offline'}"></span>
                       <span class="screen-id">${sc.screen_id}</span>
                       ${sc.label ? `<span class="screen-label">${sc.label}</span>` : ''}
-                      <span class="screen-page">${pageIcon} ${pageName}</span>
+                      <select class="screen-page-select" onchange="changeScreenPage('${z.id}','${sc.screen_id}', this.value)">
+                        ${pageOptions}
+                      </select>
                       <span class="screen-remove" onclick="unassignScreen('${z.id}','${sc.screen_id}')" title="Remove screen">✕</span>
                     </div>
                   `;
@@ -684,6 +770,69 @@
       if (!confirm(`Remove screen "${screenId}" from this zone?`)) return;
       await api('DELETE', `/api/zones/${zoneId}/screens/${screenId}`);
       await loadAll();
+    }
+
+    async function changeScreenPage(zoneId, screenId, newPageId) {
+      // Find the existing screen config to preserve label
+      let existingLabel = '';
+      for (const room of rooms) {
+        for (const z of room.zones || []) {
+          if (z.id === zoneId) {
+            const sc = (z.screens || []).find(s => s.screen_id === screenId);
+            if (sc) existingLabel = sc.label || '';
+          }
+        }
+      }
+      // Update the zone assignment with the new page
+      await api('POST', `/api/zones/${zoneId}/screens`, {
+        screen_id: screenId,
+        page_id: newPageId,
+        label: existingLabel
+      });
+      // Also navigate the screen live if it's connected
+      try {
+        await api('POST', `/api/screens/${screenId}/navigate`, { page: newPageId });
+      } catch(e) { /* screen may not be connected */ }
+      await loadAll();
+    }
+
+    // ── Connected Screen Actions ─────────────────────────
+    function timeSince(isoStr) {
+      if (!isoStr) return '';
+      const sec = Math.floor((Date.now() - new Date(isoStr).getTime()) / 1000);
+      if (sec < 60) return `${sec}s`;
+      const min = Math.floor(sec / 60);
+      if (min < 60) return `${min}m`;
+      const hr = Math.floor(min / 60);
+      return `${hr}h ${min % 60}m`;
+    }
+
+    async function navigateScreen(screenId, pageId) {
+      try {
+        await api('POST', `/api/screens/${screenId}/navigate`, { page: pageId });
+      } catch(e) {
+        alert(`Failed to navigate ${screenId}: ${e.message}`);
+      }
+    }
+
+    function openScreen(screenId) {
+      window.open(`/?id=${screenId}`, `screen_${screenId}`);
+    }
+
+    async function sendFullscreen(screenId) {
+      // Send a fullscreen command via the navigate API with a special flag
+      try {
+        await api('POST', `/api/screens/${screenId}/navigate`, { page: '__fullscreen__' });
+      } catch(e) {
+        // Fallback: just note it
+        alert(`Fullscreen command sent to ${screenId}`);
+      }
+    }
+
+    async function identifyScreen(screenId) {
+      try {
+        await api('POST', `/api/screens/${screenId}/navigate`, { page: '__identify__' });
+      } catch(e) {}
     }
 
     // ── Add Page ────────────────────────────────────────

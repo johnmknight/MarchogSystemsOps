@@ -40,16 +40,16 @@ app_state = {
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    print("⚡ MarchogSystemsOps Server starting...")
+    print("[*] MarchogSystemsOps Server starting...")
     await init_db()
-    print("✅ Database initialized")
+    print("[+] Database initialized")
     # Auto-discover new pages in client/pages/
     pages_dir = CLIENT_DIR / "pages"
     discovered = await scan_pages_directory(pages_dir)
     if discovered:
-        print(f"✅ Auto-registered {len(discovered)} new page(s): {', '.join(discovered)}")
+        print(f"[+] Auto-registered {len(discovered)} new page(s): {', '.join(discovered)}")
     else:
-        print("✅ All pages up to date")
+        print("[+] All pages up to date")
     yield
     print("MarchogSystemsOps Server shutting down...")
 
@@ -95,6 +95,8 @@ class ZoneScreenAssign(BaseModel):
     page_id: str
     label: str = ""
 
+class NavigateCommand(BaseModel):
+    page: str
 
 class PageCreate(BaseModel):
     id: str
@@ -336,16 +338,16 @@ async def api_screens():
     return screens
 
 @app.post("/api/screens/{screen_id}/navigate")
-async def api_navigate_screen(screen_id: str, page: str):
+async def api_navigate_screen(screen_id: str, cmd: NavigateCommand):
     """Send a navigation command to a specific screen."""
     if screen_id in app_state["screens"]:
         ws = app_state["screens"][screen_id]["ws"]
         try:
             await ws.send_json({
                 "type": "navigate",
-                "page": page
+                "page": cmd.page
             })
-            return {"status": "sent", "page": page}
+            return {"status": "sent", "page": cmd.page}
         except Exception as e:
             raise HTTPException(500, f"Failed to send: {e}")
     raise HTTPException(404, "Screen not connected")
@@ -356,7 +358,7 @@ async def api_navigate_screen(screen_id: str, page: str):
 @app.websocket("/ws/screen/{screen_id}")
 async def ws_screen(websocket: WebSocket, screen_id: str):
     await websocket.accept()
-    print(f"⚡ Screen '{screen_id}' connected")
+    print(f"[*] Screen '{screen_id}' connected")
 
     # Register screen
     app_state["screens"][screen_id] = {
@@ -398,9 +400,9 @@ async def ws_screen(websocket: WebSocket, screen_id: str):
                 app_state["screens"][screen_id]["playlist_index"] = int(idx)
 
     except WebSocketDisconnect:
-        print(f"📡 Screen '{screen_id}' disconnected")
+        print(f"[~] Screen '{screen_id}' disconnected")
     except Exception as e:
-        print(f"❌ Screen '{screen_id}' error: {e}")
+        print(f"[!] Screen '{screen_id}' error: {e}")
     finally:
         app_state["screens"].pop(screen_id, None)
 
