@@ -1,0 +1,56 @@
+[
+  {
+    "id": "hyperspace",
+    "name": "Hyperspace",
+    "description": "Star Wars hyperspace jump effect",
+    "file": "hyperspace.html",
+    "icon": "⟐",
+    "category": "ambient",
+    "params": {}
+  },
+  {
+    "id": "viewfinder",
+    "name": "Viewfinder",
+    "description": "Targeting computer / camera viewfinder HUD",
+    "file": "viewfinder.html",
+    "icon": "◎",
+    "category": "hud",
+    "params": {}
+  },
+  {
+    "id": "standby",
+    "name": "Standby",
+    "description": "Marchog Systems maintenance / standby screen",
+    "file": "standby.html",
+    "icon": "⦿",
+    "category": "maintenance",
+    "params": {}
+  },
+  {
+    "id": "logo-3d",
+    "name": "3D Logo",
+    "description": "Marchog Systems animated 3D logo",
+    "file": "logo-3d.html",
+    "icon": "◈",
+    "category": "ambient",
+    "params": {}
+  },
+  {
+    "id": "video",
+    "name": "Video",
+    "description": "Video player with themed borders",
+    "file": "video.html",
+    "icon": "▶",
+    "category": "general",
+    "params": {}
+  },
+  {
+    "id": "hangar-scan",
+    "name": "Hangar Scan",
+    "description": "Auto-discovered: hangar-scan.html",
+    "file": "hangar-scan.html",
+    "icon": "◻",
+    "category": "general",
+    "params": {}
+  }
+]

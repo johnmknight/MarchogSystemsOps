@@ -539,7 +539,17 @@
         if (type === 'keydown') {
           this.handleKey(event.data);
         } else if (type === 'pageReady') {
-          console.log(`Page ready: ${event.data.page}`);
+          const pageId = event.data.page;
+          console.log(`Page ready: ${pageId}`);
+          // Send stored params to the page iframe via postMessage
+          const page = this.pages.find(p => p.id === pageId);
+          if (page && page.params && Object.keys(page.params).length > 0) {
+            const frame = this.loadedFrames[pageId];
+            if (frame && frame.contentWindow) {
+              frame.contentWindow.postMessage({ type: 'configure', ...page.params }, '*');
+              console.log(`Sent params to ${pageId}:`, page.params);
+            }
+          }
         }
       },
 

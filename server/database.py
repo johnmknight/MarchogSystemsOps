@@ -101,7 +101,6 @@ async def init_db():
         await _migrate_db(db)
 
         # Seed default pages
-        await seed_default_pages(db)
         # Seed a default scene
         await seed_default_scene(db)
 
@@ -117,22 +116,6 @@ async def _migrate_db(db):
             await db.commit()
     except Exception:
         pass
-
-
-async def seed_default_pages(db):
-    """Register the built-in pages."""
-    pages = [
-        ("hyperspace", "Hyperspace", "Star Wars hyperspace jump effect", "hyperspace.html", "⟐", "ambient"),
-        ("viewfinder", "Viewfinder", "Targeting computer / camera viewfinder HUD", "viewfinder.html", "◎", "hud"),
-        ("standby", "Standby", "Marchog Systems maintenance / standby screen", "standby.html", "⦿", "maintenance"),
-        ("logo-3d", "3D Logo", "Marchog Systems animated 3D logo", "logo-3d.html", "◈", "ambient"),
-    ]
-    for page in pages:
-        await db.execute("""
-            INSERT OR IGNORE INTO pages (id, name, description, file, icon, category)
-            VALUES (?, ?, ?, ?, ?, ?)
-        """, page)
-    await db.commit()
 
 
 async def seed_default_scene(db):
@@ -269,97 +252,6 @@ async def delete_zone(zone_id: str):
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("DELETE FROM zones WHERE id = ?", (zone_id,))
         await db.commit()
-
-
-# ── Page Operations ──────────────────────────────────────────
-
-async def get_all_pages():
-    """Get all registered pages."""
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        cursor = await db.execute("SELECT * FROM pages ORDER BY category, name")
-        rows = await cursor.fetchall()
-        return [dict(row) for row in rows]
-
-
-async def get_page(page_id: str):
-    """Get a single page by ID."""
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        cursor = await db.execute("SELECT * FROM pages WHERE id = ?", (page_id,))
-        row = await cursor.fetchone()
-        return dict(row) if row else None
-
-
-async def create_page(page_id: str, name: str, file: str, description: str = "", icon: str = "", category: str = "general"):
-    """Create a new page."""
-    async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute("""
-            INSERT INTO pages (id, name, description, file, icon, category)
-            VALUES (?, ?, ?, ?, ?, ?)
-        """, (page_id, name, description, file, icon, category))
-        await db.commit()
-
-
-async def update_page(page_id: str, name: str = None, description: str = None, icon: str = None, category: str = None):
-    """Update a page's fields."""
-    async with aiosqlite.connect(DB_PATH) as db:
-        fields, vals = [], []
-        if name is not None:
-            fields.append("name = ?")
-            vals.append(name)
-        if description is not None:
-            fields.append("description = ?")
-            vals.append(description)
-        if icon is not None:
-            fields.append("icon = ?")
-            vals.append(icon)
-        if category is not None:
-            fields.append("category = ?")
-            vals.append(category)
-        if fields:
-            vals.append(page_id)
-            await db.execute(f"UPDATE pages SET {', '.join(fields)} WHERE id = ?", vals)
-            await db.commit()
-
-
-async def delete_page(page_id: str):
-    """Delete a page."""
-    async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute("DELETE FROM pages WHERE id = ?", (page_id,))
-        await db.commit()
-
-
-async def scan_pages_directory(pages_dir: Path):
-    """Auto-discover HTML files in the pages directory and register any new ones."""
-    if not pages_dir.exists():
-        return []
-
-    discovered = []
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        # Get already-registered filenames
-        cursor = await db.execute("SELECT file FROM pages")
-        registered_files = {row["file"] for row in await cursor.fetchall()}
-
-        for html_file in sorted(pages_dir.glob("*.html")):
-            filename = html_file.name
-            if filename in registered_files:
-                continue
-            # Auto-generate id and name from filename
-            page_id = html_file.stem  # e.g. "my-page" from "my-page.html"
-            page_name = page_id.replace("-", " ").replace("_", " ").title()
-            await db.execute("""
-                INSERT OR IGNORE INTO pages (id, name, description, file, icon, category)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """, (page_id, page_name, f"Auto-discovered: {filename}", filename, "◻", "general"))
-            discovered.append(page_id)
-            print(f"  [+] Auto-registered page: {page_id} ({filename})")
-
-        if discovered:
-            await db.commit()
-
-    return discovered
 
 
 # ── Scene Operations ─────────────────────────────────────────

@@ -14,8 +14,7 @@ from typing import Optional
 import json
 
 from database import (
-    init_db, get_all_pages, get_page, create_page, update_page, delete_page,
-    scan_pages_directory,
+    init_db,
     get_all_scenes, get_scene, get_active_scene,
     create_scene, delete_scene, activate_scene,
     set_screen_config, remove_screen_config, get_screen_assignment,
@@ -23,6 +22,10 @@ from database import (
     get_zone, create_zone, update_zone, delete_zone,
     get_zone_screens, assign_screen_to_zone, unassign_screen_from_zone,
     get_rooms_with_screens,
+)
+from pages import (
+    get_all_pages, get_page, create_page, update_page, delete_page,
+    scan_pages_directory,
 )
 
 # Paths
@@ -45,7 +48,7 @@ async def lifespan(app: FastAPI):
     print("[+] Database initialized")
     # Auto-discover new pages in client/pages/
     pages_dir = CLIENT_DIR / "pages"
-    discovered = await scan_pages_directory(pages_dir)
+    discovered = scan_pages_directory(pages_dir)
     if discovered:
         print(f"[+] Auto-registered {len(discovered)} new page(s): {', '.join(discovered)}")
     else:
@@ -105,12 +108,14 @@ class PageCreate(BaseModel):
     description: str = ""
     icon: str = ""
     category: str = "general"
+    params: Optional[dict] = None
 
 class PageUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
     icon: Optional[str] = None
     category: Optional[str] = None
+    params: Optional[dict] = None
 
 
 class SceneCreate(BaseModel):
@@ -219,30 +224,30 @@ async def api_unassign_screen_from_zone(zone_id: str, screen_id: str):
     return {"status": "unassigned", "screen_id": screen_id}
 
 
-# ── API: Pages ───────────────────────────────────────────────
+# ── API: Pages (JSON-backed) ─────────────────────────────────
 
 @app.get("/api/pages")
 async def api_pages():
     """List all available pages."""
-    return await get_all_pages()
+    return get_all_pages()
 
 @app.post("/api/pages")
 async def api_create_page(page: PageCreate):
     """Register a new page."""
-    await create_page(page.id, page.name, page.file, page.description, page.icon, page.category)
+    create_page(page.id, page.name, page.file, page.description, page.icon, page.category, page.params)
     return {"status": "created", "id": page.id}
 
 @app.post("/api/pages/scan")
 async def api_scan_pages():
     """Re-scan pages directory for new HTML files."""
     pages_dir = CLIENT_DIR / "pages"
-    discovered = await scan_pages_directory(pages_dir)
+    discovered = scan_pages_directory(pages_dir)
     return {"status": "scanned", "discovered": discovered}
 
 @app.get("/api/pages/{page_id}")
 async def api_page(page_id: str):
     """Get a single page."""
-    page = await get_page(page_id)
+    page = get_page(page_id)
     if not page:
         raise HTTPException(404, "Page not found")
     return page
@@ -250,13 +255,13 @@ async def api_page(page_id: str):
 @app.put("/api/pages/{page_id}")
 async def api_update_page(page_id: str, data: PageUpdate):
     """Update a page's metadata."""
-    await update_page(page_id, data.name, data.description, data.icon, data.category)
+    update_page(page_id, data.name, data.description, data.icon, data.category, data.params)
     return {"status": "updated"}
 
 @app.delete("/api/pages/{page_id}")
 async def api_delete_page(page_id: str):
     """Delete a page registration."""
-    await delete_page(page_id)
+    delete_page(page_id)
     return {"status": "deleted"}
 
 
