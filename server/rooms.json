@@ -3,28 +3,28 @@
     "id": "smugglers-room",
     "name": "Smugglers Room",
     "description": "Main Area",
-    "icon": "🚀",
+    "icon": "ti-rocket",
     "sort_order": 1,
     "zones": [
       {
         "id": "bar",
         "name": "Bar",
         "description": "",
-        "icon": "📍",
+        "icon": "ti-map-pin",
         "sort_order": 1
       },
       {
         "id": "airlock-door",
         "name": "Airlock Door",
         "description": "",
-        "icon": "📍",
+        "icon": "ti-map-pin",
         "sort_order": 2
       },
       {
         "id": "falcon-bench",
         "name": "Falcon Bench",
         "description": "",
-        "icon": "📍",
+        "icon": "ti-map-pin",
         "sort_order": 3
       }
     ]

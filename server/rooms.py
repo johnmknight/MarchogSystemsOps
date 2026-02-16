@@ -38,7 +38,7 @@ def get_room(room_id: str) -> dict | None:
     return None
 
 
-def create_room(room_id: str, name: str, description: str = "", icon: str = "🚀"):
+def create_room(room_id: str, name: str, description: str = "", icon: str = "ti-rocket"):
     """Create a new room."""
     rooms = _read_rooms()
     if any(r["id"] == room_id for r in rooms):
@@ -95,7 +95,7 @@ def get_zone(zone_id: str) -> dict | None:
     return None
 
 
-def create_zone(zone_id: str, room_id: str, name: str, description: str = "", icon: str = "📍"):
+def create_zone(zone_id: str, room_id: str, name: str, description: str = "", icon: str = "ti-map-pin"):
     """Create a zone within a room."""
     rooms = _read_rooms()
     for r in rooms:

@@ -76,7 +76,7 @@ class RoomCreate(BaseModel):
     id: str
     name: str
     description: str = ""
-    icon: str = "🚀"
+    icon: str = "ti-rocket"
 
 class RoomUpdate(BaseModel):
     name: Optional[str] = None
@@ -88,7 +88,7 @@ class ZoneCreate(BaseModel):
     room_id: str
     name: str
     description: str = ""
-    icon: str = "📍"
+    icon: str = "ti-map-pin"
 
 class ZoneUpdate(BaseModel):
     name: Optional[str] = None

@@ -48,7 +48,7 @@ def create_page(page_id: str, name: str, file: str, description: str = "",
         "name": name,
         "description": description,
         "file": file,
-        "icon": icon or "◻",
+        "icon": icon or "ti-file",
         "category": category,
         "params": params or {}
     })
@@ -105,7 +105,7 @@ def scan_pages_directory(pages_dir: Path) -> list[str]:
             "name": page_name,
             "description": f"Auto-discovered: {filename}",
             "file": filename,
-            "icon": "◻",
+            "icon": "ti-file",
             "category": "general",
             "params": {}
         })

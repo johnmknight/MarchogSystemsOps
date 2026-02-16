@@ -19,7 +19,7 @@ async def init_db():
                 id TEXT PRIMARY KEY,
                 name TEXT NOT NULL,
                 description TEXT DEFAULT '',
-                icon TEXT DEFAULT '🚀',
+                icon TEXT DEFAULT 'ti-rocket',
                 sort_order INTEGER DEFAULT 0,
                 created_at TEXT DEFAULT (datetime('now'))
             )
@@ -32,7 +32,7 @@ async def init_db():
                 room_id TEXT NOT NULL,
                 name TEXT NOT NULL,
                 description TEXT DEFAULT '',
-                icon TEXT DEFAULT '📍',
+                icon TEXT DEFAULT 'ti-map-pin',
                 sort_order INTEGER DEFAULT 0,
                 created_at TEXT DEFAULT (datetime('now')),
                 FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE

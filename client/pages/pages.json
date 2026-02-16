@@ -4,7 +4,7 @@
     "name": "Hyperspace",
     "description": "Star Wars hyperspace jump effect",
     "file": "hyperspace.html",
-    "icon": "⟐",
+    "icon": "ti-star",
     "category": "ambient",
     "params": {}
   },
@@ -13,7 +13,7 @@
     "name": "Viewfinder",
     "description": "Targeting computer / camera viewfinder HUD",
     "file": "viewfinder.html",
-    "icon": "◎",
+    "icon": "ti-viewfinder",
     "category": "hud",
     "params": {}
   },
@@ -22,7 +22,7 @@
     "name": "Standby",
     "description": "Marchog Systems maintenance / standby screen",
     "file": "standby.html",
-    "icon": "⦿",
+    "icon": "ti-circle-dot",
     "category": "maintenance",
     "params": {}
   },
@@ -31,7 +31,7 @@
     "name": "3D Logo",
     "description": "Marchog Systems animated 3D logo",
     "file": "logo-3d.html",
-    "icon": "◈",
+    "icon": "ti-diamond",
     "category": "ambient",
     "params": {}
   },
@@ -40,7 +40,7 @@
     "name": "Video",
     "description": "Video player with themed borders",
     "file": "video.html",
-    "icon": "▶",
+    "icon": "ti-player-play",
     "category": "general",
     "params": {}
   },
@@ -49,7 +49,7 @@
     "name": "Hangar Scan",
     "description": "Auto-discovered: hangar-scan.html",
     "file": "hangar-scan.html",
-    "icon": "◻",
+    "icon": "ti-scan",
     "category": "general",
     "params": {}
   }

@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>MarchogSystemsOps — Config</title>
+  <link rel="stylesheet" href="fonts/tabler-icons.min.css">
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700&family=Share+Tech+Mono&display=swap');
 
@@ -410,7 +411,7 @@
     <div class="section">
       <div class="section-head">
         <div class="section-title">Connected Screens</div>
-        <button class="btn btn-sm" onclick="refreshAll()">↻ REFRESH</button>
+        <button class="btn btn-sm" onclick="refreshAll()"><i class="ti ti-refresh"></i> REFRESH</button>
       </div>
       <div class="connected-bar" id="connectedScreens">
         <span class="empty-state" style="padding:8px">Polling…</span>
@@ -517,8 +518,8 @@
           </select>
           <span class="conn-meta">${uptime}</span>
           <div class="conn-actions">
-            <button class="conn-btn" onclick="openScreen('${s.screen_id}')" title="Open screen in new tab">OPEN ↗</button>
-            <button class="conn-btn" onclick="sendFullscreen('${s.screen_id}')" title="Send fullscreen command">⛶ FS</button>
+            <button class="conn-btn" onclick="openScreen('${s.screen_id}')" title="Open screen in new tab">OPEN <i class="ti ti-external-link"></i></button>
+            <button class="conn-btn" onclick="sendFullscreen('${s.screen_id}')" title="Send fullscreen command"><i class="ti ti-arrows-maximize"></i> FS</button>
             <button class="conn-btn" onclick="identifyScreen('${s.screen_id}')" title="Flash screen to identify">ID</button>
           </div>
         </div>
@@ -556,7 +557,7 @@
       grid.innerHTML = `
         <div class="card" style="max-width:none">
           <div class="card-header">
-            <div class="card-icon">${room.icon}</div>
+            <div class="card-icon"><i class="ti ${room.icon}"></i></div>
             <div>
               <div class="card-name">${room.name}</div>
               ${room.description ? `<div class="card-desc">${room.description}</div>` : ''}
@@ -566,7 +567,7 @@
           ${room.zones.map(z => `
             <div class="zone-block">
               <div class="zone-header">
-                <span class="zone-label">${z.icon} ${z.name}</span>
+                <span class="zone-label"><i class="ti ${z.icon}"></i> ${z.name}</span>
                 <span class="zone-delete-btn" onclick="deleteZone('${z.id}','${z.name}')" title="Delete zone">&#10005;</span>
               </div>
               <div class="screen-list">
@@ -618,18 +619,18 @@
       grid.innerHTML = pages.map(p => `
         <div class="card" style="padding:12px">
           <div class="card-header" style="margin-bottom:4px">
-            <div class="card-icon">${p.icon || '◻'}</div>
+            <div class="card-icon"><i class="ti ${p.icon || 'ti-file'}"></i></div>
             <div style="flex:1">
               <div class="card-name">${p.name}</div>
               <div class="card-desc">${p.description}</div>
               <div class="card-desc" style="color:var(--accent-blue);opacity:0.5">${p.file} · ${p.category}</div>
-              ${p.params && Object.keys(p.params).length > 0 ? `<div class="card-desc" style="color:var(--accent);font-size:11px;margin-top:2px">▶ ${p.params.border || 'none'} · ${p.params.video ? (p.params.video.length > 40 ? p.params.video.slice(0,40)+'…' : p.params.video) : 'no video'}</div>` : ''}
+              ${p.params && Object.keys(p.params).length > 0 ? `<div class="card-desc" style="color:var(--accent);font-size:11px;margin-top:2px"><i class="ti ti-player-play"></i> ${p.params.border || 'none'} · ${p.params.video ? (p.params.video.length > 40 ? p.params.video.slice(0,40)+'…' : p.params.video) : 'no video'}</div>` : ''}
             </div>
           </div>
           <div class="card-actions">
             <button class="btn btn-sm" onclick="showEditPageModal('${p.id}')">EDIT</button>
             <button class="btn btn-sm btn-danger" onclick="deletePage('${p.id}','${p.name}')">DELETE</button>
-            <a href="/pages/${p.file}" target="_blank" class="btn btn-sm" style="text-decoration:none">PREVIEW ↗</a>
+            <a href="/pages/${p.file}" target="_blank" class="btn btn-sm" style="text-decoration:none">PREVIEW <i class="ti ti-external-link"></i></a>
           </div>
         </div>
       `).join('') + `
@@ -672,7 +673,7 @@
         </div>
         <div class="form-group">
           <label>Icon</label>
-          <input id="roomIcon" value="🚀" style="width:60px">
+          <input id="roomIcon" value="ti-rocket" style="width:120px">
         </div>
         <div class="form-group">
           <label>Description</label>
@@ -692,7 +693,7 @@
     async function submitRoom() {
       const name = document.getElementById('roomName').value.trim();
       const id = document.getElementById('roomId').value.trim();
-      const icon = document.getElementById('roomIcon').value.trim() || '🚀';
+      const icon = document.getElementById('roomIcon').value.trim() || 'ti-rocket';
       const desc = document.getElementById('roomDesc').value.trim();
       if (!name || !id) return;
 
@@ -715,7 +716,7 @@
         </div>
         <div class="form-group">
           <label>Icon</label>
-          <input id="zoneIcon" value="📍" style="width:60px">
+          <input id="zoneIcon" value="ti-map-pin" style="width:120px">
         </div>
         <div class="form-group">
           <label>Description</label>
@@ -733,7 +734,7 @@
       const name = document.getElementById('zoneName').value.trim();
       const id = document.getElementById('zoneId').value.trim();
       const roomId = document.getElementById('zoneRoomId').value;
-      const icon = document.getElementById('zoneIcon').value.trim() || '📍';
+      const icon = document.getElementById('zoneIcon').value.trim() || 'ti-map-pin';
       const desc = document.getElementById('zoneDesc').value.trim();
       if (!name || !id) return;
 
@@ -905,7 +906,7 @@
         </div>
         <div id="addVideoParams" style="display:none">
           <div style="border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:12px;background:rgba(255,200,0,0.03)">
-            <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--accent);margin-bottom:10px">▶ Video Configuration</div>
+            <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--accent);margin-bottom:10px"><i class="ti ti-player-play"></i> Video Configuration</div>
             <div class="form-group">
               <label>Video URL</label>
               <input id="pageVideoUrl" placeholder="YouTube URL or direct .mp4/.webm URL">
@@ -930,7 +931,7 @@
         <div style="display:flex;gap:10px">
           <div class="form-group" style="flex:0 0 80px">
             <label>Icon</label>
-            <input id="pageIcon" value="◻" style="width:60px">
+            <input id="pageIcon" value="ti-file" style="width:120px">
           </div>
           <div class="form-group" style="flex:1">
             <label>Category</label>
@@ -955,7 +956,7 @@
       const id = document.getElementById('pageId').value.trim();
       const file = document.getElementById('pageFile').value.trim();
       const desc = document.getElementById('pageDesc').value.trim();
-      const icon = document.getElementById('pageIcon').value.trim() || '◻';
+      const icon = document.getElementById('pageIcon').value.trim() || 'ti-file';
       const cat = document.getElementById('pageCat').value;
       if (!name || !id || !file) return;
 
@@ -1013,7 +1014,7 @@
         <input type="hidden" id="editPageFile" value="${p.file}">
         ${p.file === 'video.html' ? `
         <div style="border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:12px;background:rgba(255,200,0,0.03)">
-          <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--accent);margin-bottom:10px">▶ Video Configuration</div>
+          <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--accent);margin-bottom:10px"><i class="ti ti-player-play"></i> Video Configuration</div>
           <div class="form-group">
             <label>Video URL</label>
             <input id="editPageVideoUrl" value="${p.params?.video || ''}" placeholder="YouTube URL or direct .mp4/.webm URL">
