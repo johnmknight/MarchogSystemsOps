@@ -18,14 +18,16 @@ from database import (
     get_all_scenes, get_scene, get_active_scene,
     create_scene, delete_scene, activate_scene,
     set_screen_config, remove_screen_config, get_screen_assignment,
-    get_all_rooms, get_room, create_room, update_room, delete_room,
-    get_zone, create_zone, update_zone, delete_zone,
     get_zone_screens, assign_screen_to_zone, unassign_screen_from_zone,
     get_rooms_with_screens,
 )
 from pages import (
     get_all_pages, get_page, create_page, update_page, delete_page,
     scan_pages_directory,
+)
+from rooms import (
+    get_all_rooms, get_room, create_room, update_room, delete_room,
+    get_zone, create_zone, update_zone, delete_zone,
 )
 
 # Paths
@@ -131,25 +133,25 @@ class ScreenConfigUpdate(BaseModel):
     playlist: Optional[list] = None
 
 
-# ── API: Rooms ─────────────────────────────────────────
+# ── API: Rooms (JSON-backed) ─────────────────────────────────
 
 @app.get("/api/rooms")
 async def api_rooms(include_screens: bool = True):
     """List all rooms with their zones and screen assignments."""
     if include_screens:
         return await get_rooms_with_screens()
-    return await get_all_rooms()
+    return get_all_rooms()
 
 @app.post("/api/rooms")
 async def api_create_room(room: RoomCreate):
     """Create a new room."""
-    await create_room(room.id, room.name, room.description, room.icon)
+    create_room(room.id, room.name, room.description, room.icon)
     return {"status": "created", "id": room.id}
 
 @app.get("/api/rooms/{room_id}")
 async def api_room(room_id: str):
     """Get a room with zones."""
-    room = await get_room(room_id)
+    room = get_room(room_id)
     if not room:
         raise HTTPException(404, "Room not found")
     return room
@@ -157,28 +159,28 @@ async def api_room(room_id: str):
 @app.put("/api/rooms/{room_id}")
 async def api_update_room(room_id: str, data: RoomUpdate):
     """Update a room."""
-    await update_room(room_id, data.name, data.description, data.icon)
+    update_room(room_id, data.name, data.description, data.icon)
     return {"status": "updated"}
 
 @app.delete("/api/rooms/{room_id}")
 async def api_delete_room(room_id: str):
     """Delete a room and its zones."""
-    await delete_room(room_id)
+    delete_room(room_id)
     return {"status": "deleted"}
 
 
-# ── API: Zones ─────────────────────────────────────────
+# ── API: Zones (JSON-backed) ─────────────────────────────────
 
 @app.post("/api/zones")
 async def api_create_zone(zone: ZoneCreate):
     """Create a zone within a room."""
-    await create_zone(zone.id, zone.room_id, zone.name, zone.description, zone.icon)
+    create_zone(zone.id, zone.room_id, zone.name, zone.description, zone.icon)
     return {"status": "created", "id": zone.id}
 
 @app.get("/api/zones/{zone_id}")
 async def api_zone(zone_id: str):
     """Get a zone."""
-    zone = await get_zone(zone_id)
+    zone = get_zone(zone_id)
     if not zone:
         raise HTTPException(404, "Zone not found")
     return zone
@@ -186,13 +188,13 @@ async def api_zone(zone_id: str):
 @app.put("/api/zones/{zone_id}")
 async def api_update_zone(zone_id: str, data: ZoneUpdate):
     """Update a zone."""
-    await update_zone(zone_id, data.name, data.description, data.icon)
+    update_zone(zone_id, data.name, data.description, data.icon)
     return {"status": "updated"}
 
 @app.delete("/api/zones/{zone_id}")
 async def api_delete_zone(zone_id: str):
     """Delete a zone."""
-    await delete_zone(zone_id)
+    delete_zone(zone_id)
     return {"status": "deleted"}
 
 

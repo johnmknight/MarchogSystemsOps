@@ -130,130 +130,6 @@ async def seed_default_scene(db):
         await db.commit()
 
 
-# ── Room Operations ──────────────────────────────────────────
-
-async def get_all_rooms():
-    """Get all rooms with their zones."""
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        cursor = await db.execute("SELECT * FROM rooms ORDER BY sort_order, name")
-        rooms = [dict(row) for row in await cursor.fetchall()]
-        for room in rooms:
-            cursor = await db.execute(
-                "SELECT * FROM zones WHERE room_id = ? ORDER BY sort_order, name",
-                (room["id"],)
-            )
-            room["zones"] = [dict(row) for row in await cursor.fetchall()]
-        return rooms
-
-
-async def get_room(room_id: str):
-    """Get a room with its zones."""
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        cursor = await db.execute("SELECT * FROM rooms WHERE id = ?", (room_id,))
-        row = await cursor.fetchone()
-        if not row:
-            return None
-        room = dict(row)
-        cursor = await db.execute(
-            "SELECT * FROM zones WHERE room_id = ? ORDER BY sort_order, name",
-            (room_id,)
-        )
-        room["zones"] = [dict(row) for row in await cursor.fetchall()]
-        return room
-
-
-async def create_room(room_id: str, name: str, description: str = "", icon: str = "🚀"):
-    """Create a new room."""
-    async with aiosqlite.connect(DB_PATH) as db:
-        cursor = await db.execute("SELECT MAX(sort_order) FROM rooms")
-        max_order = (await cursor.fetchone())[0] or 0
-        await db.execute(
-            "INSERT INTO rooms (id, name, description, icon, sort_order) VALUES (?, ?, ?, ?, ?)",
-            (room_id, name, description, icon, max_order + 1)
-        )
-        await db.commit()
-
-
-async def update_room(room_id: str, name: str = None, description: str = None, icon: str = None):
-    """Update a room's fields."""
-    async with aiosqlite.connect(DB_PATH) as db:
-        fields, vals = [], []
-        if name is not None:
-            fields.append("name = ?")
-            vals.append(name)
-        if description is not None:
-            fields.append("description = ?")
-            vals.append(description)
-        if icon is not None:
-            fields.append("icon = ?")
-            vals.append(icon)
-        if fields:
-            vals.append(room_id)
-            await db.execute(f"UPDATE rooms SET {', '.join(fields)} WHERE id = ?", vals)
-            await db.commit()
-
-
-async def delete_room(room_id: str):
-    """Delete a room and its zones (cascade)."""
-    async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute("PRAGMA foreign_keys = ON")
-        await db.execute("DELETE FROM rooms WHERE id = ?", (room_id,))
-        await db.commit()
-
-
-# ── Zone Operations ──────────────────────────────────────────
-
-async def get_zone(zone_id: str):
-    """Get a zone."""
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        cursor = await db.execute("SELECT * FROM zones WHERE id = ?", (zone_id,))
-        row = await cursor.fetchone()
-        return dict(row) if row else None
-
-
-async def create_zone(zone_id: str, room_id: str, name: str, description: str = "", icon: str = "📍"):
-    """Create a zone within a room."""
-    async with aiosqlite.connect(DB_PATH) as db:
-        cursor = await db.execute(
-            "SELECT MAX(sort_order) FROM zones WHERE room_id = ?", (room_id,)
-        )
-        max_order = (await cursor.fetchone())[0] or 0
-        await db.execute(
-            "INSERT INTO zones (id, room_id, name, description, icon, sort_order) VALUES (?, ?, ?, ?, ?, ?)",
-            (zone_id, room_id, name, description, icon, max_order + 1)
-        )
-        await db.commit()
-
-
-async def update_zone(zone_id: str, name: str = None, description: str = None, icon: str = None):
-    """Update a zone's fields."""
-    async with aiosqlite.connect(DB_PATH) as db:
-        fields, vals = [], []
-        if name is not None:
-            fields.append("name = ?")
-            vals.append(name)
-        if description is not None:
-            fields.append("description = ?")
-            vals.append(description)
-        if icon is not None:
-            fields.append("icon = ?")
-            vals.append(icon)
-        if fields:
-            vals.append(zone_id)
-            await db.execute(f"UPDATE zones SET {', '.join(fields)} WHERE id = ?", vals)
-            await db.commit()
-
-
-async def delete_zone(zone_id: str):
-    """Delete a zone."""
-    async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute("DELETE FROM zones WHERE id = ?", (zone_id,))
-        await db.commit()
-
-
 # ── Scene Operations ─────────────────────────────────────────
 
 async def get_all_scenes():
@@ -467,6 +343,12 @@ async def unassign_screen_from_zone(scene_id: str, screen_id: str):
 
 async def get_rooms_with_screens():
     """Get all rooms with zones and their screen assignments from the active scene."""
+    import rooms as rooms_module
+    room_list = rooms_module.get_all_rooms()
+    # Deep copy so we don't mutate the source
+    import copy
+    rooms = copy.deepcopy(room_list)
+
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
 
@@ -475,18 +357,8 @@ async def get_rooms_with_screens():
         active_row = await cursor.fetchone()
         active_scene_id = active_row["id"] if active_row else None
 
-        # Get rooms
-        cursor = await db.execute("SELECT * FROM rooms ORDER BY sort_order, name")
-        rooms = [dict(row) for row in await cursor.fetchall()]
-
         for room in rooms:
-            cursor = await db.execute(
-                "SELECT * FROM zones WHERE room_id = ? ORDER BY sort_order, name",
-                (room["id"],)
-            )
-            room["zones"] = [dict(row) for row in await cursor.fetchall()]
-
-            for zone in room["zones"]:
+            for zone in room.get("zones", []):
                 if active_scene_id:
                     cursor = await db.execute(
                         "SELECT * FROM screen_configs WHERE zone_id = ? AND scene_id = ? ORDER BY screen_id",
