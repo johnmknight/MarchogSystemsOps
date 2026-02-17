@@ -312,31 +312,43 @@ The Android kiosk app uses MQTT natively from day one.
 
 ## Implementation Phases
 
-### Phase 1: Broker + Server Integration
-- Install Mosquitto alongside server
-- Add `aiomqtt` (async MQTT client) to server dependencies
-- Server connects to broker on startup
-- Server publishes automation results to MQTT topics
-- Server subscribes to `marchog/action/#` for external triggers
-- Existing WebSocket flow unchanged — server bridges MQTT → WebSocket
+### Phase 1: Broker + Server Integration ✅ COMPLETE (commit f7b0517)
+- Mosquitto installed via winget, config at `server/mosquitto.conf`
+- MQTT listener :1883, WebSocket listener :9001
+- `aiomqtt` 2.5.0 integrated via `server/mqtt_bus.py`
+- Windows-compatible: dedicated SelectorEventLoop thread (uvicorn uses ProactorEventLoop)
+- Thread-safe publish queue bridges main loop ↔ MQTT loop
+- Server connects on startup, auto-reconnects with exponential backoff
+- Subscribes to `marchog/action/#`, `event/#`, `sensor/#`, `heartbeat/#`
+- MQTT→WebSocket bridge forwards navigate messages to matching screens
+- Module-level singleton API: `start()`, `stop()`, `publish()`, `is_connected()`, `status()`
+- API: `GET /api/mqtt/status`, `POST /api/mqtt/publish` (test endpoint)
 
-### Phase 2: Device Type Targeting
-- Add `device_type` and `device_type_secondary` to screen_configs
-- UI dropdown for device type selection
-- Automation editor: scope + filter → resolved to MQTT topics
-- Server subscribes on behalf of each browser screen based on its types
+### Phase 2: Device Type Targeting ✅ COMPLETE (commit a98d33f)
+- 30 device types across 8 categories defined in `DEVICE_TYPES` constant
+- `device_type` + `device_type_secondary` columns added to `screen_configs` (auto-migrated)
+- `update_screen_device_type()` DB function
+- `PATCH /api/screens/{id}/device-type` endpoint
+- `GET /api/device-types` returns full taxonomy
+- `screen_meta` dict populated at WebSocket connect for MQTT topic matching
+- Config UI: device type badge on screen cards, modal with primary radio + secondary dropdown
+- Topic matching: screen receives message if primary OR secondary type matches
 
-### Phase 3: Heartbeat + State
-- Screens publish heartbeat every 30s via server bridge
-- Server monitors heartbeats, publishes offline alerts
-- Retained messages for current state — new devices get instant state
-- Config UI shows health status from heartbeat data
+### Phase 3: Heartbeat + State ✅ COMPLETE (commit 35ec7ae)
+- State publishing: `marchog/state/{screen_id}` retained on every page change
+- Heartbeat: `marchog/heartbeat/{screen_id}` retained on every ping
+- `last_seen` timestamp tracked in `app_state` for every screen
+- Background `_health_monitor` task: checks every 30s, publishes `marchog/alert/stale-screen` for screens >90s since last ping
+- `GET /api/health/screens` endpoint: per-screen status, page, uptime, last_seen, device_type, zone, room
+- Config UI: Device Health section with MQTT badge, health card grid, auto-refresh 30s
+- Fixed: offline heartbeat now publishes to correct `marchog/heartbeat/{id}` topic (was missing prefix)
 
-### Phase 4: Physical Devices
-- ESP32 button example with Arduino sketch
-- ESP32 LED strip example with NeoPixel
-- Document topic conventions for hardware builders
-- Test: button press → automation → screens + lights respond
+### Phase 4: Physical Devices → **ESP32 PROXY** (next)
+- **New approach**: Python-based ESP32 simulator/proxy on dev machine
+- Simulates button presses, sensor events, LED responses without physical hardware
+- Allows full MQTT integration testing before ESP32s arrive
+- Once hardware is available, swap proxy for real Arduino sketches
+- See `docs/ESP32_PROXY.md` for design
 
 ### Phase 5: Choreography
 - Timed sequence support in automations

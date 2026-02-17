@@ -7,7 +7,7 @@ Star Wars inspired multi-screen display controller for themed room builds. Manag
 ```
 client/
   index.html              # Shell — iframe manager, WebSocket, playlists
-  config.html             # Control panel — rooms, zones, screens, pages
+  config.html             # Control panel — screens, rooms, pages, automations
   fonts/                  # Tabler Icons + Aurebesh font families
   pages/                  # Individual page files (loaded as iframes)
     pages.json            # Page registry with params (JSON, not DB)
@@ -17,12 +17,21 @@ client/
     logo-3d.html          # Animated 3D Marchog Systems logo
     video.html            # Video player (YouTube/MP4) + themed borders
     hangar-scan.html      # 3D wireframe perspective scanner
+    selfdestruct.html     # Countdown timer with configurable abort
 server/
-  main.py                 # FastAPI + WebSocket screen management
-  database.py             # SQLite: scenes, screen_configs, playlists
+  main.py                 # FastAPI + WebSocket + MQTT bridge + health monitor
+  database.py             # SQLite: scenes, screen_configs, playlists, device types
+  mqtt_bus.py             # MQTT client (threaded SelectorEventLoop for Windows)
   pages.py                # JSON-backed page CRUD
   rooms.py                # JSON-backed room/zone CRUD
-  rooms.json              # Room & zone definitions
+  automations.json        # Automation definitions (triggers + actions)
+  mosquitto.conf          # Mosquitto broker config (MQTT :1883, WS :9001)
+docs/
+  PUBSUB_ARCHITECTURE.md  # MQTT message bus design + implementation status
+  ESP32_PROXY.md          # Virtual hardware simulator design
+  SCREEN_DEVICE_TYPES.md  # 30 device types across 8 categories
+  ARCHITECTURE_DIAGRAMS.html  # C4 diagrams, topic tree, message flows
+  KIOSK_APP_REQUIREMENTS.md   # Android kiosk app spec
 ```
 
 ## Key Concepts
@@ -41,6 +50,18 @@ Ordered lists of pages with durations and transitions. Screens in playlist mode 
 
 ### Screen Management
 Each browser window connects as a named screen via `?id=screen-name`. Screens register over WebSocket for real-time bidirectional control. The config panel shows all connected screens with live status, page assignment dropdowns, and remote commands (fullscreen, identify flash).
+
+### Device Types
+Each screen is assigned a primary device type (and optional secondary) from a taxonomy of 30 types across 8 categories: Access & Security, Navigation & Command, Engineering & Systems, Viewport & Atmospheric, Entertainment & Media, Display & Collection, Utility & Personal, Specialized. Device types enable group targeting — an automation can address all `door-panel` screens without knowing their IDs.
+
+### MQTT Message Bus
+Mosquitto broker runs alongside the server. All communication flows through MQTT topics organized by scope: `marchog/screen/{id}`, `marchog/type/{device_type}`, `marchog/zone/{zone_id}`, `marchog/room/{room_id}`, `marchog/all`. The server bridges MQTT ↔ WebSocket for browser screens. ESP32 devices, Raspberry Pi audio controllers, and LED strips connect directly to the broker via native MQTT.
+
+### Automations
+Named actions that trigger page navigation, lighting changes, audio cues, or prop control. Automations can target screens by ID, device type, zone, room, or broadcast. Stored in `automations.json` with trigger definitions and action lists.
+
+### Health Monitoring
+Server tracks `last_seen` timestamps for every screen. Background health monitor publishes stale-screen alerts via MQTT. Retained messages on `marchog/state/{id}` and `marchog/heartbeat/{id}` ensure new devices get current state on subscribe.
 
 ### Icons
 All UI icons use [Tabler Icons](https://tabler.io/icons) webfont (MIT licensed). Icon values are stored as class names (e.g. `ti-rocket`, `ti-player-play`) in JSON configs and rendered as `<i class="ti ti-xxx">` elements. No emoji anywhere in the UI.
@@ -98,6 +119,16 @@ Pages can receive configuration via postMessage. When a page sends `pageReady`, 
 | `DELETE /api/scenes/{sid}/screens/{scr}` | Remove screen from scene |
 | `GET /api/screens` | List connected screens |
 | `POST /api/screens/{id}/navigate` | Send navigation command |
+| `PATCH /api/screens/{id}/device-type` | Update device type (primary + secondary) |
+| `GET /api/device-types` | Full device type taxonomy (30 types, 8 categories) |
+| `GET /api/automations` | List all automations |
+| `POST /api/automations` | Create automation |
+| `PUT /api/automations/{id}` | Update automation |
+| `DELETE /api/automations/{id}` | Delete automation |
+| `POST /api/automations/{id}/run` | Execute automation |
+| `GET /api/mqtt/status` | MQTT broker connection status |
+| `POST /api/mqtt/publish` | Publish to MQTT topic (testing) |
+| `GET /api/health/screens` | Per-screen health: status, page, uptime, device type |
 | `WS /ws/screen/{id}` | Screen WebSocket connection |
 
 ## Quick Start
@@ -129,30 +160,38 @@ The config panel (`/config`) provides:
 
 ## Roadmap
 
-### Near-term
-- Scene management UI in config panel (create, edit, activate, delete scenes)
-- Playlist management UI (build playlists from page library, set durations/transitions)
-- Local font hosting (replace Google Fonts CDN with self-hosted woff2 for offline kiosk)
-- End-to-end testing of video params flow across all entry points
+### Completed
+- MQTT message bus with Mosquitto broker + threaded Python client
+- 30 device types with primary/secondary assignment and group targeting
+- Heartbeat, state publishing, health monitoring with stale detection
+- Automation engine with run/edit/create from config UI
+- Self-destruct countdown page with configurable abort
+- Page thumbnail generation with Playwright
+- PWA manifest for kiosk deployment
 
-### Medium-term
-- Home Assistant integration — two-way scene triggers (Marchog scene change → HA automation, HA event → Marchog scene)
-- Remote media management — push video files to client devices from control panel for local playback
-- Screen health monitoring — heartbeat tracking, auto-reconnect status, uptime dashboard
+### Next: ESP32 Proxy
+Python-based virtual hardware simulator — test the full MQTT pipeline
+(buttons → automations → screens + lights + audio) without physical
+ESP32 boards. See `docs/ESP32_PROXY.md`.
 
-### Long-term
-- Live data pages — weather, news, ISS tracking, flight radar, stock tickers rendered in themed displays
-- Audio/ambience coordination — scene changes trigger audio cues alongside screen transitions
-- Mobile-optimized config panel for phone-based room control
-- Plugin system for community-contributed page types
+### After: Choreography
+Timed sequences and chained automations for multi-device coordinated
+events (full self-destruct demo with lighting, audio, fog, props).
+
+### Later
+- Android kiosk app with native MQTT client
+- Home Assistant integration via MQTT bridge
+- Scene management UI improvements
+- Browser-direct MQTT.js (remove server bridge dependency)
 
 ## Tech Stack
 
-- **Server:** Python 3.12, FastAPI, uvicorn, aiosqlite
+- **Server:** Python 3.12, FastAPI, uvicorn, aiosqlite, aiomqtt
+- **Broker:** Mosquitto (MQTT :1883, WebSocket :9001)
 - **Client:** Vanilla JavaScript, HTML5 Canvas, CSS3
 - **Fonts:** Tabler Icons (MIT), Aurebesh family (8 styles), Orbitron, Share Tech Mono
-- **Data:** SQLite (scenes/configs) + JSON files (pages/rooms)
-- **Comms:** WebSocket (real-time screen control), REST API (CRUD)
+- **Data:** SQLite (scenes/configs/device types) + JSON files (pages/rooms/automations)
+- **Comms:** MQTT (device bus) + WebSocket (browser screens) + REST API (CRUD)
 
 ## Port: 8082
 
