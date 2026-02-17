@@ -108,11 +108,15 @@ async def init_db():
 async def _migrate_db(db):
     """Run migrations for existing databases."""
     # Add zone_id to screen_configs if missing
+    # Add params_override column if missing
     try:
         cursor = await db.execute("PRAGMA table_info(screen_configs)")
         cols = [row[1] for row in await cursor.fetchall()]
         if 'zone_id' not in cols:
             await db.execute("ALTER TABLE screen_configs ADD COLUMN zone_id TEXT DEFAULT NULL")
+            await db.commit()
+        if 'params_override' not in cols:
+            await db.execute("ALTER TABLE screen_configs ADD COLUMN params_override TEXT DEFAULT NULL")
             await db.commit()
     except Exception:
         pass
@@ -316,18 +320,20 @@ async def get_zone_screens(zone_id: str, scene_id: str = None):
         return [dict(row) for row in await cursor.fetchall()]
 
 
-async def assign_screen_to_zone(scene_id: str, screen_id: str, zone_id: str, page_id: str, label: str = ""):
+async def assign_screen_to_zone(scene_id: str, screen_id: str, zone_id: str, page_id: str, label: str = "", params_override: dict = None):
     """Assign a screen to a zone with a static page in the given scene."""
+    params_json = json.dumps(params_override) if params_override else None
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("""
-            INSERT INTO screen_configs (scene_id, screen_id, zone_id, label, mode, static_page)
-            VALUES (?, ?, ?, ?, 'static', ?)
+            INSERT INTO screen_configs (scene_id, screen_id, zone_id, label, mode, static_page, params_override)
+            VALUES (?, ?, ?, ?, 'static', ?, ?)
             ON CONFLICT(scene_id, screen_id) DO UPDATE SET
                 zone_id = excluded.zone_id,
                 label = excluded.label,
                 mode = excluded.mode,
-                static_page = excluded.static_page
-        """, (scene_id, screen_id, zone_id, label, page_id))
+                static_page = excluded.static_page,
+                params_override = excluded.params_override
+        """, (scene_id, screen_id, zone_id, label, page_id, params_json))
         await db.commit()
 
 
@@ -364,7 +370,15 @@ async def get_rooms_with_screens():
                         "SELECT * FROM screen_configs WHERE zone_id = ? AND scene_id = ? ORDER BY screen_id",
                         (zone["id"], active_scene_id)
                     )
-                    zone["screens"] = [dict(row) for row in await cursor.fetchall()]
+                    rows = [dict(row) for row in await cursor.fetchall()]
+                    # Parse params_override JSON
+                    for row in rows:
+                        if row.get("params_override"):
+                            try:
+                                row["params_override"] = json.loads(row["params_override"])
+                            except (json.JSONDecodeError, TypeError):
+                                row["params_override"] = None
+                    zone["screens"] = rows
                 else:
                     zone["screens"] = []
 

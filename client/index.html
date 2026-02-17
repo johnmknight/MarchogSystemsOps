@@ -197,6 +197,7 @@
       loadedFrames: {},       // {pageId: iframe element}
       currentPage: null,      // current page id
       currentPageIndex: 0,
+      screenParamsOverride: null,  // per-screen params override from navigate command
 
       // Playlist state
       playlistMode: false,
@@ -474,6 +475,10 @@
             }
             // Direct navigation command
             this.stopPlaylist();
+            // Store per-screen params override if provided
+            if (msg.params) {
+              this.screenParamsOverride = msg.params;
+            }
             this.showPage(msg.page);
             break;
 
@@ -542,13 +547,16 @@
         } else if (type === 'pageReady') {
           const pageId = event.data.page;
           console.log(`Page ready: ${pageId}`);
-          // Send stored params to the page iframe via postMessage
+          // Merge page default params + per-screen override
           const page = this.pages.find(p => p.id === pageId);
-          if (page && page.params && Object.keys(page.params).length > 0) {
+          const defaultParams = (page && page.params) ? { ...page.params } : {};
+          const override = this.screenParamsOverride || {};
+          const merged = { ...defaultParams, ...override };
+          if (Object.keys(merged).length > 0) {
             const frame = this.loadedFrames[pageId];
             if (frame && frame.contentWindow) {
-              frame.contentWindow.postMessage({ type: 'configure', ...page.params }, '*');
-              console.log(`Sent params to ${pageId}:`, page.params);
+              frame.contentWindow.postMessage({ type: 'configure', ...merged }, '*');
+              console.log(`Sent params to ${pageId}:`, merged);
             }
           }
         }

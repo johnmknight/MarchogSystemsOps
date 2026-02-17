@@ -99,9 +99,11 @@ class ZoneScreenAssign(BaseModel):
     screen_id: str
     page_id: str
     label: str = ""
+    params_override: dict = None
 
 class NavigateCommand(BaseModel):
     page: str
+    params: dict = None
 
 class PageCreate(BaseModel):
     id: str
@@ -211,7 +213,7 @@ async def api_assign_screen_to_zone(zone_id: str, data: ZoneScreenAssign):
     active = await get_active_scene()
     if not active:
         raise HTTPException(400, "No active scene")
-    await assign_screen_to_zone(active["id"], data.screen_id, zone_id, data.page_id, data.label)
+    await assign_screen_to_zone(active["id"], data.screen_id, zone_id, data.page_id, data.label, data.params_override)
     # Push assignment to screen if connected
     await push_assignment_to_screen(data.screen_id)
     return {"status": "assigned", "screen_id": data.screen_id, "zone_id": zone_id}
@@ -350,10 +352,13 @@ async def api_navigate_screen(screen_id: str, cmd: NavigateCommand):
     if screen_id in app_state["screens"]:
         ws = app_state["screens"][screen_id]["ws"]
         try:
-            await ws.send_json({
+            msg = {
                 "type": "navigate",
                 "page": cmd.page
-            })
+            }
+            if cmd.params:
+                msg["params"] = cmd.params
+            await ws.send_json(msg)
             return {"status": "sent", "page": cmd.page}
         except Exception as e:
             raise HTTPException(500, f"Failed to send: {e}")

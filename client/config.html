@@ -574,6 +574,8 @@
                 ${(z.screens || []).map(sc => {
                   const online = connectedIds.has(sc.screen_id);
                   const pg = pageMap[sc.static_page];
+                  const hasParams = pg && (pg.file === 'selfdestruct.html' || pg.file === 'video.html');
+                  const overrideInfo = sc.params_override ? JSON.stringify(sc.params_override) : '';
                   const pageOptions = pages.map(p =>
                     `<option value="${p.id}" ${p.id === sc.static_page ? 'selected' : ''}>${p.icon} ${p.name}</option>`
                   ).join('');
@@ -585,6 +587,8 @@
                       <select class="screen-page-select" onchange="changeScreenPage('${z.id}','${sc.screen_id}', this.value)">
                         ${pageOptions}
                       </select>
+                      ${hasParams ? `<button class="conn-btn" onclick="showScreenParamsModal('${z.id}','${sc.screen_id}','${sc.static_page}')" title="Page params override" style="font-size:12px;padding:2px 6px"><i class="ti ti-settings"></i></button>` : ''}
+                      ${overrideInfo ? `<span style="font-size:10px;color:var(--accent);opacity:0.6" title="${overrideInfo.replace(/"/g,'&quot;')}"><i class="ti ti-settings"></i></span>` : ''}
                       <span class="screen-remove" onclick="unassignScreen('${z.id}','${sc.screen_id}')" title="Remove screen">&#10005;</span>
                     </div>
                   `;
@@ -825,6 +829,128 @@
     async function changeScreenPage(zoneId, screenId, newPageId) {
       // Find the existing screen config to preserve label
       let existingLabel = '';
+      let existingOverride = null;
+      for (const room of rooms) {
+        for (const z of room.zones || []) {
+          if (z.id === zoneId) {
+            const sc = (z.screens || []).find(s => s.screen_id === screenId);
+            if (sc) {
+              existingLabel = sc.label || '';
+              // Clear override when changing to a different page
+              existingOverride = null;
+            }
+          }
+        }
+      }
+      // Update the zone assignment with the new page
+      await api('POST', `/api/zones/${zoneId}/screens`, {
+        screen_id: screenId,
+        page_id: newPageId,
+        label: existingLabel,
+        params_override: existingOverride
+      });
+      // Also navigate the screen live if it's connected
+      try {
+        await api('POST', `/api/screens/${screenId}/navigate`, { page: newPageId });
+      } catch(e) { /* screen may not be connected */ }
+      await loadAll();
+    }
+
+    // ── Screen Params Override Modal ─────────────────────
+    function showScreenParamsModal(zoneId, screenId, pageId) {
+      const pg = pages.find(p => p.id === pageId);
+      if (!pg) return;
+
+      // Find current override
+      let currentOverride = {};
+      for (const room of rooms) {
+        for (const z of room.zones || []) {
+          if (z.id === zoneId) {
+            const sc = (z.screens || []).find(s => s.screen_id === screenId);
+            if (sc && sc.params_override) currentOverride = sc.params_override;
+          }
+        }
+      }
+
+      // Merge page defaults + current override for display
+      const defaults = pg.params || {};
+      const merged = { ...defaults, ...currentOverride };
+
+      let paramsHtml = '';
+      if (pg.file === 'selfdestruct.html') {
+        paramsHtml = `
+          <div style="border:1px solid var(--border);border-radius:6px;padding:12px;background:rgba(200,60,40,0.03)">
+            <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#c83c28;margin-bottom:10px"><i class="ti ti-alert-triangle"></i> Self Destruct Override</div>
+            <div class="form-group">
+              <label>Countdown (seconds)</label>
+              <input id="scrParamCountdown" type="number" value="${merged.countdown || 60}" min="5">
+            </div>
+            <div class="form-group">
+              <label>Abort at (seconds remaining, 0 = no abort)</label>
+              <input id="scrParamAbort" type="number" value="${merged.abort_at ?? 10}" min="0">
+            </div>
+          </div>
+        `;
+      } else if (pg.file === 'video.html') {
+        paramsHtml = `
+          <div style="border:1px solid var(--border);border-radius:6px;padding:12px;background:rgba(255,200,0,0.03)">
+            <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--accent);margin-bottom:10px"><i class="ti ti-player-play"></i> Video Override</div>
+            <div class="form-group">
+              <label>Video URL</label>
+              <input id="scrParamVideo" value="${merged.video || ''}" placeholder="YouTube or direct URL">
+            </div>
+            <div class="form-group">
+              <label>Border Style</label>
+              <select id="scrParamBorder">
+                <option value="" ${!merged.border?'selected':''}>None</option>
+                <option value="hud" ${merged.border==='hud'?'selected':''}>HUD</option>
+                <option value="imperial" ${merged.border==='imperial'?'selected':''}>Imperial</option>
+                <option value="hologram" ${merged.border==='hologram'?'selected':''}>Hologram</option>
+                <option value="targeting" ${merged.border==='targeting'?'selected':''}>Targeting</option>
+                <option value="datastream" ${merged.border==='datastream'?'selected':''}>Data Feed</option>
+              </select>
+            </div>
+          </div>
+        `;
+      }
+
+      openModal(`
+        <h3>PARAMS OVERRIDE</h3>
+        <div style="font-size:12px;color:var(--text-dim);margin-bottom:12px">
+          Screen: <strong>${screenId}</strong> · Page: <strong>${pg.name}</strong>
+        </div>
+        <div style="font-size:11px;color:var(--text-dim);margin-bottom:12px;opacity:0.6">
+          Override the page defaults for this specific screen assignment.
+          Leave values unchanged to use page defaults.
+        </div>
+        ${paramsHtml}
+        <div class="modal-actions" style="margin-top:16px">
+          <button class="btn" onclick="clearScreenParams('${zoneId}','${screenId}','${pageId}')">RESET TO DEFAULTS</button>
+          <button class="btn" onclick="closeModal()">CANCEL</button>
+          <button class="btn btn-primary" onclick="saveScreenParams('${zoneId}','${screenId}','${pageId}')">SAVE</button>
+        </div>
+      `);
+    }
+
+    async function saveScreenParams(zoneId, screenId, pageId) {
+      const pg = pages.find(p => p.id === pageId);
+      if (!pg) return;
+
+      let paramsOverride = {};
+      if (pg.file === 'selfdestruct.html') {
+        const countdown = document.getElementById('scrParamCountdown')?.value;
+        const abortAt = document.getElementById('scrParamAbort')?.value;
+        if (countdown) paramsOverride.countdown = parseInt(countdown, 10);
+        if (abortAt !== undefined) paramsOverride.abort_at = parseInt(abortAt, 10) || 0;
+      } else if (pg.file === 'video.html') {
+        const videoUrl = document.getElementById('scrParamVideo')?.value.trim();
+        const border = document.getElementById('scrParamBorder')?.value;
+        if (videoUrl) paramsOverride.video = videoUrl;
+        if (border) paramsOverride.border = border;
+      }
+
+      // Find existing label
+      let existingLabel = '';
       for (const room of rooms) {
         for (const z of room.zones || []) {
           if (z.id === zoneId) {
@@ -833,16 +959,44 @@
           }
         }
       }
-      // Update the zone assignment with the new page
+
       await api('POST', `/api/zones/${zoneId}/screens`, {
         screen_id: screenId,
-        page_id: newPageId,
-        label: existingLabel
+        page_id: pageId,
+        label: existingLabel,
+        params_override: Object.keys(paramsOverride).length > 0 ? paramsOverride : null
       });
-      // Also navigate the screen live if it's connected
+      // Navigate with override params
       try {
-        await api('POST', `/api/screens/${screenId}/navigate`, { page: newPageId });
-      } catch(e) { /* screen may not be connected */ }
+        await api('POST', `/api/screens/${screenId}/navigate`, {
+          page: pageId,
+          params: Object.keys(paramsOverride).length > 0 ? paramsOverride : null
+        });
+      } catch(e) {}
+      closeModal();
+      await loadAll();
+    }
+
+    async function clearScreenParams(zoneId, screenId, pageId) {
+      let existingLabel = '';
+      for (const room of rooms) {
+        for (const z of room.zones || []) {
+          if (z.id === zoneId) {
+            const sc = (z.screens || []).find(s => s.screen_id === screenId);
+            if (sc) existingLabel = sc.label || '';
+          }
+        }
+      }
+      await api('POST', `/api/zones/${zoneId}/screens`, {
+        screen_id: screenId,
+        page_id: pageId,
+        label: existingLabel,
+        params_override: null
+      });
+      try {
+        await api('POST', `/api/screens/${screenId}/navigate`, { page: pageId });
+      } catch(e) {}
+      closeModal();
       await loadAll();
     }
 
