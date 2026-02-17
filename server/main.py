@@ -29,6 +29,7 @@ from rooms import (
     get_all_rooms, get_room, create_room, update_room, delete_room,
     get_zone, create_zone, update_zone, delete_zone,
 )
+import mqtt_bus
 
 # Paths
 BASE_DIR = Path(__file__).parent
@@ -39,6 +40,7 @@ CLIENT_DIR = BASE_DIR.parent / "client"
 app_state = {
     "screens": {},         # {screen_id: {"ws": websocket, "page": str, "connected_at": str}}
     "screen_configs": {},  # Pre-provisioned: {screen_id: {"page": str, "label": str}}
+    "screen_meta": {},     # {screen_id: {"device_type": str, "room_id": str, "zone_id": str, ...}}
 }
 
 # ── Lifespan ─────────────────────────────────────────────────
@@ -55,7 +57,11 @@ async def lifespan(app: FastAPI):
         print(f"[+] Auto-registered {len(discovered)} new page(s): {', '.join(discovered)}")
     else:
         print("[+] All pages up to date")
+    # Start MQTT message bus
+    await mqtt_bus.start(app_state)
     yield
+    # Shutdown
+    await mqtt_bus.stop()
     print("MarchogSystemsOps Server shutting down...")
 
 # ── App ──────────────────────────────────────────────────────
@@ -446,6 +452,21 @@ async def api_run_automation(auto_id: str):
         if action.get("type") == "navigate":
             page_id = action.get("page_id")
             params = action.get("params", {})
+
+            # ── MQTT pub/sub targets ──
+            publish_to = action.get("publish_to", [])
+            if publish_to and mqtt_bus.is_connected():
+                await mqtt_bus.publish_navigate(
+                    publish_to, page_id, params,
+                    source=f"automation:{auto_id}"
+                )
+                results.append({
+                    "targets": publish_to,
+                    "status": "published",
+                    "via": "mqtt"
+                })
+
+            # ── Legacy direct WebSocket targets ──
             targets = action.get("targets", [])
             for screen_id in targets:
                 if screen_id in app_state["screens"]:
@@ -455,12 +476,36 @@ async def api_run_automation(auto_id: str):
                         if params:
                             msg["params"] = params
                         await ws.send_json(msg)
-                        results.append({"screen": screen_id, "status": "sent"})
+                        results.append({"screen": screen_id, "status": "sent", "via": "ws"})
                     except Exception as e:
                         results.append({"screen": screen_id, "status": "error", "error": str(e)})
                 else:
                     results.append({"screen": screen_id, "status": "not_connected"})
     return {"status": "executed", "automation": auto_id, "results": results}
+
+
+# ── API: MQTT Status ─────────────────────────────────────────
+
+@app.get("/api/mqtt/status")
+async def api_mqtt_status():
+    """Check MQTT broker connection status."""
+    return {
+        "connected": mqtt_bus.is_connected(),
+        "host": mqtt_bus.MQTT_HOST,
+        "port": mqtt_bus.MQTT_PORT,
+        "topic_prefix": mqtt_bus.TOPIC_PREFIX
+    }
+
+@app.post("/api/mqtt/publish")
+async def api_mqtt_publish(body: dict):
+    """Publish a message to an MQTT topic (for testing)."""
+    topic = body.get("topic", "")
+    payload = body.get("payload", {})
+    retain = body.get("retain", False)
+    if not topic:
+        raise HTTPException(400, "topic required")
+    ok = await mqtt_bus.publish(topic, payload, retain=retain)
+    return {"status": "published" if ok else "failed", "topic": topic}
 
 
 # ── WebSocket: Screen Connection ─────────────────────────────
@@ -476,6 +521,10 @@ async def ws_screen(websocket: WebSocket, screen_id: str):
         "page": None,
         "connected_at": datetime.now(timezone.utc).isoformat()
     }
+
+    # Publish connection event to MQTT
+    if mqtt_bus.is_connected():
+        await mqtt_bus.publish_heartbeat(screen_id, "screen")
 
     try:
         # Send registration confirmation
@@ -515,6 +564,14 @@ async def ws_screen(websocket: WebSocket, screen_id: str):
         print(f"[!] Screen '{screen_id}' error: {e}")
     finally:
         app_state["screens"].pop(screen_id, None)
+        # Publish offline status to MQTT
+        if mqtt_bus.is_connected():
+            await mqtt_bus.publish(f"heartbeat/{screen_id}", {
+                "type": "heartbeat",
+                "device_id": screen_id,
+                "status": "offline",
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }, retain=True)
 
 
 # ── Scene Push Helpers ───────────────────────────────────────
