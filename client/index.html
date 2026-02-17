@@ -159,6 +159,45 @@
   </style>
 </head>
 <body>
+  <!-- Tap-to-fullscreen overlay (for kiosk tablets) -->
+  <div id="fsOverlay" style="
+    display: none;
+    position: fixed; inset: 0; z-index: 99999;
+    background: rgba(2,5,9,0.95);
+    align-items: center; justify-content: center;
+    flex-direction: column; cursor: pointer;
+    font-family: 'Orbitron', 'Share Tech Mono', monospace;
+  ">
+    <div style="color: rgba(200,60,40,0.8); font-size: clamp(28px, 6vw, 64px); margin-bottom: 24px; text-align: center;">
+      MARCHOG SYSTEMS
+    </div>
+    <div style="color: rgba(200,60,40,0.5); font-size: clamp(14px, 3vw, 28px); text-align: center; animation: pulse 2s ease-in-out infinite;">
+      TAP TO ENTER FULLSCREEN
+    </div>
+  </div>
+  <script>
+    (function() {
+      const overlay = document.getElementById('fsOverlay');
+      const isFullscreen = !!document.fullscreenElement;
+      const isStandalone = window.matchMedia('(display-mode: standalone)').matches
+                        || window.matchMedia('(display-mode: fullscreen)').matches
+                        || window.navigator.standalone === true;
+      if (!isFullscreen && !isStandalone) {
+        overlay.style.display = 'flex';
+      }
+      overlay.addEventListener('click', () => {
+        document.documentElement.requestFullscreen().then(() => {
+          overlay.style.display = 'none';
+        }).catch(() => {
+          overlay.style.display = 'none';
+        });
+      });
+      document.addEventListener('fullscreenchange', () => {
+        if (document.fullscreenElement) overlay.style.display = 'none';
+      });
+    })();
+  </script>
+
   <div class="app-shell">
     <!-- Connection status -->
     <div class="conn-status connecting" id="connStatus">
