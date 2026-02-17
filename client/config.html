@@ -547,6 +547,7 @@
       <div class="section-head">
         <div class="section-title">Available Pages</div>
         <div style="display:flex;gap:8px">
+          <button class="btn btn-sm" onclick="regenerateThumbnails(this)"><i class="ti ti-camera"></i> THUMBNAILS</button>
           <button class="btn btn-sm" onclick="scanPages()">⟐ SCAN DIR</button>
           <button class="btn btn-sm btn-add" onclick="showAddPageModal()">+ ADD PAGE</button>
         </div>
@@ -744,6 +745,7 @@
       const grid = document.getElementById('pageGrid');
       grid.innerHTML = pages.map(p => `
         <div class="card" style="padding:12px">
+          <img src="/thumbnails/${p.id}.png" alt="${p.name}" style="width:100%;border-radius:4px;margin-bottom:8px;background:#0a0e14;aspect-ratio:16/9;object-fit:cover" onerror="this.style.display='none'">
           <div class="card-header" style="margin-bottom:4px">
             <div class="card-icon"><i class="ti ${p.icon || 'ti-file'}"></i></div>
             <div style="flex:1">
@@ -1409,6 +1411,24 @@
         alert('No new pages found.');
       }
       await loadAll();
+    }
+
+    // ── Regenerate Thumbnails ────────────────────────────
+    async function regenerateThumbnails(btn) {
+      const origText = btn.innerHTML;
+      btn.innerHTML = '<i class="ti ti-loader"></i> GENERATING...';
+      btn.disabled = true;
+      try {
+        const result = await api('POST', '/api/thumbnails/generate');
+        const ok = result.results ? result.results.filter(r => r.status === 'ok').length : 0;
+        const total = result.results ? result.results.length : 0;
+        btn.innerHTML = `<i class="ti ti-check"></i> ${ok}/${total} DONE`;
+        renderPages();
+        setTimeout(() => { btn.innerHTML = origText; btn.disabled = false; }, 3000);
+      } catch (e) {
+        btn.innerHTML = '<i class="ti ti-x"></i> FAILED';
+        setTimeout(() => { btn.innerHTML = origText; btn.disabled = false; }, 3000);
+      }
     }
 
     // ═══════════════════════════════════════════════════

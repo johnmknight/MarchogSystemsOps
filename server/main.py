@@ -560,6 +560,16 @@ async def config_page():
     return FileResponse(str(CLIENT_DIR / "config.html"))
 
 
+# ── Thumbnails ───────────────────────────────────────────────
+
+@app.post("/api/thumbnails/generate")
+async def generate_thumbnails():
+    """Generate page thumbnails using Playwright"""
+    from thumbnails import generate_thumbnails as gen_thumbs
+    results = await gen_thumbs()
+    return {"status": "complete", "results": results}
+
+
 # ── Static Files ─────────────────────────────────────────────
 
 # Serve client files
