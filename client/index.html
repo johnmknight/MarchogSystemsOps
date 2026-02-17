@@ -260,8 +260,9 @@
           // Create frames for all pages
           this.pages.forEach(p => this.ensureFrame(p.id, p.file));
 
-          // Show initial page
-          const initial = this.pendingPage || (this.pages[0] && this.pages[0].id) || null;
+          // Show initial page — prefer standby, fall back to first page
+          const standby = this.pages.find(p => p.id === 'standby');
+          const initial = this.pendingPage || (standby && standby.id) || (this.pages[0] && this.pages[0].id) || null;
           if (initial) this.showPage(initial, false);
 
         } catch (e) {
