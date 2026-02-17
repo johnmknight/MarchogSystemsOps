@@ -251,6 +251,63 @@
       border-color: var(--accent);
     }
 
+    /* Health dashboard */
+    .mqtt-badge {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.65em;
+      padding: 2px 8px;
+      border-radius: 3px;
+      letter-spacing: 0.06em;
+    }
+    .mqtt-badge.online { background: rgba(16,185,129,0.15); color: #10b981; }
+    .mqtt-badge.offline { background: rgba(239,68,68,0.15); color: #ef4444; }
+    .health-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 10px;
+      padding: 8px 0;
+    }
+    .health-card {
+      background: var(--bg-panel);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 6px;
+      padding: 12px;
+      font-size: 0.78em;
+    }
+    .health-card .hc-top {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .health-card .hc-id {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.9em;
+      color: var(--text);
+    }
+    .health-card .hc-status {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.7em;
+      padding: 1px 6px;
+      border-radius: 3px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    .hc-status.online { background: rgba(16,185,129,0.15); color: #10b981; }
+    .hc-status.stale { background: rgba(245,158,11,0.15); color: #f59e0b; }
+    .hc-status.offline { background: rgba(239,68,68,0.15); color: #ef4444; }
+    .health-card .hc-meta {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 2px 10px;
+      font-size: 0.85em;
+      color: rgba(255,255,255,0.5);
+    }
+    .health-card .hc-meta .hc-val {
+      color: rgba(255,255,255,0.7);
+      font-family: 'JetBrains Mono', monospace;
+    }
+
     .dt-modal-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -633,6 +690,20 @@
         </div>
         <div class="connected-bar" id="connectedScreens">
           <span class="empty-state" style="padding:8px">Polling…</span>
+        </div>
+      </div>
+
+      <!-- Health Dashboard -->
+      <div class="section" style="margin-top:16px">
+        <div class="section-head">
+          <div class="section-title">Device Health</div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <span id="mqttBadge" class="mqtt-badge offline">MQTT ●</span>
+            <button class="btn btn-sm" onclick="loadHealth()"><i class="ti ti-heartbeat"></i> CHECK</button>
+          </div>
+        </div>
+        <div id="healthDashboard">
+          <span class="empty-state" style="padding:8px">Click CHECK to load health data</span>
         </div>
       </div>
     </div>
@@ -1122,6 +1193,62 @@
         await api('POST', `/api/screens/${screenId}/navigate`, { page: newPageId });
       } catch(e) { /* screen may not be connected */ }
       await loadAll();
+    }
+
+    // ── Health Dashboard ──────────────────────────────
+    async function loadHealth() {
+      try {
+        const data = await api('GET', '/api/health/screens');
+        // Update MQTT badge
+        const mqttBadge = document.getElementById('mqttBadge');
+        if (data.mqtt_connected) {
+          mqttBadge.className = 'mqtt-badge online';
+          mqttBadge.textContent = 'MQTT ●';
+        } else {
+          mqttBadge.className = 'mqtt-badge offline';
+          mqttBadge.textContent = 'MQTT ○';
+        }
+
+        const el = document.getElementById('healthDashboard');
+        if (!data.screens || data.screens.length === 0) {
+          el.innerHTML = '<span class="empty-state" style="padding:8px">No screens connected</span>';
+          return;
+        }
+        el.innerHTML = `<div class="health-grid">${data.screens.map(s => {
+          const uptime = s.uptime_seconds ? formatDuration(s.uptime_seconds) : '—';
+          const lastSeen = s.last_seen_ago_seconds != null ? `${s.last_seen_ago_seconds}s ago` : 'never';
+          const page = s.page || '—';
+          const dt = s.device_type || '—';
+          const dt2 = s.device_type_secondary ? ` + ${s.device_type_secondary}` : '';
+          const zone = s.zone_id || '—';
+          const room = s.room_id || '—';
+          return `<div class="health-card">
+            <div class="hc-top">
+              <span class="screen-dot ${s.status === 'stale' ? 'offline' : 'online'}"></span>
+              <span class="hc-id">${s.screen_id}</span>
+              <span class="hc-status ${s.status}">${s.status}</span>
+            </div>
+            <div class="hc-meta">
+              <span>Page</span><span class="hc-val">${page}</span>
+              <span>Uptime</span><span class="hc-val">${uptime}</span>
+              <span>Last ping</span><span class="hc-val">${lastSeen}</span>
+              <span>Type</span><span class="hc-val">${dt}${dt2}</span>
+              <span>Zone</span><span class="hc-val">${zone}</span>
+              <span>Room</span><span class="hc-val">${room}</span>
+            </div>
+          </div>`;
+        }).join('')}</div>`;
+      } catch (e) {
+        console.error('Health load error:', e);
+      }
+    }
+
+    function formatDuration(seconds) {
+      if (seconds < 60) return `${seconds}s`;
+      if (seconds < 3600) return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+      const h = Math.floor(seconds / 3600);
+      const m = Math.floor((seconds % 3600) / 60);
+      return `${h}h ${m}m`;
     }
 
     // ── Device Type Modal ──────────────────────────────
@@ -2002,6 +2129,7 @@
     //  BOOT
     // ═══════════════════════════════════════════════════
     loadAll();
+    loadHealth();
     // Auto-refresh connected screens every 5s
     setInterval(async () => {
       try {
@@ -2009,6 +2137,8 @@
         renderConnectedScreens();
       } catch(e) {}
     }, 5000);
+    // Auto-refresh health every 30s
+    setInterval(loadHealth, 30000);
   </script>
 </body>
 </html>

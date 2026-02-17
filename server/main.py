@@ -11,6 +11,7 @@ from pathlib import Path
 from datetime import datetime, timezone
 from pydantic import BaseModel
 from typing import Optional
+import asyncio
 import json
 
 from database import (
@@ -111,10 +112,51 @@ async def lifespan(app: FastAPI):
         print("[+] All pages up to date")
     # Start MQTT message bus
     await mqtt_bus.start(app_state)
+    # Start health monitor
+    health_task = asyncio.create_task(_health_monitor())
     yield
     # Shutdown
+    health_task.cancel()
+    try:
+        await health_task
+    except asyncio.CancelledError:
+        pass
     await mqtt_bus.stop()
     print("MarchogSystemsOps Server shutting down...")
+
+
+HEALTH_CHECK_INTERVAL = 30  # seconds
+STALE_THRESHOLD = 90  # seconds before a screen is considered stale
+
+
+async def _health_monitor():
+    """Background task: check screen health every HEALTH_CHECK_INTERVAL seconds."""
+    while True:
+        try:
+            await asyncio.sleep(HEALTH_CHECK_INTERVAL)
+            now = datetime.now(timezone.utc)
+            stale_screens = []
+            for screen_id, screen_data in list(app_state["screens"].items()):
+                last_seen = screen_data.get("last_seen")
+                if last_seen:
+                    last_dt = datetime.fromisoformat(last_seen)
+                    delta = (now - last_dt).total_seconds()
+                    if delta > STALE_THRESHOLD:
+                        stale_screens.append(screen_id)
+
+            if stale_screens and mqtt_bus.is_connected():
+                for sid in stale_screens:
+                    await mqtt_bus.publish(f"marchog/alert/stale-screen", {
+                        "type": "alert",
+                        "alert_type": "stale-screen",
+                        "device_id": sid,
+                        "message": f"Screen {sid} has not responded in {STALE_THRESHOLD}s",
+                    })
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            print(f"[!] Health monitor error: {e}")
+
 
 # ── App ──────────────────────────────────────────────────────
 
@@ -595,6 +637,51 @@ async def api_mqtt_publish(body: dict):
     return {"status": "published" if ok else "failed", "topic": topic}
 
 
+# ── API: Device Health ───────────────────────────────────────
+
+@app.get("/api/health/screens")
+async def api_screen_health():
+    """Get health status of all connected screens."""
+    now = datetime.now(timezone.utc)
+    results = []
+    for screen_id, screen_data in app_state["screens"].items():
+        connected_at = screen_data.get("connected_at")
+        last_seen = screen_data.get("last_seen")
+        uptime = None
+        if connected_at:
+            uptime = int((now - datetime.fromisoformat(connected_at)).total_seconds())
+
+        last_seen_ago = None
+        status = "online"
+        if last_seen:
+            last_seen_ago = int((now - datetime.fromisoformat(last_seen)).total_seconds())
+            if last_seen_ago > STALE_THRESHOLD:
+                status = "stale"
+        else:
+            # No ping received yet, just connected
+            status = "online"
+
+        meta = app_state["screen_meta"].get(screen_id, {})
+        results.append({
+            "screen_id": screen_id,
+            "status": status,
+            "page": screen_data.get("page"),
+            "connected_at": connected_at,
+            "uptime_seconds": uptime,
+            "last_seen": last_seen,
+            "last_seen_ago_seconds": last_seen_ago,
+            "device_type": meta.get("device_type"),
+            "device_type_secondary": meta.get("device_type_secondary"),
+            "zone_id": meta.get("zone_id"),
+            "room_id": meta.get("room_id"),
+        })
+    return {
+        "total_connected": len(app_state["screens"]),
+        "mqtt_connected": mqtt_bus.is_connected(),
+        "screens": results,
+    }
+
+
 # ── WebSocket: Screen Connection ─────────────────────────────
 
 @app.websocket("/ws/screen/{screen_id}")
@@ -653,9 +740,22 @@ async def ws_screen(websocket: WebSocket, screen_id: str):
                 # Screen reporting its current page
                 page = data.split(":", 1)[1]
                 app_state["screens"][screen_id]["page"] = page
+                app_state["screens"][screen_id]["last_seen"] = datetime.now(timezone.utc).isoformat()
+                # Publish state to MQTT (retained)
+                if mqtt_bus.is_connected():
+                    await mqtt_bus.publish(f"marchog/state/{screen_id}", {
+                        "type": "state",
+                        "device_id": screen_id,
+                        "status": "online",
+                        "page": page,
+                    }, retain=True)
 
             elif data == "ping":
                 await websocket.send_json({"type": "pong"})
+                app_state["screens"][screen_id]["last_seen"] = datetime.now(timezone.utc).isoformat()
+                # Periodic heartbeat to MQTT
+                if mqtt_bus.is_connected():
+                    await mqtt_bus.publish_heartbeat(screen_id, "screen")
 
             elif data.startswith("playlist_index:"):
                 # Screen reporting playlist position
@@ -671,11 +771,17 @@ async def ws_screen(websocket: WebSocket, screen_id: str):
         app_state["screen_meta"].pop(screen_id, None)
         # Publish offline status to MQTT
         if mqtt_bus.is_connected():
-            await mqtt_bus.publish(f"heartbeat/{screen_id}", {
+            await mqtt_bus.publish(f"marchog/heartbeat/{screen_id}", {
                 "type": "heartbeat",
                 "device_id": screen_id,
+                "device_type": "screen",
                 "status": "offline",
-                "timestamp": datetime.now(timezone.utc).isoformat()
+            }, retain=True)
+            await mqtt_bus.publish(f"marchog/state/{screen_id}", {
+                "type": "state",
+                "device_id": screen_id,
+                "status": "offline",
+                "page": None,
             }, retain=True)
 
 
