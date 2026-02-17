@@ -54,6 +54,44 @@
       letter-spacing: 0.08em;
     }
 
+    /* ── Tab Navigation ────────────────────────── */
+    .tab-bar {
+      display: flex;
+      gap: 0;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      margin-bottom: 24px;
+    }
+    .tab-btn {
+      background: none;
+      border: none;
+      border-bottom: 2px solid transparent;
+      color: rgba(255,255,255,0.35);
+      font-family: 'Orbitron', sans-serif;
+      font-size: 0.7em;
+      font-weight: 500;
+      letter-spacing: 0.1em;
+      padding: 12px 24px;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .tab-btn:hover {
+      color: rgba(255,255,255,0.6);
+      background: rgba(255,255,255,0.03);
+    }
+    .tab-btn.active {
+      color: var(--accent-cyan);
+      border-bottom-color: var(--accent-cyan);
+    }
+    .tab-panel {
+      display: none;
+    }
+    .tab-panel.active {
+      display: block;
+    }
+
     /* ── Sections ─────────────────────────────── */
     .section {
       margin-bottom: 32px;
@@ -517,51 +555,69 @@
       </div>
     </div>
 
-    <!-- Connected Screens -->
-    <div class="section">
-      <div class="section-head">
-        <div class="section-title">Connected Screens</div>
-        <button class="btn btn-sm" onclick="refreshAll()"><i class="ti ti-refresh"></i> REFRESH</button>
-      </div>
-      <div class="connected-bar" id="connectedScreens">
-        <span class="empty-state" style="padding:8px">Polling…</span>
-      </div>
+    <!-- Tab Navigation -->
+    <div class="tab-bar">
+      <button class="tab-btn active" data-tab="screens" onclick="switchTab('screens')">
+        <i class="ti ti-device-desktop"></i> SCREENS
+      </button>
+      <button class="tab-btn" data-tab="rooms" onclick="switchTab('rooms')">
+        <i class="ti ti-layout-grid"></i> ROOMS
+      </button>
+      <button class="tab-btn" data-tab="pages" onclick="switchTab('pages')">
+        <i class="ti ti-file-code"></i> PAGES
+      </button>
     </div>
 
-    <!-- Rooms & Zones -->
-    <div class="section">
-      <div class="section-head">
-        <div class="section-title">Rooms & Zones</div>
-        <div class="room-nav" id="roomNav">
-          <button class="btn btn-sm room-nav-btn" onclick="prevRoom()" id="roomPrev">&#9664;</button>
-          <span class="room-nav-label" id="roomNavLabel">1 / 1</span>
-          <button class="btn btn-sm room-nav-btn" onclick="nextRoom()" id="roomNext">&#9654;</button>
-          <button class="btn btn-sm" onclick="showAddRoomModal()" style="margin-left:8px">+ ADD ROOM</button>
+    <!-- Tab: Screens -->
+    <div class="tab-panel active" id="tab-screens">
+      <div class="section">
+        <div class="section-head">
+          <div class="section-title">Connected Screens</div>
+          <button class="btn btn-sm" onclick="refreshAll()"><i class="ti ti-refresh"></i> REFRESH</button>
+        </div>
+        <div class="connected-bar" id="connectedScreens">
+          <span class="empty-state" style="padding:8px">Polling…</span>
         </div>
       </div>
-      <div id="roomGrid"></div>
     </div>
 
-    <!-- Available Pages -->
-    <div class="section">
-      <div class="section-head">
-        <div class="section-title">Available Pages</div>
-        <div style="display:flex;gap:8px">
-          <button class="btn btn-sm" onclick="regenerateThumbnails(this)"><i class="ti ti-camera"></i> THUMBNAILS</button>
-          <button class="btn btn-sm" onclick="scanPages()">⟐ SCAN DIR</button>
-          <button class="btn btn-sm btn-add" onclick="showAddPageModal()">+ ADD PAGE</button>
+    <!-- Tab: Rooms -->
+    <div class="tab-panel" id="tab-rooms">
+      <div class="section">
+        <div class="section-head">
+          <div class="section-title">Rooms & Zones</div>
+          <div class="room-nav" id="roomNav">
+            <button class="btn btn-sm room-nav-btn" onclick="prevRoom()" id="roomPrev">&#9664;</button>
+            <span class="room-nav-label" id="roomNavLabel">1 / 1</span>
+            <button class="btn btn-sm room-nav-btn" onclick="nextRoom()" id="roomNext">&#9654;</button>
+            <button class="btn btn-sm" onclick="showAddRoomModal()" style="margin-left:8px">+ ADD ROOM</button>
+          </div>
         </div>
+        <div id="roomGrid"></div>
       </div>
-      <div class="card-grid" id="pageGrid"></div>
     </div>
 
-    <!-- Automations -->
-    <div class="section">
-      <div class="section-head">
-        <div class="section-title"><i class="ti ti-bolt"></i> Automations</div>
-        <button class="btn btn-sm btn-add" onclick="showAddAutomationModal()">+ ADD AUTOMATION</button>
+    <!-- Tab: Pages -->
+    <div class="tab-panel" id="tab-pages">
+      <div class="section">
+        <div class="section-head">
+          <div class="section-title">Available Pages</div>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-sm" onclick="regenerateThumbnails(this)"><i class="ti ti-camera"></i> THUMBNAILS</button>
+            <button class="btn btn-sm" onclick="scanPages()">⟐ SCAN DIR</button>
+            <button class="btn btn-sm btn-add" onclick="showAddPageModal()">+ ADD PAGE</button>
+          </div>
+        </div>
+        <div class="card-grid" id="pageGrid"></div>
       </div>
-      <div id="automationGrid"></div>
+
+      <div class="section">
+        <div class="section-head">
+          <div class="section-title"><i class="ti ti-bolt"></i> Automations</div>
+          <button class="btn btn-sm btn-add" onclick="showAddAutomationModal()">+ ADD AUTOMATION</button>
+        </div>
+        <div id="automationGrid"></div>
+      </div>
     </div>
   </div>
 
@@ -606,6 +662,18 @@
 
     async function refreshAll() {
       await loadAll();
+    }
+
+    // ═══════════════════════════════════════════════════
+    //  TAB NAVIGATION
+    // ═══════════════════════════════════════════════════
+    function switchTab(tabId) {
+      document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.tab === tabId);
+      });
+      document.querySelectorAll('.tab-panel').forEach(panel => {
+        panel.classList.toggle('active', panel.id === `tab-${tabId}`);
+      });
     }
 
     // ═══════════════════════════════════════════════════
