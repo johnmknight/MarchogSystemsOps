@@ -395,6 +395,116 @@
       color: var(--accent-blue);
       background: rgba(74, 158, 255, 0.03);
     }
+
+    /* ── Automation Cards ─────────────────────── */
+    .auto-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-dim);
+      border-radius: 4px; padding: 16px;
+      transition: border-color 0.15s;
+    }
+    .auto-card:hover { border-color: var(--border-med); }
+    .auto-card.disabled { opacity: 0.45; }
+    .auto-card-header {
+      display: flex; align-items: center; gap: 12px;
+      margin-bottom: 10px;
+    }
+    .auto-card-icon {
+      font-size: 1.6em; color: var(--accent-gold);
+      flex-shrink: 0;
+    }
+    .auto-card-name {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 0.8em; font-weight: 600;
+      letter-spacing: 0.08em; color: var(--text-bright);
+    }
+    .auto-card-desc {
+      font-size: 0.72em; color: var(--text-dim);
+      margin-top: 2px;
+    }
+    .auto-card-toggle {
+      margin-left: auto;
+    }
+    .auto-actions-summary {
+      font-size: 0.7em; color: var(--text-dim);
+      padding: 8px 10px; margin-bottom: 10px;
+      border: 1px solid var(--border-dim);
+      border-radius: 3px;
+      background: rgba(0,0,0,0.15);
+    }
+    .auto-actions-summary .action-line {
+      display: flex; align-items: center; gap: 6px;
+      padding: 3px 0;
+    }
+    .auto-actions-summary .action-line .target-count {
+      color: var(--accent-cyan);
+      font-weight: bold;
+    }
+    .auto-card-footer {
+      display: flex; gap: 8px; margin-top: 10px;
+      align-items: center;
+    }
+    .run-btn {
+      background: var(--accent-gold) !important;
+      color: #000 !important;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+    }
+    .run-btn:hover { filter: brightness(1.15); }
+    .run-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+    /* ── Toggle Switch ────────────────────────── */
+    .toggle-switch {
+      position: relative; display: inline-block;
+      width: 36px; height: 20px;
+    }
+    .toggle-switch input { opacity: 0; width: 0; height: 0; }
+    .toggle-slider {
+      position: absolute; cursor: pointer;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: var(--border-dim);
+      border-radius: 10px; transition: 0.2s;
+    }
+    .toggle-slider:before {
+      content: ""; position: absolute;
+      height: 14px; width: 14px; left: 3px; bottom: 3px;
+      background: var(--text-dim); border-radius: 50%;
+      transition: 0.2s;
+    }
+    .toggle-switch input:checked + .toggle-slider {
+      background: var(--accent-green);
+    }
+    .toggle-switch input:checked + .toggle-slider:before {
+      transform: translateX(16px);
+      background: #fff;
+    }
+
+    /* ── Target Chips ─────────────────────────── */
+    .target-chip-list {
+      display: flex; flex-wrap: wrap; gap: 6px;
+      margin-top: 8px;
+    }
+    .target-chip {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 3px 8px;
+      font-size: 0.7em;
+      border: 1px solid var(--border-dim);
+      border-radius: 3px;
+      background: rgba(0,0,0,0.2);
+      color: var(--text-primary);
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .target-chip.selected {
+      border-color: var(--accent-cyan);
+      background: rgba(54, 214, 231, 0.08);
+      color: var(--accent-cyan);
+    }
+    .target-chip .chip-dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--text-dim);
+    }
+    .target-chip.online .chip-dot { background: var(--accent-green); }
   </style>
 </head>
 <body>
@@ -443,6 +553,15 @@
       </div>
       <div class="card-grid" id="pageGrid"></div>
     </div>
+
+    <!-- Automations -->
+    <div class="section">
+      <div class="section-head">
+        <div class="section-title"><i class="ti ti-bolt"></i> Automations</div>
+        <button class="btn btn-sm btn-add" onclick="showAddAutomationModal()">+ ADD AUTOMATION</button>
+      </div>
+      <div id="automationGrid"></div>
+    </div>
   </div>
 
   <!-- Modal -->
@@ -457,6 +576,7 @@
     let rooms = [];
     let pages = [];
     let screens = [];
+    let automations = [];
     let currentRoomIndex = 0;
 
     // ═══════════════════════════════════════════════════
@@ -474,10 +594,11 @@
     //  DATA LOADING
     // ═══════════════════════════════════════════════════
     async function loadAll() {
-      [rooms, pages, screens] = await Promise.all([
+      [rooms, pages, screens, automations] = await Promise.all([
         api('GET', '/api/rooms'),
         api('GET', '/api/pages'),
         api('GET', '/api/screens'),
+        api('GET', '/api/automations'),
       ]);
       renderAll();
     }
@@ -493,6 +614,7 @@
       renderConnectedScreens();
       renderRooms();
       renderPages();
+      renderAutomations();
     }
 
     function renderConnectedScreens() {
@@ -1287,6 +1409,359 @@
         alert('No new pages found.');
       }
       await loadAll();
+    }
+
+    // ═══════════════════════════════════════════════════
+    //  AUTOMATIONS
+    // ═══════════════════════════════════════════════════
+
+    function renderAutomations() {
+      const grid = document.getElementById('automationGrid');
+      if (automations.length === 0) {
+        grid.innerHTML = '<div class="empty-state" style="padding:24px;text-align:center">No automations configured</div>';
+        return;
+      }
+      grid.innerHTML = `<div class="card-grid">${automations.map(a => {
+        const disabledClass = a.enabled ? '' : ' disabled';
+        const actionSummary = (a.actions || []).map(act => {
+          if (act.type === 'navigate') {
+            const pg = pages.find(p => p.id === act.page_id);
+            const pgName = pg ? pg.name : act.page_id;
+            const targetCount = (act.targets || []).length;
+            const paramSummary = act.params ? Object.entries(act.params).map(([k,v]) => `${k}:${v}`).join(' ') : '';
+            return `<div class="action-line">
+              <i class="ti ti-send"></i>
+              <span>Navigate → <strong>${pgName}</strong></span>
+              <span class="target-count">${targetCount} screen${targetCount !== 1 ? 's' : ''}</span>
+              ${paramSummary ? `<span style="opacity:0.5">(${paramSummary})</span>` : ''}
+            </div>`;
+          }
+          return `<div class="action-line"><i class="ti ti-help"></i> Unknown action</div>`;
+        }).join('');
+
+        return `
+          <div class="auto-card${disabledClass}">
+            <div class="auto-card-header">
+              <div class="auto-card-icon"><i class="ti ${a.icon || 'ti-bolt'}"></i></div>
+              <div>
+                <div class="auto-card-name">${a.name}</div>
+                ${a.description ? `<div class="auto-card-desc">${a.description}</div>` : ''}
+              </div>
+              <div class="auto-card-toggle">
+                <label class="toggle-switch">
+                  <input type="checkbox" ${a.enabled ? 'checked' : ''} onchange="toggleAutomation('${a.id}', this.checked)">
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+            </div>
+            <div class="auto-actions-summary">${actionSummary || '<em>No actions</em>'}</div>
+            <div class="auto-card-footer">
+              <button class="btn btn-sm run-btn" onclick="runAutomation('${a.id}')" ${a.enabled ? '' : 'disabled'}>
+                <i class="ti ti-player-play"></i> RUN
+              </button>
+              <button class="btn btn-sm" onclick="showEditAutomationModal('${a.id}')"><i class="ti ti-edit"></i> EDIT</button>
+              <button class="btn btn-sm btn-danger" onclick="deleteAutomation('${a.id}','${a.name}')"><i class="ti ti-trash"></i></button>
+            </div>
+          </div>
+        `;
+      }).join('')}</div>`;
+    }
+
+    async function toggleAutomation(id, enabled) {
+      await api('PUT', `/api/automations/${id}`, { enabled });
+      await loadAll();
+    }
+
+    async function runAutomation(id) {
+      const auto = automations.find(a => a.id === id);
+      if (!auto) return;
+      if (!confirm(`Execute "${auto.name}" now?`)) return;
+      try {
+        const result = await api('POST', `/api/automations/${id}/run`);
+        const sent = result.results.filter(r => r.status === 'sent').length;
+        const notConn = result.results.filter(r => r.status === 'not_connected').length;
+        let msg = `Executed: ${sent} screen(s) received command.`;
+        if (notConn > 0) msg += ` ${notConn} screen(s) not connected.`;
+        alert(msg);
+      } catch(e) {
+        alert(`Error: ${e.message}`);
+      }
+    }
+
+    async function deleteAutomation(id, name) {
+      if (!confirm(`Delete automation "${name}"?`)) return;
+      await api('DELETE', `/api/automations/${id}`);
+      await loadAll();
+    }
+
+    function showAddAutomationModal() {
+      const connectedIds = screens.map(s => s.screen_id);
+      // Collect all known screen IDs from rooms + connected
+      const allScreenIds = new Set(connectedIds);
+      rooms.forEach(r => (r.zones || []).forEach(z => (z.screens || []).forEach(sc => allScreenIds.add(sc.screen_id))));
+
+      const effectPages = pages.filter(p => p.category === 'effect' || p.file === 'selfdestruct.html');
+      const pageOptions = effectPages.map(p =>
+        `<option value="${p.id}">${p.icon ? p.icon.replace('ti-','') + ' ' : ''}${p.name}</option>`
+      ).join('');
+
+      openModal(`
+        <h3>NEW AUTOMATION</h3>
+        <div class="form-group">
+          <label>Name</label>
+          <input id="autoName" value="" placeholder="Self Destruct Sequence">
+        </div>
+        <div class="form-group">
+          <label>Description</label>
+          <input id="autoDesc" value="" placeholder="Optional description">
+        </div>
+
+        <div style="border:1px solid var(--border-dim);border-radius:6px;padding:12px;margin:12px 0;background:rgba(0,0,0,0.15)">
+          <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--accent-gold);margin-bottom:10px">
+            <i class="ti ti-bolt"></i> Action: Navigate to Page
+          </div>
+          <div class="form-group">
+            <label>Page</label>
+            <select id="autoPageId" onchange="updateAutoParamsForm()">
+              ${pages.map(p => `<option value="${p.id}">${p.icon ? '' : ''}${p.name}</option>`).join('')}
+            </select>
+          </div>
+          <div id="autoParamsContainer"></div>
+          <div class="form-group" style="margin-top:10px">
+            <label>Target Screens <span style="opacity:0.5">(click to select)</span></label>
+            <div class="target-chip-list" id="autoTargets">
+              ${[...allScreenIds].map(sid => {
+                const online = connectedIds.includes(sid);
+                return `<div class="target-chip ${online ? 'online' : ''}" data-screen="${sid}" onclick="this.classList.toggle('selected')">
+                  <span class="chip-dot"></span> ${sid}
+                </div>`;
+              }).join('')}
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-actions">
+          <button class="btn" onclick="closeModal()">CANCEL</button>
+          <button class="btn btn-primary" onclick="submitAddAutomation()">CREATE</button>
+        </div>
+      `);
+      updateAutoParamsForm();
+    }
+
+    function updateAutoParamsForm() {
+      const pageId = document.getElementById('autoPageId')?.value;
+      const pg = pages.find(p => p.id === pageId);
+      const container = document.getElementById('autoParamsContainer');
+      if (!container) return;
+
+      if (pg && pg.file === 'selfdestruct.html') {
+        const defaults = pg.params || {};
+        container.innerHTML = `
+          <div style="border:1px solid rgba(200,60,40,0.2);border-radius:4px;padding:10px;background:rgba(200,60,40,0.03);margin-top:8px">
+            <div style="font-size:10px;text-transform:uppercase;color:#c83c28;margin-bottom:8px"><i class="ti ti-alert-triangle"></i> Self Destruct Params</div>
+            <div class="form-group">
+              <label>Countdown (seconds)</label>
+              <input id="autoParamCountdown" type="number" value="${defaults.countdown || 60}" min="5">
+            </div>
+            <div class="form-group">
+              <label>Abort at (seconds remaining, 0 = full detonation)</label>
+              <input id="autoParamAbort" type="number" value="${defaults.abort_at ?? 10}" min="0">
+            </div>
+          </div>
+        `;
+      } else if (pg && pg.file === 'video.html') {
+        container.innerHTML = `
+          <div style="border:1px solid rgba(255,200,0,0.2);border-radius:4px;padding:10px;background:rgba(255,200,0,0.03);margin-top:8px">
+            <div style="font-size:10px;text-transform:uppercase;color:var(--accent-gold);margin-bottom:8px"><i class="ti ti-player-play"></i> Video Params</div>
+            <div class="form-group">
+              <label>Video URL</label>
+              <input id="autoParamVideo" value="" placeholder="YouTube or direct URL">
+            </div>
+          </div>
+        `;
+      } else {
+        container.innerHTML = '';
+      }
+    }
+
+    async function submitAddAutomation() {
+      const name = document.getElementById('autoName')?.value.trim();
+      if (!name) { alert('Name is required'); return; }
+
+      const id = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-+$/, '');
+      const desc = document.getElementById('autoDesc')?.value.trim() || '';
+      const pageId = document.getElementById('autoPageId')?.value;
+      const pg = pages.find(p => p.id === pageId);
+
+      // Collect params
+      let params = {};
+      if (pg && pg.file === 'selfdestruct.html') {
+        params.countdown = parseInt(document.getElementById('autoParamCountdown')?.value) || 60;
+        params.abort_at = parseInt(document.getElementById('autoParamAbort')?.value) || 0;
+      } else if (pg && pg.file === 'video.html') {
+        const url = document.getElementById('autoParamVideo')?.value.trim();
+        if (url) params.video = url;
+      }
+
+      // Collect targets
+      const targets = [];
+      document.querySelectorAll('#autoTargets .target-chip.selected').forEach(el => {
+        targets.push(el.dataset.screen);
+      });
+
+      // Determine icon from page
+      let icon = 'ti-bolt';
+      if (pg && pg.file === 'selfdestruct.html') icon = 'ti-alert-triangle';
+      else if (pg) icon = pg.icon || 'ti-bolt';
+
+      try {
+        await api('POST', '/api/automations', {
+          id, name, description: desc, icon, enabled: true,
+          actions: [{ type: 'navigate', page_id: pageId, params, targets }]
+        });
+        closeModal();
+        await loadAll();
+      } catch(e) {
+        alert(`Error: ${e.message}`);
+      }
+    }
+
+    function showEditAutomationModal(autoId) {
+      const auto = automations.find(a => a.id === autoId);
+      if (!auto) return;
+
+      const action = (auto.actions && auto.actions[0]) || {};
+      const actionPageId = action.page_id || '';
+      const actionParams = action.params || {};
+      const actionTargets = new Set(action.targets || []);
+
+      const connectedIds = screens.map(s => s.screen_id);
+      const allScreenIds = new Set(connectedIds);
+      rooms.forEach(r => (r.zones || []).forEach(z => (z.screens || []).forEach(sc => allScreenIds.add(sc.screen_id))));
+      // Also include any targets from the automation that might not be in rooms/connected
+      actionTargets.forEach(t => allScreenIds.add(t));
+
+      openModal(`
+        <h3>EDIT AUTOMATION</h3>
+        <div class="form-group">
+          <label>Name</label>
+          <input id="autoName" value="${auto.name}">
+        </div>
+        <div class="form-group">
+          <label>Description</label>
+          <input id="autoDesc" value="${auto.description || ''}">
+        </div>
+
+        <div style="border:1px solid var(--border-dim);border-radius:6px;padding:12px;margin:12px 0;background:rgba(0,0,0,0.15)">
+          <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--accent-gold);margin-bottom:10px">
+            <i class="ti ti-bolt"></i> Action: Navigate to Page
+          </div>
+          <div class="form-group">
+            <label>Page</label>
+            <select id="autoPageId" onchange="updateEditAutoParamsForm('${autoId}')">
+              ${pages.map(p => `<option value="${p.id}" ${p.id === actionPageId ? 'selected' : ''}>${p.name}</option>`).join('')}
+            </select>
+          </div>
+          <div id="autoParamsContainer"></div>
+          <div class="form-group" style="margin-top:10px">
+            <label>Target Screens <span style="opacity:0.5">(click to select)</span></label>
+            <div class="target-chip-list" id="autoTargets">
+              ${[...allScreenIds].map(sid => {
+                const online = connectedIds.includes(sid);
+                const selected = actionTargets.has(sid) ? ' selected' : '';
+                return `<div class="target-chip ${online ? 'online' : ''}${selected}" data-screen="${sid}" onclick="this.classList.toggle('selected')">
+                  <span class="chip-dot"></span> ${sid}
+                </div>`;
+              }).join('')}
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-actions">
+          <button class="btn" onclick="closeModal()">CANCEL</button>
+          <button class="btn btn-primary" onclick="submitEditAutomation('${autoId}')">SAVE</button>
+        </div>
+      `);
+      updateEditAutoParamsForm(autoId);
+    }
+
+    function updateEditAutoParamsForm(autoId) {
+      const auto = automations.find(a => a.id === autoId);
+      const action = (auto && auto.actions && auto.actions[0]) || {};
+      const actionParams = action.params || {};
+
+      const pageId = document.getElementById('autoPageId')?.value;
+      const pg = pages.find(p => p.id === pageId);
+      const container = document.getElementById('autoParamsContainer');
+      if (!container) return;
+
+      if (pg && pg.file === 'selfdestruct.html') {
+        const countdown = actionParams.countdown || pg.params?.countdown || 60;
+        const abortAt = actionParams.abort_at ?? pg.params?.abort_at ?? 10;
+        container.innerHTML = `
+          <div style="border:1px solid rgba(200,60,40,0.2);border-radius:4px;padding:10px;background:rgba(200,60,40,0.03);margin-top:8px">
+            <div style="font-size:10px;text-transform:uppercase;color:#c83c28;margin-bottom:8px"><i class="ti ti-alert-triangle"></i> Self Destruct Params</div>
+            <div class="form-group">
+              <label>Countdown (seconds)</label>
+              <input id="autoParamCountdown" type="number" value="${countdown}" min="5">
+            </div>
+            <div class="form-group">
+              <label>Abort at (seconds remaining, 0 = full detonation)</label>
+              <input id="autoParamAbort" type="number" value="${abortAt}" min="0">
+            </div>
+          </div>
+        `;
+      } else if (pg && pg.file === 'video.html') {
+        container.innerHTML = `
+          <div style="border:1px solid rgba(255,200,0,0.2);border-radius:4px;padding:10px;background:rgba(255,200,0,0.03);margin-top:8px">
+            <div style="font-size:10px;text-transform:uppercase;color:var(--accent-gold);margin-bottom:8px"><i class="ti ti-player-play"></i> Video Params</div>
+            <div class="form-group">
+              <label>Video URL</label>
+              <input id="autoParamVideo" value="${actionParams.video || ''}" placeholder="YouTube or direct URL">
+            </div>
+          </div>
+        `;
+      } else {
+        container.innerHTML = '';
+      }
+    }
+
+    async function submitEditAutomation(autoId) {
+      const name = document.getElementById('autoName')?.value.trim();
+      if (!name) { alert('Name is required'); return; }
+
+      const desc = document.getElementById('autoDesc')?.value.trim() || '';
+      const pageId = document.getElementById('autoPageId')?.value;
+      const pg = pages.find(p => p.id === pageId);
+
+      let params = {};
+      if (pg && pg.file === 'selfdestruct.html') {
+        params.countdown = parseInt(document.getElementById('autoParamCountdown')?.value) || 60;
+        params.abort_at = parseInt(document.getElementById('autoParamAbort')?.value) || 0;
+      } else if (pg && pg.file === 'video.html') {
+        const url = document.getElementById('autoParamVideo')?.value.trim();
+        if (url) params.video = url;
+      }
+
+      const targets = [];
+      document.querySelectorAll('#autoTargets .target-chip.selected').forEach(el => {
+        targets.push(el.dataset.screen);
+      });
+
+      let icon = 'ti-bolt';
+      if (pg && pg.file === 'selfdestruct.html') icon = 'ti-alert-triangle';
+      else if (pg) icon = pg.icon || 'ti-bolt';
+
+      try {
+        await api('PUT', `/api/automations/${autoId}`, {
+          name, description: desc, icon,
+          actions: [{ type: 'navigate', page_id: pageId, params, targets }]
+        });
+        closeModal();
+        await loadAll();
+      } catch(e) {
+        alert(`Error: ${e.message}`);
+      }
     }
 
     // ═══════════════════════════════════════════════════

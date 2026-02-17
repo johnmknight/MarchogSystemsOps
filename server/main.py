@@ -365,6 +365,104 @@ async def api_navigate_screen(screen_id: str, cmd: NavigateCommand):
     raise HTTPException(404, "Screen not connected")
 
 
+# ── API: Automations (JSON-backed) ───────────────────────────
+
+AUTOMATIONS_JSON = Path(__file__).parent / "automations.json"
+
+def _read_automations() -> list[dict]:
+    if not AUTOMATIONS_JSON.exists():
+        return []
+    with open(AUTOMATIONS_JSON, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+def _write_automations(autos: list[dict]):
+    with open(AUTOMATIONS_JSON, "w", encoding="utf-8") as f:
+        json.dump(autos, f, indent=2, ensure_ascii=False)
+        f.write("\n")
+
+class AutomationCreate(BaseModel):
+    id: str
+    name: str
+    description: str = ""
+    icon: str = "ti-bolt"
+    enabled: bool = True
+    actions: list = []
+
+class AutomationUpdate(BaseModel):
+    name: str = None
+    description: str = None
+    icon: str = None
+    enabled: bool = None
+    actions: list = None
+
+@app.get("/api/automations")
+async def api_get_automations():
+    return _read_automations()
+
+@app.post("/api/automations")
+async def api_create_automation(data: AutomationCreate):
+    autos = _read_automations()
+    if any(a["id"] == data.id for a in autos):
+        raise HTTPException(409, "Automation ID already exists")
+    autos.append(data.dict())
+    _write_automations(autos)
+    return {"status": "created", "id": data.id}
+
+@app.put("/api/automations/{auto_id}")
+async def api_update_automation(auto_id: str, data: AutomationUpdate):
+    autos = _read_automations()
+    for a in autos:
+        if a["id"] == auto_id:
+            if data.name is not None: a["name"] = data.name
+            if data.description is not None: a["description"] = data.description
+            if data.icon is not None: a["icon"] = data.icon
+            if data.enabled is not None: a["enabled"] = data.enabled
+            if data.actions is not None: a["actions"] = data.actions
+            _write_automations(autos)
+            return {"status": "updated", "id": auto_id}
+    raise HTTPException(404, "Automation not found")
+
+@app.delete("/api/automations/{auto_id}")
+async def api_delete_automation(auto_id: str):
+    autos = _read_automations()
+    filtered = [a for a in autos if a["id"] != auto_id]
+    if len(filtered) == len(autos):
+        raise HTTPException(404, "Automation not found")
+    _write_automations(filtered)
+    return {"status": "deleted", "id": auto_id}
+
+@app.post("/api/automations/{auto_id}/run")
+async def api_run_automation(auto_id: str):
+    """Execute an automation: send navigate commands to all target screens."""
+    autos = _read_automations()
+    auto = next((a for a in autos if a["id"] == auto_id), None)
+    if not auto:
+        raise HTTPException(404, "Automation not found")
+    if not auto.get("enabled", True):
+        raise HTTPException(400, "Automation is disabled")
+
+    results = []
+    for action in auto.get("actions", []):
+        if action.get("type") == "navigate":
+            page_id = action.get("page_id")
+            params = action.get("params", {})
+            targets = action.get("targets", [])
+            for screen_id in targets:
+                if screen_id in app_state["screens"]:
+                    ws = app_state["screens"][screen_id]["ws"]
+                    try:
+                        msg = {"type": "navigate", "page": page_id}
+                        if params:
+                            msg["params"] = params
+                        await ws.send_json(msg)
+                        results.append({"screen": screen_id, "status": "sent"})
+                    except Exception as e:
+                        results.append({"screen": screen_id, "status": "error", "error": str(e)})
+                else:
+                    results.append({"screen": screen_id, "status": "not_connected"})
+    return {"status": "executed", "automation": auto_id, "results": results}
+
+
 # ── WebSocket: Screen Connection ─────────────────────────────
 
 @app.websocket("/ws/screen/{screen_id}")

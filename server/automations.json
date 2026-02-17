@@ -1,0 +1,20 @@
+[
+  {
+    "id": "self-destruct-sequence",
+    "name": "Self Destruct Sequence",
+    "description": "Send self destruct countdown to selected screens",
+    "icon": "ti-alert-triangle",
+    "enabled": true,
+    "actions": [
+      {
+        "type": "navigate",
+        "page_id": "selfdestruct",
+        "params": {
+          "countdown": 60,
+          "abort_at": 10
+        },
+        "targets": []
+      }
+    ]
+  }
+]
