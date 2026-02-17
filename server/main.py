@@ -35,6 +35,58 @@ import mqtt_bus
 BASE_DIR = Path(__file__).parent
 CLIENT_DIR = BASE_DIR.parent / "client"
 
+# ── Device Type Taxonomy ─────────────────────────────────────
+
+DEVICE_TYPES = {
+    "Access & Security": [
+        {"id": "door-panel", "label": "Door Panel"},
+        {"id": "airlock-panel", "label": "Airlock Panel"},
+        {"id": "alert-beacon", "label": "Alert Beacon"},
+    ],
+    "Navigation & Command": [
+        {"id": "navigation-panel", "label": "Navigation Panel"},
+        {"id": "tactical-panel", "label": "Tactical Panel"},
+        {"id": "command-panel", "label": "Command Panel"},
+        {"id": "comms-panel", "label": "Comms Panel"},
+        {"id": "holotable", "label": "Holotable"},
+    ],
+    "Engineering & Systems": [
+        {"id": "engineering-panel", "label": "Engineering Panel"},
+        {"id": "diagnostic-panel", "label": "Diagnostic Panel"},
+        {"id": "gauge-display", "label": "Gauge Display"},
+        {"id": "life-support-panel", "label": "Life Support Panel"},
+        {"id": "systems-panel", "label": "Systems Panel"},
+    ],
+    "Viewport & Atmospheric": [
+        {"id": "viewport", "label": "Viewport"},
+        {"id": "ambient-display", "label": "Ambient Display"},
+        {"id": "corridor-display", "label": "Corridor Display"},
+    ],
+    "Entertainment & Media": [
+        {"id": "entertainment-display", "label": "Entertainment Display"},
+        {"id": "bar-display", "label": "Bar Display"},
+        {"id": "table-display", "label": "Table Display"},
+    ],
+    "Display & Collection": [
+        {"id": "collectible-display", "label": "Collectible Display"},
+        {"id": "label-display", "label": "Label Display"},
+        {"id": "gallery-display", "label": "Gallery Display"},
+    ],
+    "Utility & Personal": [
+        {"id": "info-display", "label": "Info Display"},
+        {"id": "utility-display", "label": "Utility Display"},
+        {"id": "personal-panel", "label": "Personal Panel"},
+        {"id": "workstation-display", "label": "Workstation Display"},
+        {"id": "medical-panel", "label": "Medical Panel"},
+        {"id": "medical-display", "label": "Medical Display"},
+    ],
+    "Specialized": [
+        {"id": "hangar-panel", "label": "Hangar Panel"},
+        {"id": "cargo-display", "label": "Cargo Display"},
+        {"id": "vehicle-display", "label": "Vehicle Display"},
+    ],
+}
+
 # ── App State ────────────────────────────────────────────────
 
 app_state = {
@@ -106,6 +158,8 @@ class ZoneScreenAssign(BaseModel):
     page_id: str
     label: str = ""
     params_override: dict = None
+    device_type: str = "info-display"
+    device_type_secondary: Optional[str] = None
 
 class NavigateCommand(BaseModel):
     page: str
@@ -219,7 +273,16 @@ async def api_assign_screen_to_zone(zone_id: str, data: ZoneScreenAssign):
     active = await get_active_scene()
     if not active:
         raise HTTPException(400, "No active scene")
-    await assign_screen_to_zone(active["id"], data.screen_id, zone_id, data.page_id, data.label, data.params_override)
+    await assign_screen_to_zone(active["id"], data.screen_id, zone_id, data.page_id, data.label, data.params_override, data.device_type, data.device_type_secondary)
+    # Update screen_meta for MQTT targeting
+    zone = await get_zone(zone_id)
+    room_id = zone.get("room_id") if zone else None
+    app_state["screen_meta"][data.screen_id] = {
+        "device_type": data.device_type,
+        "device_type_secondary": data.device_type_secondary,
+        "zone_id": zone_id,
+        "room_id": room_id,
+    }
     # Push assignment to screen if connected
     await push_assignment_to_screen(data.screen_id)
     return {"status": "assigned", "screen_id": data.screen_id, "zone_id": zone_id}
@@ -232,6 +295,30 @@ async def api_unassign_screen_from_zone(zone_id: str, screen_id: str):
         raise HTTPException(400, "No active scene")
     await unassign_screen_from_zone(active["id"], screen_id)
     return {"status": "unassigned", "screen_id": screen_id}
+
+
+class DeviceTypeUpdate(BaseModel):
+    device_type: str = "info-display"
+    device_type_secondary: Optional[str] = None
+
+@app.patch("/api/screens/{screen_id}/device-type")
+async def api_update_device_type(screen_id: str, data: DeviceTypeUpdate):
+    """Update device type(s) for a screen in the active scene."""
+    active = await get_active_scene()
+    if not active:
+        raise HTTPException(400, "No active scene")
+    from database import update_screen_device_type
+    await update_screen_device_type(active["id"], screen_id, data.device_type, data.device_type_secondary)
+    # Update runtime meta
+    if screen_id in app_state["screen_meta"]:
+        app_state["screen_meta"][screen_id]["device_type"] = data.device_type
+        app_state["screen_meta"][screen_id]["device_type_secondary"] = data.device_type_secondary
+    return {"status": "updated", "screen_id": screen_id, "device_type": data.device_type, "device_type_secondary": data.device_type_secondary}
+
+@app.get("/api/device-types")
+async def api_get_device_types():
+    """Return the full device type taxonomy."""
+    return DEVICE_TYPES
 
 
 # ── API: Pages (JSON-backed) ─────────────────────────────────
@@ -526,6 +613,23 @@ async def ws_screen(websocket: WebSocket, screen_id: str):
     if mqtt_bus.is_connected():
         await mqtt_bus.publish_heartbeat(screen_id, "screen")
 
+    # Populate screen_meta for MQTT topic matching
+    assignment = await get_screen_assignment(screen_id)
+    if assignment:
+        zone_id = assignment.get("zone_id")
+        # Look up room_id from zone
+        room_id = None
+        if zone_id:
+            zone = await get_zone(zone_id)
+            if zone:
+                room_id = zone.get("room_id")
+        app_state["screen_meta"][screen_id] = {
+            "device_type": assignment.get("device_type", "info-display"),
+            "device_type_secondary": assignment.get("device_type_secondary"),
+            "zone_id": zone_id,
+            "room_id": room_id,
+        }
+
     try:
         # Send registration confirmation
         await websocket.send_json({
@@ -564,6 +668,7 @@ async def ws_screen(websocket: WebSocket, screen_id: str):
         print(f"[!] Screen '{screen_id}' error: {e}")
     finally:
         app_state["screens"].pop(screen_id, None)
+        app_state["screen_meta"].pop(screen_id, None)
         # Publish offline status to MQTT
         if mqtt_bus.is_connected():
             await mqtt_bus.publish(f"heartbeat/{screen_id}", {

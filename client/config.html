@@ -231,6 +231,62 @@
     }
     .screen-remove:hover { opacity: 1; color: var(--accent-red); }
 
+    .device-type-badge {
+      font-size: 0.6em;
+      font-family: 'JetBrains Mono', 'Courier New', monospace;
+      background: rgba(245,158,11,0.1);
+      color: var(--accent);
+      border: 1px solid rgba(245,158,11,0.2);
+      padding: 1px 6px;
+      border-radius: 3px;
+      cursor: pointer;
+      white-space: nowrap;
+      max-width: 140px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      transition: all 0.15s;
+    }
+    .device-type-badge:hover {
+      background: rgba(245,158,11,0.2);
+      border-color: var(--accent);
+    }
+
+    .dt-modal-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin: 12px 0;
+    }
+    .dt-category {
+      margin-bottom: 8px;
+    }
+    .dt-category-label {
+      font-size: 0.7em;
+      color: var(--text-dim);
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      margin-bottom: 4px;
+      font-weight: 600;
+    }
+    .dt-option {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-size: 0.75em;
+      cursor: pointer;
+      transition: background 0.1s;
+    }
+    .dt-option:hover { background: rgba(255,255,255,0.05); }
+    .dt-option input[type="radio"] { margin: 0; accent-color: var(--accent-cyan); }
+    .dt-secondary-label {
+      font-size: 0.7em;
+      color: var(--text-dim);
+      margin-top: 12px;
+      margin-bottom: 4px;
+    }
+
     .screen-add-row {
       padding: 6px 10px;
       font-size: 0.7em;
@@ -770,6 +826,8 @@
                   const pageOptions = pages.map(p =>
                     `<option value="${p.id}" ${p.id === sc.static_page ? 'selected' : ''}>${p.icon} ${p.name}</option>`
                   ).join('');
+                  const dt = sc.device_type || 'info-display';
+                  const dt2 = sc.device_type_secondary || '';
                   return `
                     <div class="screen-row">
                       <span class="screen-dot ${online ? 'online' : 'offline'}"></span>
@@ -778,6 +836,9 @@
                       <select class="screen-page-select" onchange="changeScreenPage('${z.id}','${sc.screen_id}', this.value)">
                         ${pageOptions}
                       </select>
+                      <span class="device-type-badge" onclick="showDeviceTypeModal('${z.id}','${sc.screen_id}','${dt}','${dt2}')" title="Device type: ${dt}${dt2 ? ' + ' + dt2 : ''}&#10;Click to change">
+                        ${dt}${dt2 ? ' +' : ''}
+                      </span>
                       ${hasParams ? `<button class="conn-btn" onclick="showScreenParamsModal('${z.id}','${sc.screen_id}','${sc.static_page}')" title="Page params override" style="font-size:12px;padding:2px 6px"><i class="ti ti-settings"></i></button>` : ''}
                       ${overrideInfo ? `<span style="font-size:10px;color:var(--accent);opacity:0.6" title="${overrideInfo.replace(/"/g,'&quot;')}"><i class="ti ti-settings"></i></span>` : ''}
                       <span class="screen-remove" onclick="unassignScreen('${z.id}','${sc.screen_id}')" title="Remove screen">&#10005;</span>
@@ -988,6 +1049,14 @@
             ${pageOpts}
           </select>
         </div>
+        <div class="form-group">
+          <label>Device Type</label>
+          <select id="scrDeviceType">
+            ${Object.entries(DEVICE_TYPES).map(([cat, types]) =>
+              `<optgroup label="${cat}">${types.map(t => `<option value="${t}" ${t === 'info-display' ? 'selected' : ''}>${t}</option>`).join('')}</optgroup>`
+            ).join('')}
+          </select>
+        </div>
         <input type="hidden" id="scrZoneId" value="${zoneId}">
         <div class="modal-actions">
           <button class="btn" onclick="closeModal()">CANCEL</button>
@@ -1006,7 +1075,8 @@
       await api('POST', `/api/zones/${zoneId}/screens`, {
         screen_id: screenId,
         page_id: pageId,
-        label: label
+        label: label,
+        device_type: document.getElementById('scrDeviceType').value || 'info-display'
       });
       closeModal();
       await loadAll();
@@ -1019,15 +1089,19 @@
     }
 
     async function changeScreenPage(zoneId, screenId, newPageId) {
-      // Find the existing screen config to preserve label
+      // Find the existing screen config to preserve label and device type
       let existingLabel = '';
       let existingOverride = null;
+      let existingDt = 'info-display';
+      let existingDt2 = null;
       for (const room of rooms) {
         for (const z of room.zones || []) {
           if (z.id === zoneId) {
             const sc = (z.screens || []).find(s => s.screen_id === screenId);
             if (sc) {
               existingLabel = sc.label || '';
+              existingDt = sc.device_type || 'info-display';
+              existingDt2 = sc.device_type_secondary || null;
               // Clear override when changing to a different page
               existingOverride = null;
             }
@@ -1039,12 +1113,76 @@
         screen_id: screenId,
         page_id: newPageId,
         label: existingLabel,
-        params_override: existingOverride
+        params_override: existingOverride,
+        device_type: existingDt,
+        device_type_secondary: existingDt2
       });
       // Also navigate the screen live if it's connected
       try {
         await api('POST', `/api/screens/${screenId}/navigate`, { page: newPageId });
       } catch(e) { /* screen may not be connected */ }
+      await loadAll();
+    }
+
+    // ── Device Type Modal ──────────────────────────────
+    const DEVICE_TYPES = {
+      "Access & Security": ["door-panel","airlock-panel","alert-beacon"],
+      "Navigation & Command": ["navigation-panel","tactical-panel","command-panel","comms-panel","holotable"],
+      "Engineering & Systems": ["engineering-panel","diagnostic-panel","gauge-display","life-support-panel","systems-panel"],
+      "Viewport & Atmospheric": ["viewport","ambient-display","corridor-display"],
+      "Entertainment & Media": ["entertainment-display","bar-display","table-display"],
+      "Display & Collection": ["collectible-display","label-display","gallery-display"],
+      "Utility & Personal": ["info-display","utility-display","personal-panel","workstation-display","medical-panel","medical-display"],
+      "Specialized": ["hangar-panel","cargo-display","vehicle-display"],
+    };
+
+    function showDeviceTypeModal(zoneId, screenId, currentDt, currentDt2) {
+      let html = `<h3>DEVICE TYPE</h3>
+        <p style="font-size:0.75em;color:var(--text-dim);margin-bottom:8px">Screen: <code>${screenId}</code></p>
+        <div class="dt-category-label" style="margin-bottom:6px">PRIMARY TYPE</div>
+        <div class="dt-modal-grid">`;
+
+      for (const [cat, types] of Object.entries(DEVICE_TYPES)) {
+        html += `<div class="dt-category"><div class="dt-category-label">${cat}</div>`;
+        for (const t of types) {
+          html += `<label class="dt-option">
+            <input type="radio" name="dt_primary" value="${t}" ${t === currentDt ? 'checked' : ''}>
+            ${t}
+          </label>`;
+        }
+        html += `</div>`;
+      }
+
+      html += `</div>
+        <div class="dt-secondary-label">SECONDARY TYPE <span style="opacity:0.5">(optional)</span></div>
+        <select id="dtSecondary" style="width:100%;margin-bottom:12px;padding:6px;background:var(--bg-panel);color:var(--text);border:1px solid var(--border-dim);border-radius:4px;font-size:0.8em">
+          <option value="">— None —</option>`;
+
+      for (const [cat, types] of Object.entries(DEVICE_TYPES)) {
+        html += `<optgroup label="${cat}">`;
+        for (const t of types) {
+          html += `<option value="${t}" ${t === currentDt2 ? 'selected' : ''}>${t}</option>`;
+        }
+        html += `</optgroup>`;
+      }
+
+      html += `</select>
+        <div class="modal-actions">
+          <button class="btn" onclick="closeModal()">CANCEL</button>
+          <button class="btn btn-primary" onclick="saveDeviceType('${zoneId}','${screenId}')">SAVE</button>
+        </div>`;
+
+      openModal(html);
+    }
+
+    async function saveDeviceType(zoneId, screenId) {
+      const primary = document.querySelector('input[name="dt_primary"]:checked')?.value || 'info-display';
+      const secondary = document.getElementById('dtSecondary').value || null;
+      await api('PATCH', `/api/screens/${screenId}/device-type`, {
+        device_type: primary,
+        device_type_secondary: secondary
+      });
+      closeModal();
       await loadAll();
     }
 
@@ -1141,13 +1279,19 @@
         if (border) paramsOverride.border = border;
       }
 
-      // Find existing label
+      // Find existing label and device type
       let existingLabel = '';
+      let existingDt = 'info-display';
+      let existingDt2 = null;
       for (const room of rooms) {
         for (const z of room.zones || []) {
           if (z.id === zoneId) {
             const sc = (z.screens || []).find(s => s.screen_id === screenId);
-            if (sc) existingLabel = sc.label || '';
+            if (sc) {
+              existingLabel = sc.label || '';
+              existingDt = sc.device_type || 'info-display';
+              existingDt2 = sc.device_type_secondary || null;
+            }
           }
         }
       }
@@ -1156,7 +1300,9 @@
         screen_id: screenId,
         page_id: pageId,
         label: existingLabel,
-        params_override: Object.keys(paramsOverride).length > 0 ? paramsOverride : null
+        params_override: Object.keys(paramsOverride).length > 0 ? paramsOverride : null,
+        device_type: existingDt,
+        device_type_secondary: existingDt2
       });
       // Navigate with override params
       try {

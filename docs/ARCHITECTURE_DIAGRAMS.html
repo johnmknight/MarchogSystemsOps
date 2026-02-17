@@ -1,0 +1,1092 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MarchogSystemsOps — Architecture Diagrams</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=JetBrains+Mono:wght@400;600&family=Inter:wght@300;400;500;600&display=swap');
+
+  :root {
+    --bg: #0a0c10;
+    --surface: #12151c;
+    --surface2: #1a1e28;
+    --border: rgba(255,255,255,0.06);
+    --border-bright: rgba(255,255,255,0.12);
+    --text: #c8ccd4;
+    --text-dim: #6b7280;
+    --cyan: #00d4ff;
+    --cyan-dim: rgba(0,212,255,0.15);
+    --amber: #f59e0b;
+    --amber-dim: rgba(245,158,11,0.15);
+    --green: #10b981;
+    --green-dim: rgba(16,185,129,0.15);
+    --red: #ef4444;
+    --red-dim: rgba(239,68,68,0.15);
+    --purple: #8b5cf6;
+    --purple-dim: rgba(139,92,246,0.15);
+    --blue: #3b82f6;
+    --blue-dim: rgba(59,130,246,0.15);
+    --pink: #ec4899;
+    --pink-dim: rgba(236,72,153,0.15);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', sans-serif;
+    font-weight: 400;
+    line-height: 1.6;
+    padding: 40px;
+    min-height: 100vh;
+  }
+
+  h1 {
+    font-family: 'Orbitron', sans-serif;
+    font-weight: 900;
+    font-size: 1.8em;
+    letter-spacing: 0.15em;
+    color: var(--cyan);
+    text-align: center;
+    margin-bottom: 8px;
+    text-transform: uppercase;
+  }
+
+  .subtitle {
+    text-align: center;
+    color: var(--text-dim);
+    font-size: 0.85em;
+    letter-spacing: 0.1em;
+    margin-bottom: 48px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  .diagram-section {
+    margin-bottom: 64px;
+  }
+
+  .diagram-title {
+    font-family: 'Orbitron', sans-serif;
+    font-weight: 700;
+    font-size: 1em;
+    letter-spacing: 0.12em;
+    color: var(--amber);
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+
+  .diagram-desc {
+    color: var(--text-dim);
+    font-size: 0.82em;
+    margin-bottom: 24px;
+    max-width: 700px;
+  }
+
+  /* ── C4 Diagram Shared ─────────────────── */
+  .c4 {
+    position: relative;
+    padding: 32px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow-x: auto;
+  }
+
+  .c4-canvas {
+    min-width: 900px;
+    min-height: 500px;
+    position: relative;
+  }
+
+  .c4-box {
+    position: absolute;
+    border-radius: 6px;
+    padding: 14px 18px;
+    text-align: center;
+    font-size: 0.78em;
+    transition: transform 0.2s, box-shadow 0.2s;
+  }
+  .c4-box:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+  }
+
+  .c4-box .c4-label {
+    font-family: 'Orbitron', sans-serif;
+    font-weight: 700;
+    font-size: 0.95em;
+    letter-spacing: 0.06em;
+    margin-bottom: 4px;
+  }
+
+  .c4-box .c4-tech {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.7em;
+    opacity: 0.6;
+  }
+
+  .c4-box .c4-desc {
+    font-size: 0.75em;
+    opacity: 0.7;
+    margin-top: 4px;
+    line-height: 1.4;
+  }
+
+  /* Box variants */
+  .c4-person {
+    background: var(--blue-dim);
+    border: 1.5px solid var(--blue);
+    color: #d0e4ff;
+    border-radius: 50px;
+  }
+  .c4-system {
+    background: var(--cyan-dim);
+    border: 1.5px solid var(--cyan);
+    color: #c0f0ff;
+  }
+  .c4-external {
+    background: var(--purple-dim);
+    border: 1.5px dashed var(--purple);
+    color: #ddd0ff;
+  }
+  .c4-container {
+    background: var(--green-dim);
+    border: 1.5px solid var(--green);
+    color: #c0ffe0;
+  }
+  .c4-component {
+    background: var(--amber-dim);
+    border: 1.5px solid var(--amber);
+    color: #fff0c0;
+  }
+  .c4-device {
+    background: var(--pink-dim);
+    border: 1.5px solid var(--pink);
+    color: #ffd0e8;
+  }
+  .c4-broker {
+    background: var(--red-dim);
+    border: 2px solid var(--red);
+    color: #ffd0d0;
+  }
+
+  /* Boundary boxes */
+  .c4-boundary {
+    position: absolute;
+    border: 1px dashed var(--border-bright);
+    border-radius: 8px;
+    padding: 12px;
+  }
+  .c4-boundary-label {
+    position: absolute;
+    top: -10px;
+    left: 16px;
+    background: var(--surface);
+    padding: 0 8px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.65em;
+    color: var(--text-dim);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  /* SVG arrows */
+  .c4 svg {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+  }
+  .c4 svg line, .c4 svg path {
+    stroke-width: 1.5;
+    fill: none;
+  }
+  .arrow-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    fill: var(--text-dim);
+  }
+
+  /* ── Topic Tree ─────────────────────────── */
+  .topic-tree {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 32px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.78em;
+    line-height: 2;
+    overflow-x: auto;
+  }
+  .topic-tree .t-root { color: var(--cyan); font-weight: 600; }
+  .topic-tree .t-branch { color: var(--amber); }
+  .topic-tree .t-leaf { color: var(--text-dim); }
+  .topic-tree .t-comment { color: #4a5568; font-style: italic; }
+  .topic-tree .t-variable { color: var(--green); }
+
+  /* ── Sequence Diagram ──────────────────── */
+  .sequence {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 32px;
+    overflow-x: auto;
+  }
+  .seq-canvas {
+    min-width: 800px;
+    position: relative;
+  }
+  .seq-actor {
+    text-align: center;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 0.7em;
+    letter-spacing: 0.06em;
+    font-weight: 700;
+    padding: 8px 16px;
+    border-radius: 4px;
+    display: inline-block;
+  }
+  .seq-lifeline {
+    position: absolute;
+    width: 2px;
+    background: var(--border-bright);
+    top: 50px;
+  }
+  .seq-msg {
+    position: absolute;
+    height: 1px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .seq-msg-line {
+    position: absolute;
+    height: 2px;
+    width: 100%;
+  }
+  .seq-msg-label {
+    position: relative;
+    z-index: 1;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.65em;
+    padding: 2px 8px;
+    border-radius: 3px;
+    white-space: nowrap;
+    background: var(--surface);
+  }
+
+  /* ── Data Flow Grid ────────────────────── */
+  .flow-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 16px;
+  }
+  .flow-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px;
+    transition: border-color 0.2s;
+  }
+  .flow-card:hover {
+    border-color: var(--border-bright);
+  }
+  .flow-card-title {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 0.72em;
+    letter-spacing: 0.08em;
+    font-weight: 700;
+    margin-bottom: 8px;
+  }
+  .flow-card-body {
+    font-size: 0.78em;
+    color: var(--text-dim);
+    line-height: 1.6;
+  }
+  .flow-card-body code {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.9em;
+    background: rgba(255,255,255,0.05);
+    padding: 1px 5px;
+    border-radius: 3px;
+    color: var(--cyan);
+  }
+
+  .flow-arrow {
+    font-size: 1.2em;
+    color: var(--amber);
+    text-align: center;
+    padding: 4px;
+  }
+
+  /* ── Device Type Matrix ────────────────── */
+  .dt-matrix {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 24px;
+    overflow-x: auto;
+  }
+  .dt-matrix table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.78em;
+    min-width: 700px;
+  }
+  .dt-matrix th {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 0.7em;
+    letter-spacing: 0.08em;
+    font-weight: 700;
+    text-transform: uppercase;
+    padding: 10px 12px;
+    text-align: left;
+    border-bottom: 1px solid var(--border-bright);
+    color: var(--cyan);
+  }
+  .dt-matrix td {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  .dt-matrix tr:hover td {
+    background: rgba(255,255,255,0.02);
+  }
+  .dt-cat {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.85em;
+    padding: 2px 8px;
+    border-radius: 3px;
+    display: inline-block;
+  }
+  .dt-cat-access { background: var(--red-dim); color: var(--red); }
+  .dt-cat-nav { background: var(--cyan-dim); color: var(--cyan); }
+  .dt-cat-eng { background: var(--amber-dim); color: var(--amber); }
+  .dt-cat-atmo { background: var(--purple-dim); color: var(--purple); }
+  .dt-cat-media { background: var(--green-dim); color: var(--green); }
+  .dt-cat-display { background: var(--pink-dim); color: var(--pink); }
+  .dt-cat-util { background: var(--blue-dim); color: var(--blue); }
+
+  .tag {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.8em;
+    padding: 1px 6px;
+    border-radius: 3px;
+    background: rgba(255,255,255,0.05);
+    color: var(--text-dim);
+    display: inline-block;
+    margin: 1px 2px;
+  }
+
+  /* Print-friendly */
+  @media print {
+    body { background: #fff; color: #111; padding: 20px; }
+    .c4, .topic-tree, .sequence, .dt-matrix, .flow-card {
+      background: #f8f8f8;
+      border-color: #ddd;
+    }
+  }
+</style>
+</head>
+<body>
+
+<h1>MarchogSystemsOps</h1>
+<div class="subtitle">Architecture Diagrams — MQTT Pub/Sub &amp; Device Type System</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- C4 Level 1: System Context -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<div class="diagram-section">
+  <div class="diagram-title">C4 Level 1 — System Context</div>
+  <div class="diagram-desc">Who uses MarchogSystemsOps and what external systems does it interact with?</div>
+
+  <div class="c4" style="height: 480px;">
+    <svg viewBox="0 0 900 480">
+      <defs>
+        <marker id="ah1" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+          <polygon points="0 0, 8 3, 0 6" fill="#6b7280"/>
+        </marker>
+      </defs>
+      <!-- Room Builder → Marchog -->
+      <line x1="170" y1="120" x2="380" y2="220" stroke="#6b7280" marker-end="url(#ah1)"/>
+      <text x="240" y="160" class="arrow-label">Configures rooms,</text>
+      <text x="240" y="172" class="arrow-label">triggers automations</text>
+
+      <!-- Guest → Marchog -->
+      <line x1="170" y1="370" x2="380" y2="280" stroke="#6b7280" marker-end="url(#ah1)"/>
+      <text x="220" y="340" class="arrow-label">Triggers tour/interactive</text>
+
+      <!-- Marchog → Screens -->
+      <line x1="580" y1="230" x2="720" y2="120" stroke="#6b7280" marker-end="url(#ah1)"/>
+      <text x="620" y="165" class="arrow-label">Navigate, content</text>
+
+      <!-- Marchog → IoT -->
+      <line x1="580" y1="270" x2="720" y2="370" stroke="#6b7280" marker-end="url(#ah1)"/>
+      <text x="625" y="335" class="arrow-label">Lighting, audio, props</text>
+
+      <!-- Marchog ↔ HA -->
+      <line x1="500" y1="310" x2="500" y2="410" stroke="#6b7280" stroke-dasharray="4,4" marker-end="url(#ah1)"/>
+      <text x="510" y="370" class="arrow-label">Future integration</text>
+    </svg>
+
+    <div class="c4-canvas">
+      <!-- People -->
+      <div class="c4-box c4-person" style="left:50px; top:70px; width:180px;">
+        <div class="c4-label">Room Builder</div>
+        <div class="c4-desc">Configures rooms, zones, screens, automations via Config UI</div>
+      </div>
+      <div class="c4-box c4-person" style="left:50px; top:320px; width:180px;">
+        <div class="c4-label">Guest / Visitor</div>
+        <div class="c4-desc">Interacts with the themed environment</div>
+      </div>
+
+      <!-- Core System -->
+      <div class="c4-box c4-system" style="left:340px; top:190px; width:240px;">
+        <div class="c4-label">MarchogSystemsOps</div>
+        <div class="c4-tech">FastAPI + MQTT + WebSocket</div>
+        <div class="c4-desc">Centralized screen controller for themed room installations</div>
+      </div>
+
+      <!-- External -->
+      <div class="c4-box c4-device" style="left:680px; top:70px; width:180px;">
+        <div class="c4-label">Display Screens</div>
+        <div class="c4-tech">Tablets / Monitors</div>
+        <div class="c4-desc">Browser-based or kiosk app</div>
+      </div>
+      <div class="c4-box c4-device" style="left:680px; top:320px; width:180px;">
+        <div class="c4-label">IoT Devices</div>
+        <div class="c4-tech">ESP32 / RPi</div>
+        <div class="c4-desc">Buttons, LEDs, sensors, audio, props</div>
+      </div>
+      <div class="c4-box c4-external" style="left:390px; top:410px; width:180px;">
+        <div class="c4-label">Home Assistant</div>
+        <div class="c4-tech">Future</div>
+        <div class="c4-desc">External automation platform</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- C4 Level 2: Container Diagram -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<div class="diagram-section">
+  <div class="diagram-title">C4 Level 2 — Container Diagram</div>
+  <div class="diagram-desc">The major containers that make up MarchogSystemsOps and how they communicate.</div>
+
+  <div class="c4" style="height: 620px;">
+    <svg viewBox="0 0 900 620">
+      <defs>
+        <marker id="ah2" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+          <polygon points="0 0, 8 3, 0 6" fill="#6b7280"/>
+        </marker>
+        <marker id="ah2c" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+          <polygon points="0 0, 8 3, 0 6" fill="#ef4444"/>
+        </marker>
+      </defs>
+
+      <!-- Config UI → API Server -->
+      <line x1="160" y1="150" x2="380" y2="200" stroke="#6b7280" marker-end="url(#ah2)"/>
+      <text x="220" y="168" class="arrow-label">HTTP + WebSocket</text>
+
+      <!-- API Server → SQLite -->
+      <line x1="480" y1="260" x2="480" y2="330" stroke="#6b7280" marker-end="url(#ah2)"/>
+      <text x="490" y="300" class="arrow-label">SQL</text>
+
+      <!-- API Server ↔ MQTT Broker -->
+      <line x1="540" y1="210" x2="680" y2="210" stroke="#ef4444" stroke-width="2" marker-end="url(#ah2c)"/>
+      <line x1="680" y1="230" x2="540" y2="230" stroke="#ef4444" stroke-width="2" marker-end="url(#ah2c)"/>
+      <text x="580" y="200" class="arrow-label" fill="#ef4444">pub/sub</text>
+
+      <!-- MQTT Broker ↔ Browser Screens (via server bridge) -->
+      <line x1="430" y1="180" x2="160" y2="310" stroke="#6b7280" marker-end="url(#ah2)"/>
+      <text x="225" y="245" class="arrow-label">WS bridge</text>
+
+      <!-- MQTT Broker → Kiosk App -->
+      <line x1="760" y1="260" x2="760" y2="380" stroke="#ef4444" stroke-width="2" marker-end="url(#ah2c)"/>
+      <text x="770" y="325" class="arrow-label" fill="#ef4444">MQTT native</text>
+
+      <!-- MQTT Broker ↔ ESP32 -->
+      <line x1="760" y1="260" x2="850" y2="380" stroke="#ef4444" stroke-width="2" marker-end="url(#ah2c)"/>
+      <text x="810" y="330" class="arrow-label" fill="#ef4444">MQTT</text>
+
+      <!-- MQTT Broker ↔ RPi Audio -->
+      <line x1="700" y1="260" x2="610" y2="440" stroke="#ef4444" stroke-width="2" marker-end="url(#ah2c)"/>
+      <text x="620" y="360" class="arrow-label" fill="#ef4444">MQTT</text>
+    </svg>
+
+    <div class="c4-canvas" style="min-height:620px;">
+      <!-- System boundary -->
+      <div class="c4-boundary" style="left:320px; top:140px; width:550px; height:240px;">
+        <div class="c4-boundary-label">MarchogSystemsOps Server</div>
+      </div>
+
+      <!-- Config UI -->
+      <div class="c4-box c4-container" style="left:50px; top:100px; width:180px;">
+        <div class="c4-label">Config UI</div>
+        <div class="c4-tech">HTML / JS / CSS</div>
+        <div class="c4-desc">Room, zone, screen, automation management</div>
+      </div>
+
+      <!-- API Server -->
+      <div class="c4-box c4-container" style="left:370px; top:170px; width:180px;">
+        <div class="c4-label">API Server</div>
+        <div class="c4-tech">FastAPI + WebSocket</div>
+        <div class="c4-desc">REST API, WS hub, MQTT bridge</div>
+      </div>
+
+      <!-- MQTT Broker -->
+      <div class="c4-box c4-broker" style="left:660px; top:170px; width:180px;">
+        <div class="c4-label">MQTT Broker</div>
+        <div class="c4-tech">Mosquitto</div>
+        <div class="c4-desc">:1883 MQTT · :9001 WS<br>Topic-based pub/sub</div>
+      </div>
+
+      <!-- SQLite -->
+      <div class="c4-box c4-component" style="left:400px; top:330px; width:160px;">
+        <div class="c4-label">Database</div>
+        <div class="c4-tech">SQLite</div>
+        <div class="c4-desc">Rooms, zones, pages, screen configs</div>
+      </div>
+
+      <!-- Browser Screens -->
+      <div class="c4-box c4-device" style="left:50px; top:280px; width:180px;">
+        <div class="c4-label">Browser Screens</div>
+        <div class="c4-tech">Chrome / WebView</div>
+        <div class="c4-desc">WebSocket ← server bridge ← MQTT</div>
+      </div>
+
+      <!-- Kiosk App -->
+      <div class="c4-box c4-device" style="left:670px; top:400px; width:170px;">
+        <div class="c4-label">Kiosk App</div>
+        <div class="c4-tech">Android / Kotlin</div>
+        <div class="c4-desc">Native MQTT client</div>
+      </div>
+
+      <!-- ESP32 Devices -->
+      <div class="c4-box c4-device" style="left:780px; top:400px; width:120px;">
+        <div class="c4-label">ESP32</div>
+        <div class="c4-tech">Arduino</div>
+        <div class="c4-desc">Buttons, LEDs, sensors</div>
+      </div>
+
+      <!-- RPi Audio -->
+      <div class="c4-box c4-device" style="left:530px; top:440px; width:140px;">
+        <div class="c4-label">RPi Audio</div>
+        <div class="c4-tech">Python / MQTT</div>
+        <div class="c4-desc">Sound playback</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- C4 Level 3: Component Diagram (Server) -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<div class="diagram-section">
+  <div class="diagram-title">C4 Level 3 — Server Components</div>
+  <div class="diagram-desc">Internal components of the FastAPI server and how they interact.</div>
+
+  <div class="c4" style="height: 520px;">
+    <svg viewBox="0 0 900 520">
+      <defs>
+        <marker id="ah3" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+          <polygon points="0 0, 8 3, 0 6" fill="#6b7280"/>
+        </marker>
+      </defs>
+      <!-- REST API → Database -->
+      <line x1="170" y1="230" x2="170" y2="350" stroke="#6b7280" marker-end="url(#ah3)"/>
+      <!-- REST API → Pages -->
+      <line x1="220" y1="200" x2="350" y2="120" stroke="#6b7280" marker-end="url(#ah3)"/>
+      <!-- Automation Engine → MQTT Bus -->
+      <line x1="520" y1="200" x2="680" y2="150" stroke="#6b7280" marker-end="url(#ah3)"/>
+      <!-- Automation Engine → WS Hub -->
+      <line x1="440" y1="240" x2="350" y2="320" stroke="#6b7280" marker-end="url(#ah3)"/>
+      <!-- MQTT Bus → WS Hub -->
+      <line x1="700" y1="200" x2="400" y2="320" stroke="#ef4444" marker-end="url(#ah3)"/>
+      <text x="520" y="270" class="arrow-label" fill="#ef4444">bridge</text>
+      <!-- WS Hub → Screen State -->
+      <line x1="350" y1="380" x2="520" y2="420" stroke="#6b7280" marker-end="url(#ah3)"/>
+      <!-- MQTT Bus → Broker -->
+      <line x1="780" y1="140" x2="830" y2="100" stroke="#ef4444" marker-end="url(#ah3)"/>
+    </svg>
+
+    <div class="c4-canvas" style="min-height:520px;">
+      <div class="c4-boundary" style="left:20px; top:50px; width:820px; height:430px;">
+        <div class="c4-boundary-label">FastAPI Server (main.py)</div>
+      </div>
+
+      <div class="c4-box c4-component" style="left:60px; top:150px; width:180px;">
+        <div class="c4-label">REST API</div>
+        <div class="c4-tech">rooms.py, pages.py</div>
+        <div class="c4-desc">CRUD endpoints for config</div>
+      </div>
+
+      <div class="c4-box c4-component" style="left:340px; top:80px; width:160px;">
+        <div class="c4-label">Pages Engine</div>
+        <div class="c4-tech">pages.py</div>
+        <div class="c4-desc">Page registry, thumbnails, scan</div>
+      </div>
+
+      <div class="c4-box c4-component" style="left:380px; top:180px; width:200px;">
+        <div class="c4-label">Automation Engine</div>
+        <div class="c4-tech">automations.json</div>
+        <div class="c4-desc">Triggers, actions, targeting<br>scope + filter → topics</div>
+      </div>
+
+      <div class="c4-box c4-broker" style="left:640px; top:100px; width:180px;">
+        <div class="c4-label">MQTT Bus</div>
+        <div class="c4-tech">mqtt_bus.py</div>
+        <div class="c4-desc">Threaded client, publish queue,<br>topic matching, WS bridge</div>
+      </div>
+
+      <div class="c4-box c4-container" style="left:240px; top:310px; width:180px;">
+        <div class="c4-label">WebSocket Hub</div>
+        <div class="c4-tech">ws_screen endpoint</div>
+        <div class="c4-desc">Screen connections, navigate, heartbeat</div>
+      </div>
+
+      <div class="c4-box c4-component" style="left:80px; top:350px; width:140px;">
+        <div class="c4-label">Database</div>
+        <div class="c4-tech">database.py / SQLite</div>
+        <div class="c4-desc">Rooms, zones, scenes, screen configs</div>
+      </div>
+
+      <div class="c4-box c4-component" style="left:490px; top:390px; width:180px;">
+        <div class="c4-label">Screen State</div>
+        <div class="c4-tech">app_state + screen_meta</div>
+        <div class="c4-desc">Live connections, device types,<br>room/zone assignments</div>
+      </div>
+
+      <!-- External broker -->
+      <div class="c4-box c4-broker" style="left:790px; top:60px; width:90px;">
+        <div class="c4-label" style="font-size:0.75em">Mosquitto</div>
+        <div class="c4-tech">:1883</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- MQTT Topic Hierarchy -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<div class="diagram-section">
+  <div class="diagram-title">MQTT Topic Hierarchy</div>
+  <div class="diagram-desc">Complete topic tree showing the message bus namespace.</div>
+
+  <div class="topic-tree">
+<span class="t-root">marchog/</span>
+├── <span class="t-branch">screen/</span><span class="t-variable">{screen_id}</span>          <span class="t-comment">← direct addressing</span>
+├── <span class="t-branch">type/</span><span class="t-variable">{device_type}</span>           <span class="t-comment">← all screens of type (primary OR secondary)</span>
+│   ├── <span class="t-leaf">door-panel</span>
+│   ├── <span class="t-leaf">airlock-panel</span>
+│   ├── <span class="t-leaf">navigation-panel</span>
+│   ├── <span class="t-leaf">tactical-panel</span>
+│   ├── <span class="t-leaf">engineering-panel</span>
+│   ├── <span class="t-leaf">viewport</span>
+│   ├── <span class="t-leaf">entertainment-display</span>
+│   ├── <span class="t-leaf">collectible-display</span>
+│   └── <span class="t-leaf">...</span>                     <span class="t-comment">← 30 types across 8 categories</span>
+├── <span class="t-branch">zone/</span><span class="t-variable">{zone_id}</span>               <span class="t-comment">← all devices in a zone</span>
+├── <span class="t-branch">room/</span><span class="t-variable">{room_id}</span>               <span class="t-comment">← all devices in a room</span>
+├── <span class="t-branch">all</span>                          <span class="t-comment">← broadcast to everything</span>
+│
+├── <span class="t-branch">action/</span><span class="t-variable">{action_name}</span>         <span class="t-comment">← automation triggers (inbound)</span>
+│   ├── <span class="t-leaf">self-destruct</span>
+│   ├── <span class="t-leaf">red-alert</span>
+│   ├── <span class="t-leaf">lockdown</span>
+│   └── <span class="t-leaf">all-clear</span>
+│
+├── <span class="t-branch">event/</span><span class="t-variable">{source}</span>/<span class="t-variable">{event}</span>      <span class="t-comment">← device events</span>
+├── <span class="t-branch">sensor/</span><span class="t-variable">{sensor_id}</span>           <span class="t-comment">← sensor data inbound</span>
+├── <span class="t-branch">heartbeat/</span><span class="t-variable">{device_id}</span>       <span class="t-comment">← retained: device health</span>
+├── <span class="t-branch">state/</span><span class="t-variable">{device_id}</span>            <span class="t-comment">← retained: current page/mode</span>
+│
+├── <span class="t-branch">audio/</span><span class="t-variable">{scope}</span>               <span class="t-comment">← sound system commands</span>
+├── <span class="t-branch">lighting/</span><span class="t-variable">{scope}</span>            <span class="t-comment">← LED/lighting commands</span>
+├── <span class="t-branch">prop/</span><span class="t-variable">{prop_id}</span>               <span class="t-comment">← physical prop control</span>
+├── <span class="t-branch">presence/</span><span class="t-variable">{scope}</span>            <span class="t-comment">← occupancy detection</span>
+└── <span class="t-branch">alert/</span><span class="t-variable">{alert_type}</span>           <span class="t-comment">← system alerts</span>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- Message Flow: Automation with Device Type Targeting -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<div class="diagram-section">
+  <div class="diagram-title">Message Flow — Automation Targeting by Device Type</div>
+  <div class="diagram-desc">How an automation resolves scope + filter to MQTT topics and reaches screens.</div>
+
+  <div class="flow-grid">
+    <div class="flow-card" style="border-left: 3px solid var(--blue);">
+      <div class="flow-card-title" style="color: var(--blue);">1. Trigger</div>
+      <div class="flow-card-body">
+        User taps <code>RUN</code> in Config UI<br>
+        — or —<br>
+        ESP32 button publishes to<br>
+        <code>marchog/action/lockdown</code>
+      </div>
+    </div>
+    <div class="flow-card" style="border-left: 3px solid var(--amber);">
+      <div class="flow-card-title" style="color: var(--amber);">2. Resolve Targets</div>
+      <div class="flow-card-body">
+        Automation definition:<br>
+        <code>scope: "all"</code><br>
+        <code>filter: device_types: ["door-panel", "airlock-panel"]</code><br><br>
+        Server resolves → MQTT topics:<br>
+        <code>marchog/type/door-panel</code><br>
+        <code>marchog/type/airlock-panel</code>
+      </div>
+    </div>
+    <div class="flow-card" style="border-left: 3px solid var(--red);">
+      <div class="flow-card-title" style="color: var(--red);">3. Publish to MQTT</div>
+      <div class="flow-card-body">
+        Server publishes navigate payload to each resolved topic via <code>mqtt_bus.publish_navigate()</code><br><br>
+        Payload: <code>{"type": "navigate", "page_id": "lockdown", "params": {}}</code>
+      </div>
+    </div>
+    <div class="flow-card" style="border-left: 3px solid var(--green);">
+      <div class="flow-card-title" style="color: var(--green);">4. Bridge to Screens</div>
+      <div class="flow-card-body">
+        MQTT bus receives its own published message.<br>
+        <code>_bridge_to_websocket()</code> checks each connected screen's <code>device_type</code> and <code>device_type_secondary</code>.<br><br>
+        Matching screens get WS message via <code>run_coroutine_threadsafe()</code>
+      </div>
+    </div>
+    <div class="flow-card" style="border-left: 3px solid var(--cyan);">
+      <div class="flow-card-title" style="color: var(--cyan);">5. Screen Navigates</div>
+      <div class="flow-card-body">
+        Browser shell receives <code>{"type": "navigate", "page": "lockdown"}</code><br><br>
+        Shell loads page into iframe. Screen shows lockdown content.<br><br>
+        Native MQTT clients (kiosk app, ESP32 LEDs) receive the same message directly from broker.
+      </div>
+    </div>
+    <div class="flow-card" style="border-left: 3px solid var(--purple);">
+      <div class="flow-card-title" style="color: var(--purple);">6. Other Subscribers</div>
+      <div class="flow-card-body">
+        Any device subscribed to <code>marchog/type/door-panel</code> also receives the message:<br><br>
+        • LED strip goes red<br>
+        • Audio plays alert tone<br>
+        • Door prop solenoid locks<br>
+        • Logger records the event
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- Device Type Categories -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<div class="diagram-section">
+  <div class="diagram-title">Device Type Taxonomy</div>
+  <div class="diagram-desc">All 30 device types across 8 categories. Each screen gets one primary and one optional secondary type.</div>
+
+  <div class="dt-matrix">
+    <table>
+      <thead>
+        <tr>
+          <th>Category</th>
+          <th>Device Type</th>
+          <th>Typical Location</th>
+          <th>Example Automations</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td rowspan="3"><span class="dt-cat dt-cat-access">Access & Security</span></td>
+          <td><code>door-panel</code></td>
+          <td>Beside any door</td>
+          <td><span class="tag">lockdown</span> <span class="tag">all-clear</span></td>
+        </tr>
+        <tr>
+          <td><code>airlock-panel</code></td>
+          <td>Airlock-style entrances</td>
+          <td><span class="tag">lockdown-external</span> <span class="tag">cycle</span></td>
+        </tr>
+        <tr>
+          <td><code>alert-beacon</code></td>
+          <td>Ceiling / soffit</td>
+          <td><span class="tag">red-alert</span> <span class="tag">all-clear</span></td>
+        </tr>
+
+        <tr>
+          <td rowspan="5"><span class="dt-cat dt-cat-nav">Navigation & Command</span></td>
+          <td><code>navigation-panel</code></td>
+          <td>Forward console</td>
+          <td><span class="tag">battle-stations</span> <span class="tag">hyperspace</span></td>
+        </tr>
+        <tr>
+          <td><code>tactical-panel</code></td>
+          <td>Side console</td>
+          <td><span class="tag">battle-stations</span> <span class="tag">red-alert</span></td>
+        </tr>
+        <tr>
+          <td><code>command-panel</code></td>
+          <td>Captain's chair</td>
+          <td><span class="tag">battle-stations</span> <span class="tag">status</span></td>
+        </tr>
+        <tr>
+          <td><code>comms-panel</code></td>
+          <td>Comm station</td>
+          <td><span class="tag">incoming-transmission</span></td>
+        </tr>
+        <tr>
+          <td><code>holotable</code></td>
+          <td>Center table</td>
+          <td><span class="tag">briefing</span> <span class="tag">battle-stations</span></td>
+        </tr>
+
+        <tr>
+          <td rowspan="5"><span class="dt-cat dt-cat-eng">Engineering & Systems</span></td>
+          <td><code>engineering-panel</code></td>
+          <td>Main console</td>
+          <td><span class="tag">engineering-emergency</span></td>
+        </tr>
+        <tr>
+          <td><code>diagnostic-panel</code></td>
+          <td>Wall-mounted</td>
+          <td><span class="tag">engineering-emergency</span> <span class="tag">status</span></td>
+        </tr>
+        <tr>
+          <td><code>gauge-display</code></td>
+          <td>Near machinery</td>
+          <td><span class="tag">engineering-emergency</span></td>
+        </tr>
+        <tr>
+          <td><code>life-support-panel</code></td>
+          <td>Environmental station</td>
+          <td><span class="tag">red-alert</span></td>
+        </tr>
+        <tr>
+          <td><code>systems-panel</code></td>
+          <td>Overhead</td>
+          <td><span class="tag">status</span> <span class="tag">red-alert</span></td>
+        </tr>
+
+        <tr>
+          <td rowspan="3"><span class="dt-cat dt-cat-atmo">Viewport & Atmospheric</span></td>
+          <td><code>viewport</code></td>
+          <td>Simulated window</td>
+          <td><span class="tag">hyperspace</span> <span class="tag">movie-night</span></td>
+        </tr>
+        <tr>
+          <td><code>ambient-display</code></td>
+          <td>Hidden / ceiling</td>
+          <td><span class="tag">night-mode</span> <span class="tag">mood</span></td>
+        </tr>
+        <tr>
+          <td><code>corridor-display</code></td>
+          <td>Hallway walls</td>
+          <td><span class="tag">lockdown</span> <span class="tag">wayfinding</span></td>
+        </tr>
+
+        <tr>
+          <td rowspan="3"><span class="dt-cat dt-cat-media">Entertainment & Media</span></td>
+          <td><code>entertainment-display</code></td>
+          <td>Social areas</td>
+          <td><span class="tag">movie-night</span></td>
+        </tr>
+        <tr>
+          <td><code>bar-display</code></td>
+          <td>Behind bar</td>
+          <td><span class="tag">menu</span> <span class="tag">showcase</span></td>
+        </tr>
+        <tr>
+          <td><code>table-display</code></td>
+          <td>Embedded in table</td>
+          <td><span class="tag">interactive</span></td>
+        </tr>
+
+        <tr>
+          <td rowspan="3"><span class="dt-cat dt-cat-display">Display & Collection</span></td>
+          <td><code>collectible-display</code></td>
+          <td>Beside items</td>
+          <td><span class="tag">showcase-mode</span></td>
+        </tr>
+        <tr>
+          <td><code>label-display</code></td>
+          <td>Shelf-integrated</td>
+          <td><span class="tag">showcase-mode</span></td>
+        </tr>
+        <tr>
+          <td><code>gallery-display</code></td>
+          <td>Feature wall</td>
+          <td><span class="tag">showcase-mode</span></td>
+        </tr>
+
+        <tr>
+          <td rowspan="5"><span class="dt-cat dt-cat-util">Utility & Personal</span></td>
+          <td><code>info-display</code></td>
+          <td>Any wall</td>
+          <td><span class="tag">night-mode</span></td>
+        </tr>
+        <tr>
+          <td><code>utility-display</code></td>
+          <td>Any surface</td>
+          <td><span class="tag">night-mode</span></td>
+        </tr>
+        <tr>
+          <td><code>personal-panel</code></td>
+          <td>Bedside / cabin</td>
+          <td><span class="tag">night-mode</span></td>
+        </tr>
+        <tr>
+          <td><code>workstation-display</code></td>
+          <td>Desk</td>
+          <td><span class="tag">status</span></td>
+        </tr>
+        <tr>
+          <td><code>medical-panel</code></td>
+          <td>Medbay</td>
+          <td><span class="tag">red-alert</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- Screen Subscription Model -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<div class="diagram-section">
+  <div class="diagram-title">Screen Subscription Model</div>
+  <div class="diagram-desc">Example: A door panel screen in the Bridge Entrance zone of The Smugglers Room. Shows all topics it subscribes to and which automations reach it.</div>
+
+  <div class="flow-grid" style="grid-template-columns: 1fr 1fr;">
+    <div class="flow-card" style="border-left: 3px solid var(--cyan);">
+      <div class="flow-card-title" style="color: var(--cyan);">Screen Identity</div>
+      <div class="flow-card-body">
+        <code>screen_id: scr-abc123</code><br>
+        <code>device_type: door-panel</code><br>
+        <code>device_type_secondary: navigation-panel</code><br>
+        <code>zone: bridge-entrance</code><br>
+        <code>room: smugglers-room</code>
+      </div>
+    </div>
+    <div class="flow-card" style="border-left: 3px solid var(--amber);">
+      <div class="flow-card-title" style="color: var(--amber);">Subscribed Topics</div>
+      <div class="flow-card-body" style="font-family: 'JetBrains Mono', monospace; font-size: 0.85em; line-height: 2;">
+        <span style="color:var(--text)">marchog/all</span><br>
+        <span style="color:var(--red)">marchog/type/door-panel</span><br>
+        <span style="color:var(--purple)">marchog/type/navigation-panel</span><br>
+        <span style="color:var(--green)">marchog/zone/bridge-entrance</span><br>
+        <span style="color:var(--blue)">marchog/room/smugglers-room</span><br>
+        <span style="color:var(--cyan)">marchog/screen/scr-abc123</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="flow-grid" style="margin-top: 16px; grid-template-columns: repeat(3, 1fr);">
+    <div class="flow-card">
+      <div class="flow-card-title" style="color: var(--red);">Lockdown</div>
+      <div class="flow-card-body">
+        Publishes to <code>marchog/type/door-panel</code><br>
+        ✅ <strong>Reaches this screen</strong> via primary type
+      </div>
+    </div>
+    <div class="flow-card">
+      <div class="flow-card-title" style="color: var(--amber);">Battle Stations</div>
+      <div class="flow-card-body">
+        Publishes to <code>marchog/type/navigation-panel</code><br>
+        ✅ <strong>Reaches this screen</strong> via secondary type
+      </div>
+    </div>
+    <div class="flow-card">
+      <div class="flow-card-title" style="color: var(--green);">Bridge Alert</div>
+      <div class="flow-card-body">
+        Publishes to <code>marchog/zone/bridge-entrance</code><br>
+        ✅ <strong>Reaches this screen</strong> via zone
+      </div>
+    </div>
+    <div class="flow-card">
+      <div class="flow-card-title" style="color: var(--blue);">Red Alert (all)</div>
+      <div class="flow-card-body">
+        Publishes to <code>marchog/all</code><br>
+        ✅ <strong>Reaches this screen</strong> via broadcast
+      </div>
+    </div>
+    <div class="flow-card">
+      <div class="flow-card-title" style="color: var(--purple);">Engineering Emergency</div>
+      <div class="flow-card-body">
+        Publishes to <code>marchog/type/engineering-panel</code><br>
+        ❌ <strong>Does NOT reach</strong> — not this type
+      </div>
+    </div>
+    <div class="flow-card">
+      <div class="flow-card-title" style="color: var(--text-dim);">Direct Command</div>
+      <div class="flow-card-body">
+        Publishes to <code>marchog/screen/scr-abc123</code><br>
+        ✅ <strong>Reaches this screen</strong> via direct ID
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- Data Model -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<div class="diagram-section">
+  <div class="diagram-title">Data Model — Device Type Integration</div>
+  <div class="diagram-desc">Database schema changes and runtime state for Phase 2 implementation.</div>
+
+  <div class="flow-grid" style="grid-template-columns: 1fr 1fr;">
+    <div class="flow-card" style="border-left: 3px solid var(--amber);">
+      <div class="flow-card-title" style="color: var(--amber);">screen_configs (SQLite)</div>
+      <div class="flow-card-body" style="font-family: 'JetBrains Mono', monospace; font-size: 0.82em; line-height: 1.9;">
+        screen_id TEXT PK<br>
+        zone_id TEXT FK<br>
+        static_page TEXT<br>
+        params_override TEXT<br>
+        label TEXT<br>
+        <span style="color: var(--green)">+ device_type TEXT DEFAULT 'info-display'</span><br>
+        <span style="color: var(--green)">+ device_type_secondary TEXT DEFAULT NULL</span>
+      </div>
+    </div>
+    <div class="flow-card" style="border-left: 3px solid var(--cyan);">
+      <div class="flow-card-title" style="color: var(--cyan);">screen_meta (runtime)</div>
+      <div class="flow-card-body" style="font-family: 'JetBrains Mono', monospace; font-size: 0.82em; line-height: 1.9;">
+        app_state["screen_meta"][screen_id] = {<br>
+        &nbsp;&nbsp;"device_type": "door-panel",<br>
+        &nbsp;&nbsp;"device_type_secondary": "navigation-panel",<br>
+        &nbsp;&nbsp;"room_id": "smugglers-room",<br>
+        &nbsp;&nbsp;"zone_id": "bridge-entrance",<br>
+        }
+      </div>
+    </div>
+    <div class="flow-card" style="border-left: 3px solid var(--red);">
+      <div class="flow-card-title" style="color: var(--red);">automation action (JSON)</div>
+      <div class="flow-card-body" style="font-family: 'JetBrains Mono', monospace; font-size: 0.82em; line-height: 1.9;">
+        {<br>
+        &nbsp;&nbsp;"type": "navigate",<br>
+        &nbsp;&nbsp;"page_id": "lockdown",<br>
+        &nbsp;&nbsp;"scope": "all",<br>
+        &nbsp;&nbsp;<span style="color: var(--green)">"target_device_types":<br>&nbsp;&nbsp;&nbsp;&nbsp;["door-panel", "airlock-panel"]</span>,<br>
+        &nbsp;&nbsp;"targets": []&nbsp;<span style="color:var(--text-dim)">// legacy direct</span><br>
+        }
+      </div>
+    </div>
+    <div class="flow-card" style="border-left: 3px solid var(--purple);">
+      <div class="flow-card-title" style="color: var(--purple);">Resolution Logic</div>
+      <div class="flow-card-body">
+        <strong>At automation run time:</strong><br><br>
+        1. Read <code>scope</code> — all / room / zone<br>
+        2. Read <code>target_device_types</code> — filter list<br>
+        3. Combine → MQTT topic list<br>
+        4. Publish to each topic<br>
+        5. MQTT bus bridges to matching WS screens<br><br>
+        Legacy <code>targets: [screen_ids]</code> still works alongside.
+      </div>
+    </div>
+  </div>
+</div>
+
+<div style="text-align: center; color: var(--text-dim); font-size: 0.7em; font-family: 'JetBrains Mono', monospace; padding: 40px 0 20px; letter-spacing: 0.1em;">
+  MARCHOG SYSTEMS — ARCHITECTURE v1.0 — FEBRUARY 2026
+</div>
+
+</body>
+</html>

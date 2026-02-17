@@ -118,6 +118,12 @@ async def _migrate_db(db):
         if 'params_override' not in cols:
             await db.execute("ALTER TABLE screen_configs ADD COLUMN params_override TEXT DEFAULT NULL")
             await db.commit()
+        if 'device_type' not in cols:
+            await db.execute("ALTER TABLE screen_configs ADD COLUMN device_type TEXT DEFAULT 'info-display'")
+            await db.commit()
+        if 'device_type_secondary' not in cols:
+            await db.execute("ALTER TABLE screen_configs ADD COLUMN device_type_secondary TEXT DEFAULT NULL")
+            await db.commit()
     except Exception:
         pass
 
@@ -320,20 +326,32 @@ async def get_zone_screens(zone_id: str, scene_id: str = None):
         return [dict(row) for row in await cursor.fetchall()]
 
 
-async def assign_screen_to_zone(scene_id: str, screen_id: str, zone_id: str, page_id: str, label: str = "", params_override: dict = None):
+async def assign_screen_to_zone(scene_id: str, screen_id: str, zone_id: str, page_id: str, label: str = "", params_override: dict = None, device_type: str = "info-display", device_type_secondary: str = None):
     """Assign a screen to a zone with a static page in the given scene."""
     params_json = json.dumps(params_override) if params_override else None
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("""
-            INSERT INTO screen_configs (scene_id, screen_id, zone_id, label, mode, static_page, params_override)
-            VALUES (?, ?, ?, ?, 'static', ?, ?)
+            INSERT INTO screen_configs (scene_id, screen_id, zone_id, label, mode, static_page, params_override, device_type, device_type_secondary)
+            VALUES (?, ?, ?, ?, 'static', ?, ?, ?, ?)
             ON CONFLICT(scene_id, screen_id) DO UPDATE SET
                 zone_id = excluded.zone_id,
                 label = excluded.label,
                 mode = excluded.mode,
                 static_page = excluded.static_page,
-                params_override = excluded.params_override
-        """, (scene_id, screen_id, zone_id, label, page_id, params_json))
+                params_override = excluded.params_override,
+                device_type = excluded.device_type,
+                device_type_secondary = excluded.device_type_secondary
+        """, (scene_id, screen_id, zone_id, label, page_id, params_json, device_type, device_type_secondary))
+        await db.commit()
+
+
+async def update_screen_device_type(scene_id: str, screen_id: str, device_type: str, device_type_secondary: str = None):
+    """Update device type(s) for a screen config."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("""
+            UPDATE screen_configs SET device_type = ?, device_type_secondary = ?
+            WHERE scene_id = ? AND screen_id = ?
+        """, (device_type, device_type_secondary, scene_id, screen_id))
         await db.commit()
 
 
