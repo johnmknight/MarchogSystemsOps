@@ -313,6 +313,20 @@
           dot.classList.toggle('active', dot.dataset.page === pageId);
         });
 
+        // If we have pending params override, send configure now
+        // (handles re-navigate to already-loaded pages like selfdestruct)
+        if (this.screenParamsOverride) {
+          const frame = this.loadedFrames[pageId];
+          if (frame && frame.contentWindow) {
+            const page = this.pages.find(p => p.id === pageId);
+            const defaultParams = (page && page.params) ? { ...page.params } : {};
+            const merged = { ...defaultParams, ...this.screenParamsOverride };
+            frame.contentWindow.postMessage({ type: 'configure', ...merged }, '*');
+            console.log(`Sent params on navigate to ${pageId}:`, merged);
+          }
+          this.screenParamsOverride = null;
+        }
+
         if (report) this.reportPage();
         console.log(`Showing page: ${pageId}`);
       },

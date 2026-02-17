@@ -10,10 +10,13 @@
         "type": "navigate",
         "page_id": "selfdestruct",
         "params": {
-          "countdown": 60,
-          "abort_at": 10
+          "countdown": 30,
+          "abort_at": 8
         },
-        "targets": []
+        "targets": [
+          "scr-0tzt40",
+          "scr-4gf0lj"
+        ]
       }
     ]
   }
