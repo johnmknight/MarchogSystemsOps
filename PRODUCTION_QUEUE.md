@@ -36,10 +36,9 @@
 - [x] MQTT fail-fast startup (try once, go dormant if broker unavailable).
       No retry loop - prevents event loop starvation. POST /api/mqtt/reconnect
       endpoint + clickable MQTT badge in config panel for manual reconnect.
-- [ ] **Screen health dashboard enhancement** -- Expand existing health monitoring to show
-      per-screen uptime percentage, FPS, memory usage, network latency. Color-coded
-      green/yellow/red status. Configurable stale threshold.
-      *Source: Product Review #1 -- builds on existing Phase 3 heartbeat system.*
+- [x] Screen health dashboard enhancement: FPS, heap memory, viewport/DPR
+      metrics with color-coded status (green/yellow/red). Client reports every
+      30s, config panel Device Health section displays live values.
 
 ### Phase 5: Content Gap — Deliver on the Pitch (Priority: HIGH)
 The Brian letter sells "live data on your screens" and "use your existing content."
