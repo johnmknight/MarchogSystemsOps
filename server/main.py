@@ -17,7 +17,7 @@ import json
 from database import (
     init_db,
     get_all_scenes, get_scene, get_active_scene,
-    create_scene, delete_scene, activate_scene,
+    create_scene, delete_scene, activate_scene, update_scene,
     set_screen_config, remove_screen_config, get_screen_assignment,
     get_zone_screens, assign_screen_to_zone, unassign_screen_from_zone,
     get_rooms_with_screens,
@@ -229,6 +229,18 @@ class SceneCreate(BaseModel):
     id: str
     name: str
     description: str = ""
+    icon: str = "ti-stack-2"
+    color: Optional[str] = None
+    requires_confirm: bool = False
+    sort_order: int = 0
+
+class SceneUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    icon: Optional[str] = None
+    color: Optional[str] = None
+    requires_confirm: Optional[bool] = None
+    sort_order: Optional[int] = None
 
 class ScreenConfigUpdate(BaseModel):
     label: str = ""
@@ -423,8 +435,18 @@ async def api_active_scene():
 @app.post("/api/scenes")
 async def api_create_scene(scene: SceneCreate):
     """Create a new scene."""
-    await create_scene(scene.id, scene.name, scene.description)
+    await create_scene(scene.id, scene.name, scene.description,
+                       scene.icon, scene.color, scene.requires_confirm, scene.sort_order)
     return {"status": "created", "id": scene.id}
+
+@app.put("/api/scenes/{scene_id}")
+async def api_update_scene(scene_id: str, data: SceneUpdate):
+    """Update a scene's metadata."""
+    updates = data.model_dump(exclude_none=True)
+    if 'requires_confirm' in updates:
+        updates['requires_confirm'] = 1 if updates['requires_confirm'] else 0
+    await update_scene(scene_id, updates)
+    return {"status": "updated", "id": scene_id}
 
 @app.get("/api/scenes/{scene_id}")
 async def api_scene(scene_id: str):
@@ -664,6 +686,17 @@ async def api_mqtt_publish(body: dict):
     ok = await mqtt_bus.publish(topic, payload, retain=retain)
     return {"status": "published" if ok else "failed", "topic": topic}
 
+@app.post("/api/mqtt/reconnect")
+async def api_mqtt_reconnect():
+    """Attempt to reconnect to the MQTT broker."""
+    ok = await mqtt_bus.reconnect()
+    return {
+        "status": "connected" if ok else "failed",
+        "connected": ok,
+        "host": mqtt_bus.MQTT_HOST,
+        "port": mqtt_bus.MQTT_PORT,
+    }
+
 
 # ── API: Device Health ───────────────────────────────────────
 
@@ -784,8 +817,13 @@ async def ws_screen(websocket: WebSocket, screen_id: str):
                         "page": page,
                     }, retain=True)
 
-            elif data == "ping":
-                await websocket.send_json({"type": "pong"})
+            elif data == "ping" or data.startswith("ping:"):
+                # Numbered heartbeat: "ping:N" -> {"type":"pong","seq":N}
+                seq = 0
+                if ":" in data:
+                    try: seq = int(data.split(":", 1)[1])
+                    except ValueError: pass
+                await websocket.send_json({"type": "pong", "seq": seq})
                 app_state["screens"][screen_id]["last_seen"] = datetime.now(timezone.utc).isoformat()
                 # Periodic heartbeat to MQTT
                 if mqtt_bus.is_connected():

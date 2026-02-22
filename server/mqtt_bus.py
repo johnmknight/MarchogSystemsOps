@@ -67,6 +67,30 @@ class MQTTBus:
         self._connected = False
         logger.info("MQTT bus stopped")
 
+    async def reconnect(self) -> bool:
+        """Attempt to reconnect to the MQTT broker.
+        
+        Call this after starting Mosquitto to re-establish the connection
+        without restarting the server.
+        Returns True if connection succeeded.
+        """
+        # Stop existing thread if any
+        if self._thread and self._thread.is_alive():
+            await self.stop()
+        # Reset and start fresh
+        self._stopping = False
+        self._connected = False
+        self._client = None
+        self._thread = threading.Thread(target=self._run_thread, daemon=True)
+        self._thread.start()
+        logger.info("MQTT reconnect initiated")
+        # Give it a moment to connect
+        for _ in range(20):  # wait up to 2s
+            await asyncio.sleep(0.1)
+            if self._connected:
+                return True
+        return self._connected
+
     def _run_thread(self):
         """Thread entry: create SelectorEventLoop and run MQTT."""
         if sys.platform == "win32":
@@ -83,46 +107,45 @@ class MQTTBus:
             loop.close()
 
     async def _mqtt_main(self):
-        """Main MQTT loop — connect, subscribe, dispatch."""
-        retry_delay = 1
-        while not self._stopping:
-            try:
-                async with aiomqtt.Client(
-                    BROKER_HOST,
-                    port=BROKER_PORT,
-                    identifier="marchog-server",
-                ) as client:
-                    self._client = client
-                    self._connected = True
-                    retry_delay = 1
-                    logger.info(f"Connected to MQTT broker at {BROKER_HOST}:{BROKER_PORT}")
+        """Main MQTT loop - try once, go dormant if broker unavailable.
+        
+        Does NOT retry automatically. Call reconnect() to try again
+        (e.g. after starting Mosquitto).
+        """
+        try:
+            async with aiomqtt.Client(
+                BROKER_HOST,
+                port=BROKER_PORT,
+                identifier="marchog-server",
+            ) as client:
+                self._client = client
 
-                    # Subscribe to topics the server cares about
-                    await client.subscribe(f"{TOPIC_PREFIX}/action/#")
-                    await client.subscribe(f"{TOPIC_PREFIX}/event/#")
-                    await client.subscribe(f"{TOPIC_PREFIX}/sensor/#")
-                    await client.subscribe(f"{TOPIC_PREFIX}/heartbeat/#")
-                    logger.info("Subscribed to action/event/sensor/heartbeat topics")
+                # Subscribe to topics the server cares about
+                await client.subscribe(f"{TOPIC_PREFIX}/action/#")
+                await client.subscribe(f"{TOPIC_PREFIX}/event/#")
+                await client.subscribe(f"{TOPIC_PREFIX}/sensor/#")
+                await client.subscribe(f"{TOPIC_PREFIX}/heartbeat/#")
 
-                    # Process incoming messages and outgoing publishes concurrently
-                    await asyncio.gather(
-                        self._listen(client),
-                        self._process_publish_queue(client),
-                    )
+                # Only mark connected AFTER subscriptions succeed
+                self._connected = True
+                logger.info(f"Connected to MQTT broker at {BROKER_HOST}:{BROKER_PORT}")
+                logger.info("Subscribed to action/event/sensor/heartbeat topics")
 
-            except aiomqtt.MqttError as e:
-                self._connected = False
-                self._client = None
-                if self._stopping:
-                    break
-                logger.warning(f"MQTT connection lost: {e}. Retrying in {retry_delay}s...")
-                await asyncio.sleep(retry_delay)
-                retry_delay = min(retry_delay * 2, 30)
-            except Exception as e:
-                if self._stopping:
-                    break
-                logger.error(f"MQTT unexpected error: {e}")
-                await asyncio.sleep(5)
+                # Process incoming messages and outgoing publishes concurrently
+                await asyncio.gather(
+                    self._listen(client),
+                    self._process_publish_queue(client),
+                )
+
+        except Exception as e:
+            self._connected = False
+            self._client = None
+            if not self._stopping:
+                logger.warning(f"MQTT broker not available ({e}). Running without MQTT. "
+                              f"Start Mosquitto and use POST /api/mqtt/reconnect or restart server.")
+        finally:
+            self._connected = False
+            self._client = None
 
     async def _listen(self, client: aiomqtt.Client):
         """Listen for incoming MQTT messages."""
@@ -281,7 +304,8 @@ class MQTTBus:
 
     @property
     def connected(self) -> bool:
-        return self._connected
+        """True only if MQTT client exists and the thread is still alive."""
+        return self._connected and self._thread is not None and self._thread.is_alive()
 
     def status(self) -> dict:
         return {
@@ -306,6 +330,13 @@ async def start(app_state: dict):
 async def stop():
     if _bus:
         await _bus.stop()
+
+
+async def reconnect() -> bool:
+    """Attempt to reconnect to the MQTT broker."""
+    if _bus:
+        return await _bus.reconnect()
+    return False
 
 
 def get_bus() -> Optional[MQTTBus]:

@@ -23,25 +23,23 @@
 
 ## Next Up
 
-### Phase 4: Quick Wins — Usability (Priority: CRITICAL)
-Close the gap between what the pitch promises and what the product delivers.
-These are fast to implement and dramatically improve the user experience.
-
-- [ ] **Screen naming & labels** — Human-readable names for screens (e.g. "Bar Left Monitor")
-      in addition to technical IDs. Display names prominently in config UI with IDs as secondary.
-      *Source: Product Review #8 — "scr-yoxsnu means nothing to anyone."*
-- [ ] **Scene quick-launch bar** — One-tap scene triggering from config panel and mobile.
-      Persistent bar at top/bottom of config UI with scene buttons. This is the core promise
-      of the pitch: "one button press and every screen changes."
-      *Source: Product Review gap analysis — scenes exist in DB but no one-tap trigger UI.*
-- [ ] **Client auto-reconnect with visual feedback** — Robust reconnect logic with a visible
-      "Reconnecting..." overlay in Aurebesh/themed style (not blank screen). Exponential backoff,
-      auto-resume assigned content on reconnect.
-      *Source: Product Review #11 — essential for 24/7 unattended operation.*
-- [ ] **Screen health dashboard enhancement** — Expand existing health monitoring to show
+### Phase 4: Screen Provisioning & Reliability (Feb 17-22, 2026)
+- [x] Screen naming & labels (human-readable names, config UI)
+- [x] Scene quick-launch bar (one-tap scene activation from config panel)
+- [x] Pages.json migration (file-based page registry)
+- [x] Tabbed config UI (Screens / Rooms / Pages)
+- [x] Page thumbnails via Playwright
+- [x] Connected screen controls (rename, navigate, fullscreen, identify)
+- [x] Client auto-reconnect with numbered heartbeat (ping:N/pong:N)
+      Silent background reconnect - no on-screen overlay. Kiosk screens keep
+      displaying content during disconnects; admins monitor via Device Health.
+- [x] MQTT fail-fast startup (try once, go dormant if broker unavailable).
+      No retry loop - prevents event loop starvation. POST /api/mqtt/reconnect
+      endpoint + clickable MQTT badge in config panel for manual reconnect.
+- [ ] **Screen health dashboard enhancement** -- Expand existing health monitoring to show
       per-screen uptime percentage, FPS, memory usage, network latency. Color-coded
       green/yellow/red status. Configurable stale threshold.
-      *Source: Product Review #1 — builds on existing Phase 3 heartbeat system.*
+      *Source: Product Review #1 -- builds on existing Phase 3 heartbeat system.*
 
 ### Phase 5: Content Gap — Deliver on the Pitch (Priority: HIGH)
 The Brian letter sells "live data on your screens" and "use your existing content."

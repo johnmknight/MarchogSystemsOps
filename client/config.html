@@ -54,6 +54,111 @@
       letter-spacing: 0.08em;
     }
 
+    /* ── Scene Quick-Launch Bar ─────────────────── */
+    .scene-bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      background: rgba(8, 14, 26, 0.95);
+      border: 1px solid var(--border-dim);
+      border-radius: 6px;
+      margin-bottom: 16px;
+    }
+    .scene-bar-label {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 0.65em;
+      font-weight: 600;
+      letter-spacing: 0.12em;
+      color: var(--accent-gold);
+      white-space: nowrap;
+    }
+    .scene-buttons {
+      display: flex;
+      gap: 6px;
+      flex: 1;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+    }
+    .scene-buttons::-webkit-scrollbar { display: none; }
+    .scene-btn {
+      padding: 6px 16px;
+      border: 1px solid var(--border-med);
+      border-radius: 4px;
+      background: transparent;
+      color: var(--text-dim);
+      cursor: pointer;
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 0.72em;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      white-space: nowrap;
+      transition: all 0.2s;
+      min-height: 36px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .scene-btn:hover {
+      border-color: var(--accent-blue);
+      color: var(--text-primary);
+      background: rgba(74, 158, 255, 0.06);
+    }
+    .scene-btn.active {
+      background: rgba(74, 158, 255, 0.15);
+      color: var(--accent-blue);
+      border-color: var(--accent-blue);
+      box-shadow: 0 0 10px rgba(74, 158, 255, 0.15), inset 0 0 8px rgba(74, 158, 255, 0.05);
+    }
+    .scene-btn .screen-count {
+      font-size: 0.85em;
+      opacity: 0.5;
+    }
+    .scene-manage-btn {
+      background: transparent;
+      border: 1px solid var(--border-dim);
+      border-radius: 4px;
+      color: var(--text-dim);
+      cursor: pointer;
+      padding: 6px 8px;
+      font-size: 0.85em;
+      transition: all 0.2s;
+    }
+    .scene-manage-btn:hover {
+      color: var(--accent-blue);
+      border-color: var(--accent-blue);
+    }
+    /* Confirmation overlay */
+    .scene-confirm {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.7);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 200;
+    }
+    .scene-confirm-box {
+      background: var(--bg-panel);
+      border: 1px solid var(--accent-red);
+      border-radius: 8px;
+      padding: 24px 32px;
+      text-align: center;
+      box-shadow: 0 0 30px rgba(231, 76, 60, 0.2);
+    }
+    .scene-confirm-box h3 {
+      font-family: 'Orbitron', sans-serif;
+      color: var(--accent-red);
+      margin-bottom: 12px;
+    }
+    .scene-confirm-box .confirm-actions {
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+      margin-top: 16px;
+    }
+
     /* ── Tab Navigation ────────────────────────── */
     .tab-bar {
       display: flex;
@@ -258,9 +363,15 @@
       padding: 2px 8px;
       border-radius: 3px;
       letter-spacing: 0.06em;
+      cursor: pointer;
+      transition: all 0.2s;
+      user-select: none;
     }
+    .mqtt-badge:hover { filter: brightness(1.3); }
     .mqtt-badge.online { background: rgba(16,185,129,0.15); color: #10b981; }
     .mqtt-badge.offline { background: rgba(239,68,68,0.15); color: #ef4444; }
+    .mqtt-badge.connecting { background: rgba(245,158,11,0.15); color: #f59e0b; animation: pulse-mqtt 1s ease-in-out infinite; }
+    @keyframes pulse-mqtt { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
     .health-grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
@@ -668,6 +779,15 @@
       </div>
     </div>
 
+    <!-- Scene Quick-Launch Bar -->
+    <div class="scene-bar" id="sceneBar">
+      <span class="scene-bar-label"><i class="ti ti-bolt"></i> SCENES</span>
+      <div class="scene-buttons" id="sceneButtons">
+        <span class="empty-state" style="padding:4px 8px;font-size:0.7em">Loading…</span>
+      </div>
+      <button class="scene-manage-btn" onclick="showManageScenesModal()" title="Manage Scenes"><i class="ti ti-settings"></i></button>
+    </div>
+
     <!-- Tab Navigation -->
     <div class="tab-bar">
       <button class="tab-btn active" data-tab="screens" onclick="switchTab('screens')">
@@ -698,7 +818,7 @@
         <div class="section-head">
           <div class="section-title">Device Health</div>
           <div style="display:flex;gap:8px;align-items:center">
-            <span id="mqttBadge" class="mqtt-badge offline">MQTT ●</span>
+            <span id="mqttBadge" class="mqtt-badge offline" onclick="mqttReconnect()" title="MQTT disconnected — click to reconnect">MQTT ○</span>
             <button class="btn btn-sm" onclick="loadHealth()"><i class="ti ti-heartbeat"></i> CHECK</button>
           </div>
         </div>
@@ -761,6 +881,7 @@
     let pages = [];
     let screens = [];
     let automations = [];
+    let scenes = [];
     let screenRegistry = {};
     let currentRoomIndex = 0;
 
@@ -779,17 +900,19 @@
     //  DATA LOADING
     // ═══════════════════════════════════════════════════
     async function loadAll() {
-      const [roomsData, pagesData, screensData, automationsData, registryData] = await Promise.all([
+      const [roomsData, pagesData, screensData, automationsData, registryData, scenesData] = await Promise.all([
         api('GET', '/api/rooms'),
         api('GET', '/api/pages'),
         api('GET', '/api/screens'),
         api('GET', '/api/automations'),
         api('GET', '/api/screens/registry'),
+        api('GET', '/api/scenes'),
       ]);
       rooms = roomsData;
       pages = pagesData;
       screens = screensData;
       automations = automationsData;
+      scenes = scenesData || [];
       // Build registry lookup
       screenRegistry = {};
       (registryData || []).forEach(r => { screenRegistry[r.screen_id] = r; });
@@ -816,10 +939,181 @@
     //  RENDERING
     // ═══════════════════════════════════════════════════
     function renderAll() {
+      renderSceneBar();
       renderConnectedScreens();
       renderRooms();
       renderPages();
       renderAutomations();
+    }
+
+    // ═══════════════════════════════════════════════════
+    //  SCENE QUICK-LAUNCH BAR
+    // ═══════════════════════════════════════════════════
+    function renderSceneBar() {
+      const container = document.getElementById('sceneButtons');
+      if (scenes.length === 0) {
+        container.innerHTML = '<span class="empty-state" style="padding:4px 8px;font-size:0.7em">No scenes — click <i class="ti ti-settings"></i> to create one</span>';
+        return;
+      }
+      container.innerHTML = scenes.map(s => {
+        const isActive = s.is_active === 1;
+        const screenCount = (s.screens || []).length;
+        const icon = s.icon || 'ti-stack-2';
+        const accentStyle = (s.color && isActive) ? `border-color:${s.color};color:${s.color};box-shadow:0 0 10px ${s.color}22, inset 0 0 8px ${s.color}0d` : '';
+        return `<button class="scene-btn ${isActive ? 'active' : ''}"
+          onclick="activateScene('${s.id}', ${s.requires_confirm ? 'true' : 'false'}, '${s.name.replace(/'/g, "\\'")}')"
+          style="${accentStyle}"
+          title="${s.description || s.name}">
+          <i class="ti ${icon}"></i> ${s.name}
+          ${screenCount > 0 ? `<span class="screen-count">(${screenCount})</span>` : ''}
+        </button>`;
+      }).join('');
+    }
+
+    async function activateScene(sceneId, requiresConfirm, sceneName) {
+      if (requiresConfirm) {
+        // Show themed confirmation overlay
+        const overlay = document.createElement('div');
+        overlay.className = 'scene-confirm';
+        overlay.innerHTML = `
+          <div class="scene-confirm-box">
+            <h3><i class="ti ti-alert-triangle"></i> CONFIRM ACTIVATION</h3>
+            <p style="color:var(--text-primary);margin-bottom:4px">Activate scene:</p>
+            <p style="color:var(--accent-red);font-family:'Orbitron',sans-serif;font-size:1.1em">${sceneName}</p>
+            <div class="confirm-actions">
+              <button class="btn btn-sm" onclick="this.closest('.scene-confirm').remove()" style="border-color:var(--text-dim)">CANCEL</button>
+              <button class="btn btn-sm" onclick="doActivateScene('${sceneId}'); this.closest('.scene-confirm').remove()"
+                style="background:var(--accent-red);color:#fff;border-color:var(--accent-red)">ACTIVATE</button>
+            </div>
+          </div>`;
+        document.body.appendChild(overlay);
+        overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+        return;
+      }
+      await doActivateScene(sceneId);
+    }
+
+    async function doActivateScene(sceneId) {
+      try {
+        await api('POST', `/api/scenes/${sceneId}/activate`);
+        await loadAll();
+      } catch(e) {
+        alert(`Failed to activate scene: ${e.message}`);
+      }
+    }
+
+    function showManageScenesModal() {
+      const sceneRows = scenes.map(s => {
+        const isActive = s.is_active === 1;
+        return `
+          <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border-dim)">
+            <span style="width:20px;text-align:center">${isActive ? '<span style="color:var(--accent-green)">●</span>' : '<span style="color:var(--text-dim)">○</span>'}</span>
+            <i class="ti ${s.icon || 'ti-stack-2'}" style="color:${s.color || 'var(--text-dim)'}"></i>
+            <span style="flex:1;color:var(--text-bright)">${s.name}</span>
+            <span class="screen-count" style="color:var(--text-dim);font-size:0.8em">${(s.screens||[]).length} screens</span>
+            <button class="conn-btn" onclick="showEditSceneModal('${s.id}')" title="Edit"><i class="ti ti-pencil"></i></button>
+            ${!isActive ? `<button class="conn-btn" onclick="deleteScene('${s.id}','${s.name.replace(/'/g, "\\'")}')" title="Delete" style="color:var(--accent-red)"><i class="ti ti-trash"></i></button>` : ''}
+          </div>`;
+      }).join('');
+
+      openModal(`
+        <h3>MANAGE SCENES</h3>
+        <div style="margin:12px 0">${sceneRows || '<span class="empty-state">No scenes</span>'}</div>
+        <hr style="border-color:var(--border-dim);margin:12px 0">
+        <h4 style="color:var(--accent-cyan);margin-bottom:8px">CREATE NEW SCENE</h4>
+        <label class="field-label">Scene ID</label>
+        <input id="newSceneId" class="field-input" placeholder="red-alert">
+        <label class="field-label">Name</label>
+        <input id="newSceneName" class="field-input" placeholder="Red Alert">
+        <label class="field-label">Description</label>
+        <input id="newSceneDesc" class="field-input" placeholder="All screens go red">
+        <label class="field-label">Icon (Tabler class)</label>
+        <input id="newSceneIcon" class="field-input" value="ti-stack-2" placeholder="ti-stack-2">
+        <label class="field-label">Color (hex, optional)</label>
+        <input id="newSceneColor" class="field-input" placeholder="#ff3333">
+        <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
+          <input type="checkbox" id="newSceneConfirm">
+          <label for="newSceneConfirm" style="font-size:0.8em;color:var(--text-primary)">Require confirmation before activation</label>
+        </div>
+        <div style="margin-top:12px;text-align:right">
+          <button class="btn btn-sm" onclick="createNewScene()"><i class="ti ti-plus"></i> CREATE SCENE</button>
+        </div>
+      `);
+    }
+
+    async function createNewScene() {
+      const id = document.getElementById('newSceneId').value.trim();
+      const name = document.getElementById('newSceneName').value.trim();
+      const desc = document.getElementById('newSceneDesc').value.trim();
+      const icon = document.getElementById('newSceneIcon').value.trim() || 'ti-stack-2';
+      const color = document.getElementById('newSceneColor').value.trim() || null;
+      const requiresConfirm = document.getElementById('newSceneConfirm').checked;
+      if (!id || !name) { alert('ID and Name are required'); return; }
+
+      try {
+        await api('POST', '/api/scenes', {
+          id, name, description: desc, icon, color,
+          requires_confirm: requiresConfirm,
+          sort_order: scenes.length
+        });
+        closeModal();
+        await loadAll();
+      } catch(e) {
+        alert(`Error: ${e.message}`);
+      }
+    }
+
+    function showEditSceneModal(sceneId) {
+      const s = scenes.find(sc => sc.id === sceneId);
+      if (!s) return;
+      closeModal();
+
+      openModal(`
+        <h3>EDIT SCENE</h3>
+        <label class="field-label">Name</label>
+        <input id="editSceneName" class="field-input" value="${s.name}">
+        <label class="field-label">Description</label>
+        <input id="editSceneDesc" class="field-input" value="${s.description || ''}">
+        <label class="field-label">Icon (Tabler class)</label>
+        <input id="editSceneIcon" class="field-input" value="${s.icon || 'ti-stack-2'}">
+        <label class="field-label">Color (hex, optional)</label>
+        <input id="editSceneColor" class="field-input" value="${s.color || ''}">
+        <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
+          <input type="checkbox" id="editSceneConfirm" ${s.requires_confirm ? 'checked' : ''}>
+          <label for="editSceneConfirm" style="font-size:0.8em;color:var(--text-primary)">Require confirmation before activation</label>
+        </div>
+        <div style="margin-top:12px;text-align:right">
+          <button class="btn btn-sm" onclick="saveEditScene('${sceneId}')"><i class="ti ti-device-floppy"></i> SAVE</button>
+        </div>
+      `);
+    }
+
+    async function saveEditScene(sceneId) {
+      const name = document.getElementById('editSceneName').value.trim();
+      const description = document.getElementById('editSceneDesc').value.trim();
+      const icon = document.getElementById('editSceneIcon').value.trim() || 'ti-stack-2';
+      const color = document.getElementById('editSceneColor').value.trim() || null;
+      const requires_confirm = document.getElementById('editSceneConfirm').checked;
+      if (!name) { alert('Name is required'); return; }
+
+      try {
+        await api('PUT', `/api/scenes/${sceneId}`, { name, description, icon, color, requires_confirm });
+        closeModal();
+        await loadAll();
+      } catch(e) {
+        alert(`Error: ${e.message}`);
+      }
+    }
+
+    async function deleteScene(sceneId, sceneName) {
+      if (!confirm(`Delete scene "${sceneName}"? This cannot be undone.`)) return;
+      try {
+        await api('DELETE', `/api/scenes/${sceneId}`);
+        closeModal();
+        await loadAll();
+      } catch(e) {
+        alert(`Error: ${e.message}`);
+      }
     }
 
     function renderConnectedScreens() {
@@ -1212,19 +1506,54 @@
       await loadAll();
     }
 
+    // ── MQTT Status ──────────────────────────────────
+    function updateMqttBadge(connected) {
+      const badge = document.getElementById('mqttBadge');
+      if (connected) {
+        badge.className = 'mqtt-badge online';
+        badge.textContent = 'MQTT \u25CF';
+        badge.title = 'MQTT connected';
+        badge.onclick = null;
+        badge.style.cursor = 'default';
+      } else {
+        badge.className = 'mqtt-badge offline';
+        badge.textContent = 'MQTT \u25CB';
+        badge.title = 'MQTT disconnected \u2014 click to reconnect';
+        badge.onclick = mqttReconnect;
+        badge.style.cursor = 'pointer';
+      }
+    }
+
+    async function mqttReconnect() {
+      const badge = document.getElementById('mqttBadge');
+      badge.className = 'mqtt-badge connecting';
+      badge.textContent = 'MQTT \u2026';
+      badge.title = 'Connecting to MQTT broker...';
+      try {
+        const result = await api('POST', '/api/mqtt/reconnect');
+        updateMqttBadge(result.connected);
+        if (!result.connected) {
+          badge.title = 'MQTT broker not available \u2014 start Mosquitto then click to retry';
+        }
+      } catch (e) {
+        updateMqttBadge(false);
+        badge.title = 'MQTT reconnect failed \u2014 click to retry';
+      }
+    }
+
+    async function loadMqttStatus() {
+      try {
+        const data = await api('GET', '/api/mqtt/status');
+        updateMqttBadge(data.connected);
+      } catch (e) {}
+    }
+
     // ── Health Dashboard ──────────────────────────────
     async function loadHealth() {
       try {
         const data = await api('GET', '/api/health/screens');
         // Update MQTT badge
-        const mqttBadge = document.getElementById('mqttBadge');
-        if (data.mqtt_connected) {
-          mqttBadge.className = 'mqtt-badge online';
-          mqttBadge.textContent = 'MQTT ●';
-        } else {
-          mqttBadge.className = 'mqtt-badge offline';
-          mqttBadge.textContent = 'MQTT ○';
-        }
+        updateMqttBadge(data.mqtt_connected);
 
         const el = document.getElementById('healthDashboard');
         if (!data.screens || data.screens.length === 0) {
@@ -2187,6 +2516,7 @@
     // ═══════════════════════════════════════════════════
     loadAll();
     loadHealth();
+    loadMqttStatus();
     // Auto-refresh connected screens every 5s
     setInterval(async () => {
       try {
@@ -2194,6 +2524,13 @@
         renderConnectedScreens();
       } catch(e) {}
     }, 5000);
+    // Auto-refresh scenes every 10s (catches activations from other panels)
+    setInterval(async () => {
+      try {
+        scenes = await api('GET', '/api/scenes');
+        renderSceneBar();
+      } catch(e) {}
+    }, 10000);
     // Auto-refresh health every 30s
     setInterval(loadHealth, 30000);
   </script>

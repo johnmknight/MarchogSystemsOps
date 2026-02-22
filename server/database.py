@@ -139,6 +139,25 @@ async def _migrate_db(db):
     except Exception:
         pass
 
+    # Migrate scenes table — add quick-launch fields
+    try:
+        cursor = await db.execute("PRAGMA table_info(scenes)")
+        cols = [row[1] for row in await cursor.fetchall()]
+        if 'icon' not in cols:
+            await db.execute("ALTER TABLE scenes ADD COLUMN icon TEXT DEFAULT 'ti-stack-2'")
+            await db.commit()
+        if 'color' not in cols:
+            await db.execute("ALTER TABLE scenes ADD COLUMN color TEXT DEFAULT NULL")
+            await db.commit()
+        if 'requires_confirm' not in cols:
+            await db.execute("ALTER TABLE scenes ADD COLUMN requires_confirm INTEGER DEFAULT 0")
+            await db.commit()
+        if 'sort_order' not in cols:
+            await db.execute("ALTER TABLE scenes ADD COLUMN sort_order INTEGER DEFAULT 0")
+            await db.commit()
+    except Exception:
+        pass
+
 
 async def seed_default_scene(db):
     """Create a default scene if none exists."""
@@ -158,7 +177,7 @@ async def get_all_scenes():
     """Get all scenes with their screen configs."""
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
-        cursor = await db.execute("SELECT * FROM scenes ORDER BY name")
+        cursor = await db.execute("SELECT * FROM scenes ORDER BY sort_order, name")
         scenes = [dict(row) for row in await cursor.fetchall()]
 
         for scene in scenes:
@@ -201,13 +220,15 @@ async def activate_scene(scene_id: str):
         await db.commit()
 
 
-async def create_scene(scene_id: str, name: str, description: str = ""):
+async def create_scene(scene_id: str, name: str, description: str = "",
+                       icon: str = "ti-stack-2", color: str = None,
+                       requires_confirm: bool = False, sort_order: int = 0):
     """Create a new scene."""
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("""
-            INSERT INTO scenes (id, name, description)
-            VALUES (?, ?, ?)
-        """, (scene_id, name, description))
+            INSERT INTO scenes (id, name, description, icon, color, requires_confirm, sort_order)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (scene_id, name, description, icon, color, 1 if requires_confirm else 0, sort_order))
         await db.commit()
 
 
@@ -215,6 +236,19 @@ async def delete_scene(scene_id: str):
     """Delete a scene and its configs (cascade)."""
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("DELETE FROM scenes WHERE id = ?", (scene_id,))
+        await db.commit()
+
+
+async def update_scene(scene_id: str, updates: dict):
+    """Update a scene's metadata (name, description, icon, color, requires_confirm, sort_order)."""
+    allowed = {'name', 'description', 'icon', 'color', 'requires_confirm', 'sort_order'}
+    filtered = {k: v for k, v in updates.items() if k in allowed}
+    if not filtered:
+        return
+    set_clause = ", ".join(f"{k} = ?" for k in filtered)
+    values = list(filtered.values()) + [scene_id]
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(f"UPDATE scenes SET {set_clause}, updated_at = datetime('now') WHERE id = ?", values)
         await db.commit()
 
 

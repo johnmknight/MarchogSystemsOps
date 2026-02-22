@@ -44,7 +44,7 @@
     .app-shell { display: flex; flex-direction: column; height: 100vh; width: 100vw; }
 
     /* ── Page frames ─────────────────────────────── */
-    .page-content { flex: 1; position: relative; overflow: hidden; }
+    .page-content { flex: 1; position: relative; overflow: hidden; z-index: 1; }
     .page-frame {
       position: absolute; top: 0; left: 0; width: 100%; height: 100%;
       border: none; opacity: 0; pointer-events: none;
@@ -75,7 +75,19 @@
     .conn-status.disconnected .dot { background: var(--accent-red); }
     .conn-status.connecting .dot { background: var(--warning); animation: pulse 1s infinite; }
 
-    /* ── Page dots ────────────────────────────────── */
+    /* ── Reconnect overlay ────────────────────────── */
+    @font-face {
+      font-family: 'Aurebesh';
+      src: url('fonts/Aurebesh.otf') format('opentype');
+    }
+    .reconnect-overlay {
+    /* Reconnect overlay removed by design: kiosk screens should keep
+       displaying their last content during disconnects rather than showing
+       a disruptive "CONNECTION LOST" message to passersby. Reconnection
+       happens silently in the background. Admins monitor screen health
+       via the config panel's Device Health section. */
+
+    /* -- Page dots ---------------------------------------- */
     .page-dots {
       position: fixed; bottom: 12px; left: 12px;
       display: flex; gap: 8px; opacity: 0.4;
@@ -258,6 +270,10 @@
       // WebSocket
       ws: null,
       wsReconnectAttempts: 0,
+      _reconnectCountdown: null,
+      _heartbeatInterval: null,
+      _heartbeatTimeout: null,
+      _awaitingPong: false,
 
       // ── Init ─────────────────────────────────────
       async init() {
@@ -474,6 +490,7 @@
             this.wsReconnectAttempts = 0;
             this.setConnectionStatus('connected');
             this.reportPage();
+            this.startHeartbeat();
           };
 
           this.ws.onmessage = (e) => {
@@ -486,11 +503,13 @@
           };
 
           this.ws.onclose = () => {
+            this.stopHeartbeat();
             this.setConnectionStatus('disconnected');
             this.scheduleReconnect();
           };
 
           this.ws.onerror = () => {
+            this.stopHeartbeat();
             this.setConnectionStatus('disconnected');
           };
 
@@ -500,13 +519,59 @@
         }
       },
 
+      // ── Heartbeat (detect half-open connections) ──
+      // Uses numbered pings to eliminate caching/buffering false positives.
+      // Client sends "ping:N", server must reply {"type":"pong","seq":N}.
+      // If the pong seq doesn't match or never arrives, connection is dead.
+      startHeartbeat() {
+        this.stopHeartbeat();
+        this._pingSeq = 0;
+        this._lastPongSeq = -1;
+        this._heartbeatInterval = setInterval(() => {
+          if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+          if (this._pingSeq > 0 && this._lastPongSeq < this._pingSeq) {
+            // Sent ping N but never got pong N back — connection is dead
+            console.warn(`Heartbeat timeout — sent ping:${this._pingSeq}, last pong:${this._lastPongSeq}. Forcing reconnect.`);
+            this.stopHeartbeat();
+            this.ws.close();
+            return;
+          }
+          this._pingSeq++;
+          try {
+            this.ws.send(`ping:${this._pingSeq}`);
+            console.log(`Heartbeat ping:${this._pingSeq}`);
+          } catch(e) { /* close will fire */ }
+        }, 10000); // ping every 10s
+      },
+
+      stopHeartbeat() {
+        if (this._heartbeatInterval) { clearInterval(this._heartbeatInterval); this._heartbeatInterval = null; }
+        this._pingSeq = 0;
+        this._lastPongSeq = -1;
+      },
+
+      handlePong(seq) {
+        console.log(`Heartbeat pong:${seq} (expected:${this._pingSeq})`);
+        if (seq === this._pingSeq) {
+          this._lastPongSeq = seq;
+        } else {
+          console.warn(`Heartbeat pong seq mismatch! Got ${seq}, expected ${this._pingSeq} — stale response?`);
+        }
+      },
+
       scheduleReconnect() {
+        // Silent background reconnect with exponential backoff.
+        // Screen keeps displaying its current content while reconnecting.
         this.wsReconnectAttempts++;
         const delay = Math.min(1000 * Math.pow(2, this.wsReconnectAttempts - 1), 30000);
+        console.log(`Reconnect attempt ${this.wsReconnectAttempts} in ${Math.round(delay/1000)}s`);
         setTimeout(() => this.connectWebSocket(), delay);
       },
 
       setConnectionStatus(status) {
+        // Updates the small connection indicator dot in the corner.
+        // No screen overlay - kiosk screens keep showing content during
+        // disconnects. Admins check Device Health in the config panel.
         const el = document.getElementById('connStatus');
         el.classList.remove('connected', 'disconnected', 'connecting');
         el.classList.add(status);
@@ -517,6 +582,10 @@
         console.log('WS:', msg.type, msg);
 
         switch (msg.type) {
+          case 'pong':
+            this.handlePong(msg.seq || 0);
+            break;
+
           case 'registered':
             this.notify(`Registered: ${msg.screen_id}`, 'info');
             break;
