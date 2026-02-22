@@ -1,0 +1,1117 @@
+<!DOCTYPE html>
+<!-- saved from url=(0057)file:///C:/Users/john_/Downloads/expanse_style_guide.html -->
+<html lang="en"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Expanse — UI Implementation Style Guide</title>
+<link href="./The Expanse — UI Implementation Style Guide_files/css2" rel="stylesheet">
+<style>
+  :root {
+    --ex-red: #CC0000;
+    --ex-red-bright: #FF2200;
+    --ex-red-dim: #441111;
+    --ex-blue: #3377CC;
+    --ex-blue-bright: #5599FF;
+    --ex-amber: #CC8800;
+    --ex-amber-bright: #FFAA22;
+    --ex-green: #00CC44;
+    --ex-yellow: #FFAA00;
+    --ex-bg: #08080A;
+    --ex-panel: #0E0E11;
+    --ex-panel-raised: #141418;
+    --ex-text: #C0C0C4;
+    --ex-text-bright: #EEEEF0;
+    --ex-text-dim: #555560;
+    --ex-rule: rgba(200, 200, 210, 0.08);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--ex-bg);
+    color: var(--ex-text);
+    font-family: 'Overpass', sans-serif;
+    font-weight: 400;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ── LAYOUT ── */
+  .page-wrap {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 60px 32px 120px;
+  }
+
+  /* ── COVER ── */
+  .cover {
+    padding: 80px 0 60px;
+    border-bottom: 1px solid var(--ex-rule);
+    margin-bottom: 64px;
+  }
+  .cover-label {
+    font-family: 'Overpass Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.25em;
+    text-transform: uppercase;
+    color: var(--ex-red);
+    margin-bottom: 20px;
+  }
+  .cover h1 {
+    font-size: 42px;
+    font-weight: 900;
+    color: var(--ex-text-bright);
+    letter-spacing: -0.01em;
+    line-height: 1.15;
+    margin-bottom: 16px;
+  }
+  .cover h1 span { color: var(--ex-red); }
+  .cover-sub {
+    font-size: 16px;
+    color: var(--ex-text-dim);
+    max-width: 600px;
+    line-height: 1.6;
+  }
+  .cover-meta {
+    margin-top: 32px;
+    font-family: 'Overpass Mono', monospace;
+    font-size: 11px;
+    color: var(--ex-text-dim);
+    letter-spacing: 0.05em;
+  }
+  .cover-meta strong { color: var(--ex-text); }
+
+  /* ── TOC ── */
+  .toc {
+    background: var(--ex-panel);
+    border: 1px solid rgba(204,0,0,0.15);
+    padding: 28px 32px;
+    margin-bottom: 64px;
+  }
+  .toc-title {
+    font-family: 'Overpass Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--ex-red);
+    margin-bottom: 16px;
+  }
+  .toc ol {
+    list-style: none;
+    counter-reset: toc;
+    columns: 2;
+    column-gap: 32px;
+  }
+  .toc li {
+    counter-increment: toc;
+    margin-bottom: 6px;
+    break-inside: avoid;
+  }
+  .toc li::before {
+    content: counter(toc, decimal-leading-zero) " ";
+    font-family: 'Overpass Mono', monospace;
+    font-size: 11px;
+    color: var(--ex-text-dim);
+    margin-right: 6px;
+  }
+  .toc a {
+    color: var(--ex-text);
+    text-decoration: none;
+    font-size: 14px;
+    transition: color 0.15s;
+  }
+  .toc a:hover { color: var(--ex-red-bright); }
+
+  /* ── SECTIONS ── */
+  section {
+    margin-bottom: 72px;
+  }
+  .section-num {
+    font-family: 'Overpass Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--ex-red);
+    margin-bottom: 8px;
+  }
+  h2 {
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--ex-text-bright);
+    margin-bottom: 24px;
+    letter-spacing: -0.01em;
+  }
+  h3 {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--ex-text-bright);
+    margin: 36px 0 14px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--ex-rule);
+  }
+  h4 {
+    font-size: 13px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--ex-text);
+    margin: 24px 0 10px;
+  }
+  p { margin-bottom: 16px; font-size: 15px; }
+
+  /* ── BLOCKQUOTE ── */
+  blockquote {
+    border-left: 2px solid var(--ex-red);
+    padding: 12px 20px;
+    margin: 24px 0;
+    background: var(--ex-panel);
+    font-style: italic;
+    color: var(--ex-text);
+  }
+  blockquote cite {
+    display: block;
+    margin-top: 8px;
+    font-style: normal;
+    font-size: 12px;
+    color: var(--ex-text-dim);
+    font-family: 'Overpass Mono', monospace;
+  }
+
+  /* ── VISUAL REF FIGURE ── */
+  .visual-ref {
+    margin: 28px 0;
+    background: var(--ex-panel);
+    border: 1px solid rgba(200,200,210,0.06);
+    overflow: hidden;
+  }
+  .visual-ref img {
+    width: 100%;
+    display: block;
+    opacity: 0.92;
+  }
+  .visual-ref figcaption {
+    padding: 12px 16px;
+    font-family: 'Overpass Mono', monospace;
+    font-size: 11px;
+    color: var(--ex-text-dim);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .visual-ref figcaption a {
+    color: var(--ex-red);
+    text-decoration: none;
+    font-weight: 600;
+  }
+  .visual-ref figcaption a:hover { text-decoration: underline; }
+
+  /* ── IMAGE GRID ── */
+  .img-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2px;
+    margin: 28px 0;
+    background: rgba(200,200,210,0.04);
+    border: 1px solid rgba(200,200,210,0.06);
+  }
+  .img-grid img {
+    width: 100%;
+    display: block;
+    opacity: 0.9;
+  }
+
+  /* ── COLOR PALETTE ── */
+  .palette {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 12px;
+    margin: 20px 0;
+  }
+  .swatch {
+    background: var(--ex-panel);
+    border: 1px solid rgba(200,200,210,0.06);
+    overflow: hidden;
+  }
+  .swatch-color {
+    height: 48px;
+    display: flex;
+    align-items: flex-end;
+    padding: 6px 10px;
+  }
+  .swatch-info {
+    padding: 10px 12px;
+  }
+  .swatch-name {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--ex-text-bright);
+    margin-bottom: 2px;
+  }
+  .swatch-hex {
+    font-family: 'Overpass Mono', monospace;
+    font-size: 11px;
+    color: var(--ex-text-dim);
+  }
+  .swatch-use {
+    font-size: 11px;
+    color: var(--ex-text-dim);
+    margin-top: 4px;
+  }
+
+  /* ── TABLE ── */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 20px 0;
+    font-size: 13px;
+  }
+  thead th {
+    text-align: left;
+    font-family: 'Overpass Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--ex-text-dim);
+    padding: 8px 12px;
+    border-bottom: 1px solid rgba(200,200,210,0.12);
+  }
+  td {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--ex-rule);
+    vertical-align: top;
+  }
+  tr:hover td { background: rgba(200,200,210,0.02); }
+  td code {
+    font-family: 'Overpass Mono', monospace;
+    font-size: 12px;
+    color: var(--ex-red);
+    background: rgba(204,0,0,0.07);
+    padding: 2px 5px;
+  }
+
+  /* ── CODE BLOCK ── */
+  pre {
+    background: var(--ex-panel);
+    border: 1px solid rgba(200,200,210,0.06);
+    border-left: 3px solid var(--ex-red-dim);
+    padding: 20px;
+    overflow-x: auto;
+    margin: 20px 0;
+    font-family: 'Overpass Mono', monospace;
+    font-size: 12px;
+    line-height: 1.7;
+    color: var(--ex-text);
+  }
+  pre .comment { color: var(--ex-text-dim); }
+  pre .prop { color: var(--ex-red); }
+  pre .val { color: var(--ex-amber-bright); }
+  pre .str { color: var(--ex-green); }
+
+  /* ── COMPONENT DEMO ── */
+  .demo-panel {
+    background: var(--ex-panel);
+    border: 1px solid rgba(200,200,210,0.06);
+    padding: 32px;
+    margin: 24px 0;
+    position: relative;
+  }
+  .demo-label {
+    position: absolute;
+    top: 8px; right: 12px;
+    font-family: 'Overpass Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--ex-text-dim);
+  }
+
+  /* Live UI demos */
+  .ex-panel-demo {
+    border: 1px solid rgba(204, 0, 0, 0.4);
+    background: rgba(10, 10, 12, 0.9);
+    padding: 16px 20px;
+    font-family: 'Overpass Mono', monospace;
+    margin-bottom: 16px;
+  }
+  .ex-panel-demo .hdr {
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: rgba(204, 0, 0, 0.7);
+    border-bottom: 1px solid rgba(204, 0, 0, 0.2);
+    padding-bottom: 6px;
+    margin-bottom: 12px;
+  }
+  .ex-panel-demo .readout {
+    font-size: 11px;
+    line-height: 1.9;
+    color: #AAAAAA;
+  }
+  .ex-panel-demo .readout .val { color: #FFFFFF; }
+  .ex-panel-demo .readout .nom { color: #00CC44; }
+  .ex-panel-demo .readout .warn { color: #FFAA00; }
+  .ex-panel-demo .readout .crit { color: #FF2200; }
+
+  .ex-btn {
+    display: inline-block;
+    border: 1px solid rgba(204, 0, 0, 0.45);
+    background: transparent;
+    color: #BBBBBB;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    font-family: 'Overpass Mono', monospace;
+    font-size: 11px;
+    padding: 8px 22px;
+    cursor: pointer;
+    transition: all 0.15s;
+    margin: 4px 6px 4px 0;
+  }
+  .ex-btn:hover {
+    border-color: #FF2200;
+    background: rgba(204, 0, 0, 0.08);
+    color: #FFFFFF;
+  }
+  .ex-btn.active {
+    border-color: #FF2200;
+    background: rgba(204, 0, 0, 0.18);
+    color: #FFFFFF;
+  }
+  .ex-btn.disabled {
+    border-color: rgba(204, 0, 0, 0.12);
+    color: #333338;
+    pointer-events: none;
+  }
+
+  .status-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 4px 0;
+    font-family: 'Overpass Mono', monospace;
+    font-size: 12px;
+  }
+  .status-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .status-dot.nominal { background: #00CC44; }
+  .status-dot.caution { background: #FFAA00; }
+  .status-dot.alert   { background: #FF2200; animation: pulse 1.2s infinite; }
+  .status-dot.offline { background: transparent; border: 1px solid #444; }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.35; }
+  }
+
+  /* Alert banner demo */
+  .alert-banner {
+    border: 1px solid #FFAA00;
+    background: rgba(255, 170, 0, 0.05);
+    padding: 12px 18px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-family: 'Overpass Mono', monospace;
+    margin: 12px 0;
+  }
+  .alert-banner .alert-icon {
+    color: #FFAA00;
+    font-size: 16px;
+    font-weight: 700;
+  }
+  .alert-banner .alert-text {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #FFAA00;
+  }
+
+  /* Terminal block */
+  .terminal {
+    background: #060608;
+    border: 1px solid rgba(200,200,210,0.06);
+    padding: 16px;
+    font-family: 'Overpass Mono', monospace;
+    font-size: 11px;
+    line-height: 1.8;
+    color: rgba(180,180,185,0.7);
+    max-height: 180px;
+    overflow-y: auto;
+  }
+  .terminal .ts { color: rgba(120,120,130,0.5); }
+  .terminal .sys { color: rgba(0,204,68,0.7); }
+  .terminal .warn { color: rgba(255,170,0,0.8); }
+
+  /* ── CALLOUT ── */
+  .callout {
+    background: var(--ex-panel-raised);
+    border-left: 3px solid var(--ex-red);
+    padding: 16px 20px;
+    margin: 24px 0;
+    font-size: 13px;
+  }
+  .callout strong { color: var(--ex-text-bright); }
+
+  /* ── LINKS ── */
+  a { color: var(--ex-red); }
+  a:hover { color: var(--ex-red-bright); }
+
+  .ref-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin: 20px 0;
+  }
+  .ref-card {
+    background: var(--ex-panel);
+    border: 1px solid rgba(200,200,210,0.06);
+    padding: 16px;
+    transition: border-color 0.15s;
+  }
+  .ref-card:hover { border-color: rgba(204,0,0,0.3); }
+  .ref-card-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ex-text-bright);
+    margin-bottom: 4px;
+  }
+  .ref-card-desc {
+    font-size: 11px;
+    color: var(--ex-text-dim);
+    line-height: 1.5;
+  }
+  .ref-card a {
+    text-decoration: none;
+    font-family: 'Overpass Mono', monospace;
+    font-size: 10px;
+    display: inline-block;
+    margin-top: 8px;
+  }
+
+  /* ── ASCII DIAGRAM ── */
+  .ascii {
+    font-family: 'Overpass Mono', monospace;
+    font-size: 12px;
+    line-height: 1.4;
+    color: var(--ex-text-dim);
+    background: var(--ex-panel);
+    padding: 20px;
+    border: 1px solid rgba(200,200,210,0.06);
+    margin: 20px 0;
+    overflow-x: auto;
+    white-space: pre;
+  }
+
+  /* faction tabs */
+  .faction-tabs {
+    display: flex;
+    gap: 2px;
+    margin-bottom: 0;
+  }
+  .faction-tab {
+    padding: 8px 20px;
+    font-family: 'Overpass Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    cursor: pointer;
+    border: 1px solid transparent;
+    border-bottom: none;
+    background: var(--ex-panel);
+    color: var(--ex-text-dim);
+    transition: all 0.15s;
+  }
+  .faction-tab.active-mars {
+    color: var(--ex-red);
+    border-color: rgba(204,0,0,0.3);
+    background: var(--ex-panel-raised);
+  }
+  .faction-tab.active-earth {
+    color: var(--ex-blue);
+    border-color: rgba(51,119,204,0.3);
+    background: var(--ex-panel-raised);
+  }
+  .faction-tab.active-belt {
+    color: var(--ex-amber);
+    border-color: rgba(204,136,0,0.3);
+    background: var(--ex-panel-raised);
+  }
+
+  ul { margin: 12px 0 16px 20px; }
+  li { margin-bottom: 6px; font-size: 14px; }
+  li::marker { color: var(--ex-text-dim); }
+
+  hr {
+    border: none;
+    border-top: 1px solid var(--ex-rule);
+    margin: 48px 0;
+  }
+</style>
+</head>
+<body>
+
+<div class="page-wrap">
+
+<!-- ═══════════ COVER ═══════════ -->
+<header class="cover">
+  <div class="cover-label">Style Guide / Implementation Reference</div>
+  <h1>The Expanse <span>—</span> UI Design System</h1>
+  <p class="cover-sub">
+    A practical guide for implementing screen interfaces inspired by <em>The Expanse</em> TV series. Focused on ship cockpit displays, space tracking screens, onscreen keyboards, and kiosk interfaces.
+  </p>
+  <div class="cover-meta">
+    Compiled from interviews with <strong>Rhys Yorke</strong> (Seasons 3 &amp; 5), <strong>Timothy Peel</strong> (Season 1),<br>
+    HUDS+GUIS analysis, and Fuzzy Math UX teardowns &nbsp;·&nbsp; 2026-02-22
+  </div>
+</header>
+
+<!-- ═══════════ TOC ═══════════ -->
+<nav class="toc">
+  <div class="toc-title">Contents</div>
+  <ol>
+    <li><a href="file:///C:/Users/john_/Downloads/expanse_style_guide.html#philosophy">Design Philosophy</a></li>
+    <li><a href="file:///C:/Users/john_/Downloads/expanse_style_guide.html#palettes">Faction Color Palettes</a></li>
+    <li><a href="file:///C:/Users/john_/Downloads/expanse_style_guide.html#typography">Typography System</a></li>
+    <li><a href="file:///C:/Users/john_/Downloads/expanse_style_guide.html#layout">Screen Layout Patterns</a></li>
+    <li><a href="file:///C:/Users/john_/Downloads/expanse_style_guide.html#components">UI Component Library</a></li>
+    <li><a href="file:///C:/Users/john_/Downloads/expanse_style_guide.html#tracking">Tracking &amp; Navigation Displays</a></li>
+    <li><a href="file:///C:/Users/john_/Downloads/expanse_style_guide.html#keyboards">Onscreen Keyboards &amp; Touch</a></li>
+    <li><a href="file:///C:/Users/john_/Downloads/expanse_style_guide.html#motion">Animation &amp; Motion</a></li>
+    <li><a href="file:///C:/Users/john_/Downloads/expanse_style_guide.html#css">CSS Implementation</a></li>
+    <li><a href="file:///C:/Users/john_/Downloads/expanse_style_guide.html#references">Visual Reference Sources</a></li>
+  </ol>
+</nav>
+
+<!-- ═══════════ 01 PHILOSOPHY ═══════════ -->
+<section id="philosophy">
+  <div class="section-num">01</div>
+  <h2>Design Philosophy</h2>
+
+  <p>The Expanse UI is <strong>functional first, beautiful second</strong>. Every element serves a purpose. There is no decoration for its own sake. The team received guidance from a NASA astronaut on information hierarchy — what matters most when inches of steel separate you from vacuum.</p>
+
+  <blockquote>
+    Nothing was meant to be superfluous or just there for visual interest. Everything was a part of that UI for purpose.
+    <cite>— Rhys Yorke, Motion Graphics Designer, Seasons 3 &amp; 5</cite>
+  </blockquote>
+
+  <h3>Core Principles</h3>
+  <table>
+    <thead><tr><th>Principle</th><th>Implementation</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Operator-first</strong></td><td>Built for crew under duress, not consumers browsing. Hierarchy must be instantly readable at a glance.</td></tr>
+      <tr><td><strong>Front-end / back-end hybrid</strong></td><td>Command-line terminal text is visible alongside polished controls. This "under the hood" quality gives each ship personality.</td></tr>
+      <tr><td><strong>Military discipline</strong></td><td>Clarity under stress. Fast decision-making. Minimal cognitive load. Deliberate color restrictions.</td></tr>
+      <tr><td><strong>Practical fidelity</strong></td><td>Screens were real on set — designed at actual monitor dimensions, not idealized mockups. If it doesn't work at 14", it doesn't ship.</td></tr>
+      <tr><td><strong>Faction identity in one frame</strong></td><td>Viewer should know which ship they're on the moment a screen appears. Color, shape language, and texture all signal faction.</td></tr>
+    </tbody>
+  </table>
+
+  <figure class="visual-ref">
+    <img src="./The Expanse — UI Implementation Style Guide_files/Hp5shGx.png" alt="Rocinante cockpit curved screen displays">
+    <figcaption>
+      Rocinante cockpit — curved displays, red primary, mixed GUI + terminal
+      <a href="https://www.hudsandguis.com/home/2021/theexpanse" target="_blank">HUDS+GUIS ↗</a>
+    </figcaption>
+  </figure>
+</section>
+
+<!-- ═══════════ 02 PALETTES ═══════════ -->
+<section id="palettes">
+  <div class="section-num">02</div>
+  <h2>Faction Color Palettes</h2>
+
+  <p>Each faction owns a color system. The designer's first goal was instant identification: red = Mars, blue = Earth, amber = Belt. Within each system, hierarchy is maintained through <strong>opacity, size, and shape</strong> — not additional hues.</p>
+
+  <!-- MARS -->
+  <h3>MCRN / Rocinante — Mars</h3>
+  <p>The primary reference ship. Red as the dominant color presents a unique challenge: error states and alerts must be distinguished from the already-red baseline. The solution is yellow borders for warnings and opacity reduction for inactive controls.</p>
+
+  <figure class="visual-ref">
+    <img src="./The Expanse — UI Implementation Style Guide_files/KQhbNFg.png" alt="Rocinante weapons and tracking screens">
+    <figcaption>
+      Rocinante — weapons panel: red primary, green/yellow status differentiation
+      <a href="https://www.hudsandguis.com/home/2021/theexpanse" target="_blank">HUDS+GUIS ↗</a>
+    </figcaption>
+  </figure>
+
+  <div class="palette">
+    <div class="swatch">
+      <div class="swatch-color" style="background:#CC0000;"></div>
+      <div class="swatch-info"><div class="swatch-name">Primary</div><div class="swatch-hex">#CC0000</div><div class="swatch-use">Borders, active controls, headers</div></div>
+    </div>
+    <div class="swatch">
+      <div class="swatch-color" style="background:#FF2200;"></div>
+      <div class="swatch-info"><div class="swatch-name">Primary Bright</div><div class="swatch-hex">#FF2200</div><div class="swatch-use">Hover state, critical alert, focus</div></div>
+    </div>
+    <div class="swatch">
+      <div class="swatch-color" style="background:#441111;"></div>
+      <div class="swatch-info"><div class="swatch-name">Primary Dim</div><div class="swatch-hex">#441111</div><div class="swatch-use">Inactive, disabled, background tint</div></div>
+    </div>
+    <div class="swatch">
+      <div class="swatch-color" style="background:#00CC44;"></div>
+      <div class="swatch-info"><div class="swatch-name">Nominal</div><div class="swatch-hex">#00CC44</div><div class="swatch-use">Systems OK, confirmed, "go"</div></div>
+    </div>
+    <div class="swatch">
+      <div class="swatch-color" style="background:#FFAA00;"></div>
+      <div class="swatch-info"><div class="swatch-name">Warning</div><div class="swatch-hex">#FFAA00</div><div class="swatch-use">Alerts, attention, docking status</div></div>
+    </div>
+    <div class="swatch">
+      <div class="swatch-color" style="background:#0A0A0A;"></div>
+      <div class="swatch-info"><div class="swatch-name">Background</div><div class="swatch-hex">#0A0A0A</div><div class="swatch-use">Screen base, deepest layer</div></div>
+    </div>
+    <div class="swatch">
+      <div class="swatch-color" style="background:#111114;"></div>
+      <div class="swatch-info"><div class="swatch-name">Panel</div><div class="swatch-hex">#111114</div><div class="swatch-use">Raised container backgrounds</div></div>
+    </div>
+    <div class="swatch">
+      <div class="swatch-color" style="background:#CCCCCC;"></div>
+      <div class="swatch-info"><div class="swatch-name">Text</div><div class="swatch-hex">#CCCCCC</div><div class="swatch-use">Body readouts, labels</div></div>
+    </div>
+  </div>
+
+  <div class="callout">
+    <strong>Key insight:</strong> Earth warnings on Mars ships appear in <strong style="color:var(--ex-blue-bright)">blue</strong> — the enemy faction color becomes the threat indicator. This is a brilliant narrative-driven design choice.
+  </div>
+
+  <!-- EARTH -->
+  <h3>UNN / Agatha King — Earth</h3>
+  <p>Blue primary with orange accent. Influenced by WWII naval battleship design. Intentionally less polished than Mars — Earth's technology is older, more institutional.</p>
+
+  <figure class="visual-ref">
+    <img src="./The Expanse — UI Implementation Style Guide_files/ifNk17Q.png" alt="UNN bridge interface screens">
+    <figcaption>
+      UNN bridge station — blue/orange palette, utilitarian grid layout
+      <a href="https://www.hudsandguis.com/home/2021/theexpanse" target="_blank">HUDS+GUIS ↗</a>
+    </figcaption>
+  </figure>
+
+  <div class="palette">
+    <div class="swatch">
+      <div class="swatch-color" style="background:#2266CC;"></div>
+      <div class="swatch-info"><div class="swatch-name">Primary</div><div class="swatch-hex">#2266CC</div><div class="swatch-use">Borders, panels, active elements</div></div>
+    </div>
+    <div class="swatch">
+      <div class="swatch-color" style="background:#FF8800;"></div>
+      <div class="swatch-info"><div class="swatch-name">Accent</div><div class="swatch-hex">#FF8800</div><div class="swatch-use">Eye-draw complement to blue</div></div>
+    </div>
+    <div class="swatch">
+      <div class="swatch-color" style="background:#22CC66;"></div>
+      <div class="swatch-info"><div class="swatch-name">Nominal</div><div class="swatch-hex">#22CC66</div><div class="swatch-use">Systems OK, safe states</div></div>
+    </div>
+    <div class="swatch">
+      <div class="swatch-color" style="background:#080C14;"></div>
+      <div class="swatch-info"><div class="swatch-name">Background</div><div class="swatch-hex">#080C14</div><div class="swatch-use">Dark blue-black base</div></div>
+    </div>
+  </div>
+
+  <!-- BELT -->
+  <h3>OPA / Belter</h3>
+  <p>Amber and brown tones. Inspired by Atari-era interfaces. Retro, industrial, cobbled together from salvaged technology.</p>
+
+  <div class="palette">
+    <div class="swatch">
+      <div class="swatch-color" style="background:#CC8800;"></div>
+      <div class="swatch-info"><div class="swatch-name">Primary</div><div class="swatch-hex">#CC8800</div><div class="swatch-use">Primary UI elements</div></div>
+    </div>
+    <div class="swatch">
+      <div class="swatch-color" style="background:#664422;"></div>
+      <div class="swatch-info"><div class="swatch-name">Accent</div><div class="swatch-hex">#664422</div><div class="swatch-use">Secondary panels, rust tone</div></div>
+    </div>
+    <div class="swatch">
+      <div class="swatch-color" style="background:#DDCC99;"></div>
+      <div class="swatch-info"><div class="swatch-name">Text</div><div class="swatch-hex">#DDCC99</div><div class="swatch-use">Warm white/cream readouts</div></div>
+    </div>
+    <div class="swatch">
+      <div class="swatch-color" style="background:#0C0A06;"></div>
+      <div class="swatch-info"><div class="swatch-name">Background</div><div class="swatch-hex">#0C0A06</div><div class="swatch-use">Dark warm-black base</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ 03 TYPOGRAPHY ═══════════ -->
+<section id="typography">
+  <div class="section-num">03</div>
+  <h2>Typography System</h2>
+
+  <p>The show uses a <strong>modified version of DIN Pro</strong> — a German industrial standard typeface. Geometric, supremely legible, functional. A fan-made recreation called <a href="https://github.com/ThinkDualBrain/Protomolecule" target="_blank">Protomolecule</a> is available on GitHub.</p>
+
+  <table>
+    <thead><tr><th>Element</th><th>Style</th><th>Example</th></tr></thead>
+    <tbody>
+      <tr><td>Panel headers</td><td>ALL CAPS, wide tracking, small size</td><td><code>letter-spacing: 0.15em; font-size: 10px</code></td></tr>
+      <tr><td>System readouts</td><td>Monospaced, tabular figures</td><td><code>font-family: 'Overpass Mono', monospace</code></td></tr>
+      <tr><td>Values / numbers</td><td>Large weight, high contrast</td><td><code>font-weight: 700; color: #FFFFFF</code></td></tr>
+      <tr><td>Alerts</td><td>Large, bold, ALL CAPS — but proportionate</td><td>Never screen-filling. Showrunner rejected that trope.</td></tr>
+      <tr><td>Terminal log</td><td>Monospaced, dimmed (~70% opacity)</td><td><code>color: rgba(180,180,185,0.7)</code></td></tr>
+      <tr><td>Secondary info</td><td>Sentence case, muted color</td><td><code>color: var(--ex-text-dim)</code></td></tr>
+    </tbody>
+  </table>
+
+  <h4>Font Stack</h4>
+  <pre><span class="comment">/* Display / UI labels */</span>
+<span class="prop">font-family</span>: <span class="str">'Protomolecule'</span>, <span class="str">'DIN Pro'</span>, <span class="str">'Overpass'</span>, <span class="str">'Barlow'</span>, sans-serif;
+
+<span class="comment">/* Terminal / readout text */</span>
+<span class="prop">font-family</span>: <span class="str">'Overpass Mono'</span>, <span class="str">'Space Mono'</span>, <span class="str">'IBM Plex Mono'</span>, monospace;</pre>
+
+  <h3>Terminal + GUI Hybrid</h3>
+  <p>The Rocinante's signature trait: polished graphical controls sit alongside raw terminal output. Log data and diagnostic text scroll in monospaced type while the operator interacts with buttons and panels. This creates the "crew interface" personality.</p>
+
+  <div class="demo-panel">
+    <div class="demo-label">Live example</div>
+    <div style="display:grid; grid-template-columns: 1.4fr 1fr; gap: 16px;">
+      <div>
+        <div class="ex-panel-demo">
+          <div class="hdr">Reactor Status</div>
+          <div class="readout">
+            CORE TEMP &nbsp;&nbsp;&nbsp; <span class="val">2,847</span> K &nbsp; <span class="nom">● NOM</span><br>
+            OUTPUT &nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <span class="val">1.21</span> GW &nbsp;<span class="nom">● NOM</span><br>
+            FUEL MASS &nbsp;&nbsp;&nbsp; <span class="val">68.4</span> % &nbsp; <span class="warn">● LOW</span><br>
+            COOLANT &nbsp;&nbsp;&nbsp;&nbsp; <span class="val">412</span> L &nbsp;&nbsp; <span class="nom">● NOM</span>
+          </div>
+        </div>
+        <div style="margin-top:8px;">
+          <button class="ex-btn active">ARM PDC</button>
+          <button class="ex-btn">RAILGUN</button>
+          <button class="ex-btn disabled">TORPEDO</button>
+        </div>
+      </div>
+      <div class="terminal">
+        <span class="ts">[14:23:07]</span> <span class="sys">REACTOR NOMINAL</span><br>
+        <span class="ts">[14:23:08]</span> PDC ARRAY ARMED<br>
+        <span class="ts">[14:23:09]</span> TRACKING 3 CONTACTS<br>
+        <span class="ts">[14:23:11]</span> <span class="warn">FUEL BELOW 70%</span><br>
+        <span class="ts">[14:23:12]</span> COMMS PING: TYCHO<br>
+        <span class="ts">[14:23:14]</span> NAV CORRECTION +0.02°<br>
+        <span class="ts">[14:23:15]</span> <span class="sys">LIFE SUPPORT NOMINAL</span><br>
+        <span class="ts">[14:23:17]</span> BEARING 227.4 MARK 12<br>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ 04 LAYOUT ═══════════ -->
+<section id="layout">
+  <div class="section-num">04</div>
+  <h2>Screen Layout Patterns</h2>
+
+  <h3>Cockpit Multi-Panel</h3>
+  <p>Screens wrap around operator stations. Each screen has a dedicated function. Information is organized in bordered panels with clear headers.</p>
+
+  <figure class="visual-ref">
+    <img src="./The Expanse — UI Implementation Style Guide_files/nM2g01N.png" alt="Multi-panel cockpit layout">
+    <figcaption>
+      Multi-panel cockpit — each zone has dedicated function with clear borders
+      <a href="https://www.hudsandguis.com/home/2021/theexpanse" target="_blank">HUDS+GUIS ↗</a>
+    </figcaption>
+  </figure>
+
+  <div class="ascii">┌──────────────────────────────────────────────────────────┐
+│ ┌─── NAVIGATION ───┐ ┌─── WEAPONS ────┐ ┌─── COMMS ────┐ │
+│ │                   │ │                │ │              │ │
+│ │  star map/track   │ │  fire control  │ │  channels    │ │
+│ │  + orbit lines    │ │  + PDC status  │ │  + messages  │ │
+│ │  + contact list   │ │  + targeting   │ │  + alerts    │ │
+│ └───────────────────┘ └────────────────┘ └──────────────┘ │
+│                                                            │
+│ ┌─── SHIP SYSTEMS ───────────┐ ┌─── TERMINAL LOG ────────┐ │
+│ │  reactor / life support    │ │  [scrolling monospace]   │ │
+│ │  fuel / atmosphere / temp  │ │  timestamped entries     │ │
+│ └────────────────────────────┘ └──────────────────────────┘ │
+└──────────────────────────────────────────────────────────┘</div>
+
+  <h4>Panel Construction Rules</h4>
+  <ul>
+    <li><strong>Borders</strong>: 1px solid, faction primary at 40–60% opacity</li>
+    <li><strong>Panel background</strong>: darker than screen background (layered depth)</li>
+    <li><strong>Headers</strong>: ALL CAPS, small monospace, thin rule underneath</li>
+    <li><strong>Content padding</strong>: generous — never cramped</li>
+    <li><strong>Status bars</strong>: thin strips along bottom edges of panels</li>
+    <li><strong>No rounded corners</strong> — sharp rectangles throughout (military/industrial)</li>
+  </ul>
+
+  <figure class="visual-ref">
+    <img src="./The Expanse — UI Implementation Style Guide_files/oy584WD.png" alt="Close-up of detailed panel layout">
+    <figcaption>
+      Detail — panel headers, status indicators, data hierarchy
+      <a href="https://www.hudsandguis.com/home/2021/theexpanse" target="_blank">HUDS+GUIS ↗</a>
+    </figcaption>
+  </figure>
+</section>
+
+<!-- ═══════════ 05 COMPONENTS ═══════════ -->
+<section id="components">
+  <div class="section-num">05</div>
+  <h2>UI Component Library</h2>
+
+  <h3>Buttons</h3>
+  <p>Bordered rectangles, not filled. Border = faction primary at 45–60% opacity. Hover brightens border and adds faint fill. No rounded corners. No drop shadows.</p>
+
+  <div class="demo-panel">
+    <div class="demo-label">Button states</div>
+    <button class="ex-btn">Default</button>
+    <button class="ex-btn active">Active</button>
+    <button class="ex-btn" style="border-color:#FF2200; background:rgba(204,0,0,0.08); color:#FFF;">Hover</button>
+    <button class="ex-btn disabled">Disabled</button>
+  </div>
+
+  <h3>Status Indicators</h3>
+
+  <div class="demo-panel">
+    <div class="demo-label">Status dots</div>
+    <div class="status-row"><span class="status-dot nominal"></span> NOMINAL — Reactor core</div>
+    <div class="status-row"><span class="status-dot caution"></span> CAUTION — Fuel reserves</div>
+    <div class="status-row"><span class="status-dot alert"></span> ALERT &nbsp;&nbsp;— Hull breach sector 7</div>
+    <div class="status-row"><span class="status-dot offline"></span> OFFLINE — Torpedo bay (N/A)</div>
+  </div>
+
+  <h3>Alert Banners</h3>
+  <p>Yellow border differentiates warnings from standard red controls (Rocinante pattern). Large typography but <strong>proportionate</strong> — the showrunner specifically rejected giant screen-filling alert boxes.</p>
+
+  <div class="demo-panel">
+    <div class="demo-label">Alert styles</div>
+    <div class="alert-banner">
+      <span class="alert-icon">⚠</span>
+      <span class="alert-text">PROXIMITY WARNING — CONTACT BEARING 227 MARK 12 — 4,200 KM</span>
+    </div>
+    <div class="alert-banner" style="border-color:#FF2200; background:rgba(255,0,0,0.04);">
+      <span class="alert-icon" style="color:#FF2200;">⬤</span>
+      <span class="alert-text" style="color:#FF2200;">COLLISION ALERT — EVASIVE ACTION REQUIRED</span>
+    </div>
+  </div>
+
+  <h3>Data Tables</h3>
+  <ul>
+    <li>Thin horizontal rules between rows — <strong>no vertical lines</strong></li>
+    <li>Header row: ALL CAPS, faction color, smaller than content</li>
+    <li>Subtle alternating row opacity — not heavy striping</li>
+    <li>Active row: left-edge highlight bar in faction primary</li>
+  </ul>
+</section>
+
+<!-- ═══════════ 06 TRACKING ═══════════ -->
+<section id="tracking">
+  <div class="section-num">06</div>
+  <h2>Tracking &amp; Navigation Displays</h2>
+
+  <figure class="visual-ref">
+    <img src="./The Expanse — UI Implementation Style Guide_files/X9SvcTr.png" alt="Navigation tracking display">
+    <figcaption>
+      Navigation — object tracking, orbit lines, contact identification
+      <a href="https://www.hudsandguis.com/home/2021/theexpanse" target="_blank">HUDS+GUIS ↗</a>
+    </figcaption>
+  </figure>
+
+  <h4>Visual Elements</h4>
+  <table>
+    <thead><tr><th>Element</th><th>Style</th><th>Implementation</th></tr></thead>
+    <tbody>
+      <tr><td>Background grid</td><td>Faint reference lines for distance</td><td><code>#111 lines on #0A0A0A</code>, ~10% opacity</td></tr>
+      <tr><td>Orbit paths</td><td>Thin arcs showing trajectories</td><td>1px, faction primary at 20% opacity</td></tr>
+      <tr><td>Object markers</td><td>Small diamonds/circles with labels</td><td>Color-coded: green=friendly, red=hostile, yellow=unknown</td></tr>
+      <tr><td>Velocity vectors</td><td>Lines extending from objects</td><td>Direction + speed, proportional length</td></tr>
+      <tr><td>Distance readouts</td><td>Numeric near each object</td><td>Monospaced, updating in real-time</td></tr>
+      <tr><td>Selected target</td><td>Highlighted border, expanded info</td><td>Bright border + data popout panel</td></tr>
+      <tr><td>Scale indicator</td><td>Corner reference</td><td>e.g. "1 GRID = 500 KM"</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout">
+    <strong>Design note:</strong> 2D tracking screens use orbit lines and grid overlays to suggest three-dimensional space on a flat display. The show reserves true 3D for holographic projections only.
+  </div>
+</section>
+
+<!-- ═══════════ 07 KEYBOARDS ═══════════ -->
+<section id="keyboards">
+  <div class="section-num">07</div>
+  <h2>Onscreen Keyboards &amp; Touch Interfaces</h2>
+
+  <figure class="visual-ref">
+    <img src="./The Expanse — UI Implementation Style Guide_files/dR4fjn8.png" alt="Touch interface with large targets">
+    <figcaption>
+      Touch interface — large targets, high contrast, physical button integration
+      <a href="https://www.hudsandguis.com/home/2021/theexpanse" target="_blank">HUDS+GUIS ↗</a>
+    </figcaption>
+  </figure>
+
+  <p>The show acknowledges that space operators may be wearing <strong>heavy industrial gloves</strong>. Interfaces designed for this have larger touch targets and may switch to more tactile inputs.</p>
+
+  <h4>Keyboard Implementation Rules</h4>
+  <table>
+    <thead><tr><th>Property</th><th>Specification</th></tr></thead>
+    <tbody>
+      <tr><td>Minimum key target</td><td><code>48px × 48px</code> — larger in gloved contexts</td></tr>
+      <tr><td>Key style</td><td>Bordered rectangle, transparent fill, faction-colored border</td></tr>
+      <tr><td>Key gap</td><td>Minimal (2–4px) — tighter than consumer keyboards</td></tr>
+      <tr><td>Press feedback</td><td>Key brightens or inverts momentarily (150ms)</td></tr>
+      <tr><td>Contextual layout</td><td>Show only what's needed — no full QWERTY when entering a 4-digit code</td></tr>
+      <tr><td>Physical hybrid</td><td>Critical functions retain physical buttons alongside touch</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout">
+    <strong>Kiosk variation:</strong> Ceres station kiosks feel different from Rocinante bridge controls. Personality varies by location — a port authority terminal has a different texture than a military fire control panel, even within the same faction.
+  </div>
+</section>
+
+<!-- ═══════════ 08 MOTION ═══════════ -->
+<section id="motion">
+  <div class="section-num">08</div>
+  <h2>Animation &amp; Motion</h2>
+
+  <p>Functional transitions only. No gratuitous animation. Motion should communicate state changes, not entertain.</p>
+
+  <table>
+    <thead><tr><th>Type</th><th>Timing</th><th>Usage</th></tr></thead>
+    <tbody>
+      <tr><td>State changes</td><td><code>150–250ms</code></td><td>Button press, panel swap, mode toggle</td></tr>
+      <tr><td>Blinking indicators</td><td><code>800ms–1.2s</code> cycle</td><td>Alert states, awaiting acknowledgment</td></tr>
+      <tr><td>Data updates</td><td>Continuous / real-time</td><td>Numbers count, positions update, bars fill</td></tr>
+      <tr><td>Terminal scroll</td><td>Readable pace</td><td>Not cinematic rush — operator must be able to read</td></tr>
+      <tr><td>Boot sequence</td><td>Extended (dramatic)</td><td>Text scrolling, system checks, subsystem init</td></tr>
+      <tr><td>Scan lines</td><td>Slow sweep</td><td>Belter/older displays for retro character</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ═══════════ 09 CSS ═══════════ -->
+<section id="css">
+  <div class="section-num">09</div>
+  <h2>CSS Implementation</h2>
+
+  <h3>Custom Properties — MCRN Theme</h3>
+<pre><span class="prop">:root</span> {
+  <span class="comment">/* Mars / MCRN palette */</span>
+  <span class="prop">--ex-primary</span>:        <span class="val">#CC0000</span>;
+  <span class="prop">--ex-primary-bright</span>: <span class="val">#FF2200</span>;
+  <span class="prop">--ex-primary-dim</span>:    <span class="val">#441111</span>;
+  <span class="prop">--ex-nominal</span>:        <span class="val">#00CC44</span>;
+  <span class="prop">--ex-warning</span>:        <span class="val">#FFAA00</span>;
+  <span class="prop">--ex-critical</span>:       <span class="val">#FF0000</span>;
+  <span class="prop">--ex-bg</span>:             <span class="val">#0A0A0A</span>;
+  <span class="prop">--ex-panel</span>:          <span class="val">#111114</span>;
+  <span class="prop">--ex-text</span>:           <span class="val">#CCCCCC</span>;
+  <span class="prop">--ex-text-bright</span>:    <span class="val">#FFFFFF</span>;
+  <span class="prop">--ex-text-dim</span>:       <span class="val">#555560</span>;
+  <span class="prop">--ex-border</span>:         <span class="val">rgba(204, 0, 0, 0.45)</span>;
+}</pre>
+
+  <h3>Panel Component</h3>
+<pre><span class="prop">.ex-panel</span> {
+  <span class="prop">border</span>:     <span class="val">1px solid var(--ex-border)</span>;
+  <span class="prop">background</span>: <span class="val">var(--ex-panel)</span>;
+  <span class="prop">padding</span>:    <span class="val">16px 20px</span>;
+}
+
+<span class="prop">.ex-panel-header</span> {
+  <span class="prop">font-family</span>:    <span class="val">'Overpass Mono', monospace</span>;
+  <span class="prop">text-transform</span>: <span class="val">uppercase</span>;
+  <span class="prop">letter-spacing</span>: <span class="val">0.15em</span>;
+  <span class="prop">font-size</span>:      <span class="val">10px</span>;
+  <span class="prop">color</span>:          <span class="val">rgba(204, 0, 0, 0.7)</span>;
+  <span class="prop">border-bottom</span>:  <span class="val">1px solid rgba(204, 0, 0, 0.2)</span>;
+  <span class="prop">padding-bottom</span>: <span class="val">6px</span>;
+  <span class="prop">margin-bottom</span>:  <span class="val">12px</span>;
+}</pre>
+
+  <h3>Button Component</h3>
+<pre><span class="prop">.ex-btn</span> {
+  <span class="prop">border</span>:         <span class="val">1px solid var(--ex-border)</span>;
+  <span class="prop">background</span>:     <span class="val">transparent</span>;
+  <span class="prop">color</span>:          <span class="val">#BBBBBB</span>;
+  <span class="prop">text-transform</span>: <span class="val">uppercase</span>;
+  <span class="prop">letter-spacing</span>: <span class="val">0.1em</span>;
+  <span class="prop">font-family</span>:    <span class="val">'Overpass Mono', monospace</span>;
+  <span class="prop">font-size</span>:      <span class="val">11px</span>;
+  <span class="prop">padding</span>:        <span class="val">8px 22px</span>;
+  <span class="prop">transition</span>:     <span class="val">all 0.15s</span>;
+  <span class="prop">border-radius</span>:  <span class="val">0</span>;    <span class="comment">/* never rounded */</span>
+}
+<span class="prop">.ex-btn:hover</span> {
+  <span class="prop">border-color</span>: <span class="val">var(--ex-primary-bright)</span>;
+  <span class="prop">background</span>:   <span class="val">rgba(204, 0, 0, 0.08)</span>;
+  <span class="prop">color</span>:        <span class="val">#FFFFFF</span>;
+}</pre>
+
+  <h3>Faction Swap — Earth Theme Override</h3>
+<pre><span class="prop">[data-faction="earth"]</span> {
+  <span class="prop">--ex-primary</span>:        <span class="val">#2266CC</span>;
+  <span class="prop">--ex-primary-bright</span>: <span class="val">#5599FF</span>;
+  <span class="prop">--ex-primary-dim</span>:    <span class="val">#112244</span>;
+  <span class="prop">--ex-border</span>:         <span class="val">rgba(34, 102, 204, 0.45)</span>;
+  <span class="prop">--ex-bg</span>:             <span class="val">#080C14</span>;
+}
+
+<span class="prop">[data-faction="belt"]</span> {
+  <span class="prop">--ex-primary</span>:        <span class="val">#CC8800</span>;
+  <span class="prop">--ex-primary-bright</span>: <span class="val">#FFAA22</span>;
+  <span class="prop">--ex-primary-dim</span>:    <span class="val">#332200</span>;
+  <span class="prop">--ex-border</span>:         <span class="val">rgba(204, 136, 0, 0.45)</span>;
+  <span class="prop">--ex-bg</span>:             <span class="val">#0C0A06</span>;
+  <span class="prop">--ex-text</span>:           <span class="val">#DDCC99</span>;
+}</pre>
+</section>
+
+<!-- ═══════════ 10 REFERENCES ═══════════ -->
+<section id="references">
+  <div class="section-num">10</div>
+  <h2>Visual Reference Sources</h2>
+
+  <div class="ref-grid">
+    <div class="ref-card">
+      <div class="ref-card-title">HUDS+GUIS — The Expanse UI</div>
+      <div class="ref-card-desc">Comprehensive gallery: cockpit, kiosk, keyboard, all factions. Includes interview with Rhys Yorke on design process.</div>
+      <a href="https://www.hudsandguis.com/home/2021/theexpanse" target="_blank">hudsandguis.com ↗</a>
+    </div>
+    <div class="ref-card">
+      <div class="ref-card-title">Rhys Yorke — Rocinante UI</div>
+      <div class="ref-card-desc">Designer's ArtStation portfolio. Roci screen designs, palette guide, layout compositions.</div>
+      <a href="https://www.artstation.com/artwork/q9Am1L" target="_blank">artstation.com ↗</a>
+    </div>
+    <div class="ref-card">
+      <div class="ref-card-title">Rhys Yorke — Agatha King UI</div>
+      <div class="ref-card-desc">UNN blue/orange palette. WWII naval battleship control panel influence.</div>
+      <a href="https://rhysyorke.com/projects/g2J64x" target="_blank">rhysyorke.com ↗</a>
+    </div>
+    <div class="ref-card">
+      <div class="ref-card-title">Fuzzy Math — 3 Ships UX Analysis</div>
+      <div class="ref-card-desc">Detailed breakdown of Rocinante, Agatha King, and Razorback interfaces. Color theory, hierarchy, ergonomics.</div>
+      <a href="https://fuzzymath.com/blog/sci-fi-ui-what-three-spaceships-can-teach-us-about-the-future-of-user-interfaces/" target="_blank">fuzzymath.com ↗</a>
+    </div>
+    <div class="ref-card">
+      <div class="ref-card-title">Pushing Pixels — Rhys Yorke Interview</div>
+      <div class="ref-card-desc">Design process, faction color philosophy, NASA astronaut consultation, designing for actors on set.</div>
+      <a href="https://www.pushing-pixels.org/2021/09/04/the-art-and-craft-of-screen-graphics-interview-with-rhys-yorke.html" target="_blank">pushing-pixels.org ↗</a>
+    </div>
+    <div class="ref-card">
+      <div class="ref-card-title">Pushing Pixels — Timothy Peel Interview</div>
+      <div class="ref-card-desc">Season 1 design: Ceres medical and transportation interfaces, navigation screens, design at multiple scales.</div>
+      <a href="https://www.pushing-pixels.org/2016/01/21/a-window-into-another-world-interview-with-timothy-peel.html" target="_blank">pushing-pixels.org ↗</a>
+    </div>
+    <div class="ref-card">
+      <div class="ref-card-title">Protomolecule Font</div>
+      <div class="ref-card-desc">Fan recreation of the show's modified DIN Pro typeface. Free, open source.</div>
+      <a href="https://github.com/ThinkDualBrain/Protomolecule" target="_blank">github.com ↗</a>
+    </div>
+    <div class="ref-card">
+      <div class="ref-card-title">drainsmith Screenshot Archive</div>
+      <div class="ref-card-desc">Massive Imgur dump: every screen type across all seasons. Raw reference material.</div>
+      <a href="https://imgur.com/a/ZokAK" target="_blank">imgur.com ↗</a>
+    </div>
+  </div>
+</section>
+
+<hr>
+<p style="font-family:&#39;Overpass Mono&#39;, monospace; font-size:11px; color:var(--ex-text-dim); text-align:center; margin-top:40px;">
+  EXPANSE UI STYLE GUIDE &nbsp;·&nbsp; SmartToolbox / MarchogSystemsOps &nbsp;·&nbsp; 2026-02-22
+</p>
+
+</div>
+
+
+</body></html>

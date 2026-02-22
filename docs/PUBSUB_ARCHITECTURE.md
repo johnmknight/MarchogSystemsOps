@@ -350,9 +350,11 @@ The Android kiosk app uses MQTT natively from day one.
 - Once hardware is available, swap proxy for real Arduino sketches
 - See `docs/ESP32_PROXY.md` for design
 
-### Phase 5: Choreography
+### Phase 5: Choreography & Scheduling
 - Timed sequence support in automations
 - Chained automation triggers via MQTT events
+- Cron-like scene scheduling (time-based auto-switching)
+- Event-driven triggers (motion sensor → scene activation)
 - Audio integration example
 - Full "Self Destruct" demo: screens + lights + sound + props
 

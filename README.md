@@ -169,20 +169,37 @@ The config panel (`/config`) provides:
 - Page thumbnail generation with Playwright
 - PWA manifest for kiosk deployment
 
-### Next: ESP32 Proxy
+### Next: Usability Quick Wins (Phase 4)
+Close the pitch-product gap before beta testing:
+- Screen naming & human-readable labels
+- Scene quick-launch bar (one-tap scene triggering)
+- Client auto-reconnect with themed visual feedback
+- Enhanced screen health dashboard (FPS, memory, uptime %)
+
+### After: Content Delivery (Phase 5)
+Deliver on the pitch's content promises:
+- Local/network video playback (MP4/WebM, not just YouTube)
+- 2-3 live data pages (weather, clock, news ticker)
+- Saved page parameter presets
+
+### Then: ESP32 Proxy (Phase 6)
 Python-based virtual hardware simulator — test the full MQTT pipeline
 (buttons → automations → screens + lights + audio) without physical
 ESP32 boards. See `docs/ESP32_PROXY.md`.
 
-### After: Choreography
-Timed sequences and chained automations for multi-device coordinated
-events (full self-destruct demo with lighting, audio, fog, props).
+### Then: Choreography & Scheduling (Phase 7)
+Timed sequences, chained automations, and cron-like scene scheduling
+for multi-device coordinated events.
 
 ### Later
+- Mobile-optimized config panel + scene preview + undo
+- Media manager with remote upload + screen preview thumbnails
+- Backup/export/restore + diagnostic page
+- Content template library / visual page builder
+- Audio zone support, multi-user access control
 - Android kiosk app with native MQTT client
 - Home Assistant integration via MQTT bridge
-- Scene management UI improvements
-- Browser-direct MQTT.js (remove server bridge dependency)
+- Docker Compose deployment + demo video
 
 ## Tech Stack
 
