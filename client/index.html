@@ -289,6 +289,8 @@
 
         // Connect WebSocket
         this.connectWebSocket();
+        // Start FPS counter for health metrics
+        this.startFpsCounter();
 
         console.log(`%c✅ Screen '${this.screenId}' ready`, 'color: #2ecc71');
       },
@@ -519,6 +521,52 @@
         }
       },
 
+      // ── Client Metrics ──
+      // FPS counter + periodic metrics report to server.
+      _fpsFrames: 0,
+      _fpsLast: performance.now(),
+      _fpsValue: 0,
+      _metricsCounter: 0,
+
+      startFpsCounter() {
+        const tick = () => {
+          this._fpsFrames++;
+          const now = performance.now();
+          if (now - this._fpsLast >= 1000) {
+            this._fpsValue = Math.round(this._fpsFrames * 1000 / (now - this._fpsLast));
+            this._fpsFrames = 0;
+            this._fpsLast = now;
+          }
+          requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+      },
+
+      collectMetrics() {
+        const m = {
+          fps: this._fpsValue,
+          viewport: `${window.innerWidth}x${window.innerHeight}`,
+          dpr: window.devicePixelRatio || 1,
+          pages_loaded: Object.keys(this.loadedFrames || {}).length,
+        };
+        // Chrome-only: JS heap usage
+        if (performance.memory) {
+          m.heap_used_mb = Math.round(performance.memory.usedJSHeapSize / 1048576);
+          m.heap_total_mb = Math.round(performance.memory.totalJSHeapSize / 1048576);
+          m.heap_limit_mb = Math.round(performance.memory.jsHeapSizeLimit / 1048576);
+        }
+        // Navigator info (sent once then cached server-side, but cheap to always include)
+        m.user_agent = navigator.userAgent;
+        return m;
+      },
+
+      sendMetrics() {
+        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+        try {
+          this.ws.send('metrics:' + JSON.stringify(this.collectMetrics()));
+        } catch(e) { /* ignore */ }
+      },
+
       // ── Heartbeat (detect half-open connections) ──
       // Uses numbered pings to eliminate caching/buffering false positives.
       // Client sends "ping:N", server must reply {"type":"pong","seq":N}.
@@ -540,6 +588,12 @@
           try {
             this.ws.send(`ping:${this._pingSeq}`);
             console.log(`Heartbeat ping:${this._pingSeq}`);
+            // Send metrics every 3rd heartbeat (every 30s)
+            this._metricsCounter++;
+            if (this._metricsCounter >= 3) {
+              this._metricsCounter = 0;
+              this.sendMetrics();
+            }
           } catch(e) { /* close will fire */ }
         }, 10000); // ping every 10s
       },

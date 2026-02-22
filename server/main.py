@@ -738,6 +738,8 @@ async def api_screen_health():
             "device_type_secondary": meta.get("device_type_secondary"),
             "zone_id": meta.get("zone_id"),
             "room_id": meta.get("room_id"),
+            "metrics": screen_data.get("metrics"),
+            "metrics_at": screen_data.get("metrics_at"),
         })
     return {
         "total_connected": len(app_state["screens"]),
@@ -828,6 +830,15 @@ async def ws_screen(websocket: WebSocket, screen_id: str):
                 # Periodic heartbeat to MQTT
                 if mqtt_bus.is_connected():
                     await mqtt_bus.publish_heartbeat(screen_id, "screen")
+
+            elif data.startswith("metrics:"):
+                # Client performance metrics (FPS, memory, viewport, etc.)
+                try:
+                    metrics = json.loads(data.split(":", 1)[1])
+                    app_state["screens"][screen_id]["metrics"] = metrics
+                    app_state["screens"][screen_id]["metrics_at"] = datetime.now(timezone.utc).isoformat()
+                except (json.JSONDecodeError, ValueError):
+                    pass
 
             elif data.startswith("playlist_index:"):
                 # Screen reporting playlist position

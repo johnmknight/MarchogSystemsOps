@@ -418,6 +418,9 @@
       color: rgba(255,255,255,0.7);
       font-family: 'JetBrains Mono', monospace;
     }
+    .hc-good { color: #10b981 !important; }
+    .hc-warn { color: #f59e0b !important; }
+    .hc-bad { color: #ef4444 !important; }
 
     .dt-modal-grid {
       display: grid;
@@ -1561,17 +1564,26 @@
           return;
         }
         el.innerHTML = `<div class="health-grid">${data.screens.map(s => {
-          const uptime = s.uptime_seconds ? formatDuration(s.uptime_seconds) : '—';
+          const uptime = s.uptime_seconds ? formatDuration(s.uptime_seconds) : '--';
           const lastSeen = s.last_seen_ago_seconds != null ? `${s.last_seen_ago_seconds}s ago` : 'never';
-          const page = s.page || '—';
-          const dt = s.device_type || '—';
+          const page = s.page || '--';
+          const dt = s.device_type || '--';
           const dt2 = s.device_type_secondary ? ` + ${s.device_type_secondary}` : '';
-          const zone = s.zone_id || '—';
-          const room = s.room_id || '—';
+          const zone = s.zone_id || '--';
+          const room = s.room_id || '--';
           const displayName = s.display_name || '';
           const nameHtml = displayName
             ? `<span class="hc-id">${displayName}</span> <span style="opacity:0.4;font-size:0.8em">${s.screen_id}</span>`
             : `<span class="hc-id">${s.screen_id}</span>`;
+          // Metrics
+          const m = s.metrics || {};
+          const fps = m.fps != null ? m.fps : '--';
+          const fpsClass = m.fps != null ? (m.fps === 0 ? 'warn' : m.fps >= 50 ? 'good' : m.fps >= 25 ? 'warn' : 'bad') : '';
+          const heap = m.heap_used_mb != null ? `${m.heap_used_mb} / ${m.heap_total_mb} MB` : '--';
+          const heapPct = (m.heap_used_mb && m.heap_total_mb) ? m.heap_used_mb / m.heap_total_mb : 0;
+          const heapClass = heapPct > 0.85 ? 'bad' : heapPct > 0.65 ? 'warn' : heapPct > 0 ? 'good' : '';
+          const viewport = m.viewport || '--';
+          const dpr = m.dpr ? `@${m.dpr}x` : '';
           return `<div class="health-card">
             <div class="hc-top">
               <span class="screen-dot ${s.status === 'stale' ? 'offline' : 'online'}"></span>
@@ -1582,6 +1594,9 @@
               <span>Page</span><span class="hc-val">${page}</span>
               <span>Uptime</span><span class="hc-val">${uptime}</span>
               <span>Last ping</span><span class="hc-val">${lastSeen}</span>
+              <span>FPS</span><span class="hc-val hc-${fpsClass}">${fps}</span>
+              <span>Heap</span><span class="hc-val hc-${heapClass}">${heap}</span>
+              <span>Viewport</span><span class="hc-val">${viewport} ${dpr}</span>
               <span>Type</span><span class="hc-val">${dt}${dt2}</span>
               <span>Zone</span><span class="hc-val">${zone}</span>
               <span>Room</span><span class="hc-val">${room}</span>
