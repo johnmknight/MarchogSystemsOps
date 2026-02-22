@@ -761,6 +761,7 @@
     let pages = [];
     let screens = [];
     let automations = [];
+    let screenRegistry = {};
     let currentRoomIndex = 0;
 
     // ═══════════════════════════════════════════════════
@@ -778,12 +779,20 @@
     //  DATA LOADING
     // ═══════════════════════════════════════════════════
     async function loadAll() {
-      [rooms, pages, screens, automations] = await Promise.all([
+      const [roomsData, pagesData, screensData, automationsData, registryData] = await Promise.all([
         api('GET', '/api/rooms'),
         api('GET', '/api/pages'),
         api('GET', '/api/screens'),
         api('GET', '/api/automations'),
+        api('GET', '/api/screens/registry'),
       ]);
+      rooms = roomsData;
+      pages = pagesData;
+      screens = screensData;
+      automations = automationsData;
+      // Build registry lookup
+      screenRegistry = {};
+      (registryData || []).forEach(r => { screenRegistry[r.screen_id] = r; });
       renderAll();
     }
 
@@ -826,16 +835,19 @@
         // Find page name for display
         const pg = pages.find(p => p.file === s.page);
         const uptime = s.connected_at ? timeSince(s.connected_at) : '';
+        const displayName = s.display_name || '';
+        const nameLabel = displayName ? `<strong style="color:var(--text-bright)">${displayName}</strong> <span style="opacity:0.5">${s.screen_id}</span>` : s.screen_id;
         return `
         <div class="conn-screen">
           <span class="screen-dot online"></span>
-          <span class="conn-id">${s.screen_id}</span>
+          <span class="conn-id">${nameLabel}</span>
           <select class="conn-page-select" onchange="navigateScreen('${s.screen_id}', this.value)">
             <option value="" disabled ${!s.page ? 'selected' : ''}>— select page —</option>
             ${pageOptions}
           </select>
           <span class="conn-meta">${uptime}</span>
           <div class="conn-actions">
+            <button class="conn-btn" onclick="showRenameScreenModal('${s.screen_id}')" title="Rename screen"><i class="ti ti-pencil"></i></button>
             <button class="conn-btn" onclick="openScreen('${s.screen_id}')" title="Open screen in new tab">OPEN <i class="ti ti-external-link"></i></button>
             <button class="conn-btn" onclick="sendFullscreen('${s.screen_id}')" title="Send fullscreen command"><i class="ti ti-arrows-maximize"></i> FS</button>
             <button class="conn-btn" onclick="identifyScreen('${s.screen_id}')" title="Flash screen to identify">ID</button>
@@ -899,10 +911,15 @@
                   ).join('');
                   const dt = sc.device_type || 'info-display';
                   const dt2 = sc.device_type_secondary || '';
+                  const reg = screenRegistry[sc.screen_id] || {};
+                  const displayName = reg.display_name || '';
+                  const screenLabel = displayName
+                    ? `<strong style="color:var(--text-bright)">${displayName}</strong> <span style="opacity:0.4;font-size:0.9em">${sc.screen_id}</span>`
+                    : `<span class="screen-id">${sc.screen_id}</span>`;
                   return `
                     <div class="screen-row">
                       <span class="screen-dot ${online ? 'online' : 'offline'}"></span>
-                      <span class="screen-id">${sc.screen_id}</span>
+                      ${screenLabel}
                       ${sc.label ? `<span class="screen-label">${sc.label}</span>` : ''}
                       <select class="screen-page-select" onchange="changeScreenPage('${z.id}','${sc.screen_id}', this.value)">
                         ${pageOptions}
@@ -1222,10 +1239,14 @@
           const dt2 = s.device_type_secondary ? ` + ${s.device_type_secondary}` : '';
           const zone = s.zone_id || '—';
           const room = s.room_id || '—';
+          const displayName = s.display_name || '';
+          const nameHtml = displayName
+            ? `<span class="hc-id">${displayName}</span> <span style="opacity:0.4;font-size:0.8em">${s.screen_id}</span>`
+            : `<span class="hc-id">${s.screen_id}</span>`;
           return `<div class="health-card">
             <div class="hc-top">
               <span class="screen-dot ${s.status === 'stale' ? 'offline' : 'online'}"></span>
-              <span class="hc-id">${s.screen_id}</span>
+              ${nameHtml}
               <span class="hc-status ${s.status}">${s.status}</span>
             </div>
             <div class="hc-meta">
@@ -1502,6 +1523,42 @@
       try {
         await api('POST', `/api/screens/${screenId}/navigate`, { page: '__identify__' });
       } catch(e) {}
+    }
+
+    // ── Rename Screen ─────────────────────────────────────
+    function showRenameScreenModal(screenId) {
+      const reg = screenRegistry[screenId] || {};
+      openModal(`
+        <h3>RENAME SCREEN</h3>
+        <div style="font-size:0.75em;color:var(--text-dim);margin-bottom:12px">ID: <code>${screenId}</code></div>
+        <div class="form-group">
+          <label>Display Name</label>
+          <input id="renameDisplayName" value="${reg.display_name || ''}" placeholder="e.g. Bar Left Monitor">
+        </div>
+        <div class="form-group">
+          <label>Description</label>
+          <input id="renameDesc" value="${reg.description || ''}" placeholder="e.g. Samsung 24&quot; behind bar">
+        </div>
+        <div class="form-group">
+          <label>Icon</label>
+          <input id="renameIcon" value="${reg.icon || 'ti-device-desktop'}" placeholder="ti-device-desktop" style="width:180px">
+        </div>
+        <input type="hidden" id="renameScreenId" value="${screenId}">
+        <div class="modal-actions">
+          <button class="btn" onclick="closeModal()">CANCEL</button>
+          <button class="btn btn-primary" onclick="submitRenameScreen()">SAVE</button>
+        </div>
+      `);
+    }
+
+    async function submitRenameScreen() {
+      const screenId = document.getElementById('renameScreenId').value;
+      const displayName = document.getElementById('renameDisplayName').value.trim();
+      const description = document.getElementById('renameDesc').value.trim();
+      const icon = document.getElementById('renameIcon').value.trim() || 'ti-device-desktop';
+      await api('PATCH', `/api/screens/${screenId}/name`, { display_name: displayName, description, icon });
+      closeModal();
+      await loadAll();
     }
 
     // ── Add Page ────────────────────────────────────────

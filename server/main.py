@@ -21,6 +21,7 @@ from database import (
     set_screen_config, remove_screen_config, get_screen_assignment,
     get_zone_screens, assign_screen_to_zone, unassign_screen_from_zone,
     get_rooms_with_screens,
+    register_screen, get_screen_registry, get_all_screen_registry, update_screen_name,
 )
 from pages import (
     get_all_pages, get_page, create_page, update_page, delete_page,
@@ -471,15 +472,42 @@ async def api_remove_screen(scene_id: str, screen_id: str):
 
 @app.get("/api/screens")
 async def api_screens():
-    """List all connected screens and their current state."""
+    """List all connected screens and their current state, enriched with registry data."""
+    registry = {r["screen_id"]: r for r in await get_all_screen_registry()}
     screens = []
     for sid, info in app_state["screens"].items():
+        reg = registry.get(sid, {})
         screens.append({
             "screen_id": sid,
             "page": info.get("page"),
             "connected_at": info.get("connected_at"),
+            "display_name": reg.get("display_name", ""),
+            "description": reg.get("description", ""),
+            "icon": reg.get("icon", "ti-device-desktop"),
         })
     return screens
+
+
+class ScreenNameUpdate(BaseModel):
+    display_name: str = ""
+    description: str = ""
+    icon: str = "ti-device-desktop"
+
+
+@app.patch("/api/screens/{screen_id}/name")
+async def api_update_screen_name(screen_id: str, data: ScreenNameUpdate):
+    """Update a screen's display name in the global registry."""
+    reg = await get_screen_registry(screen_id)
+    if not reg:
+        raise HTTPException(404, "Screen not found in registry")
+    await update_screen_name(screen_id, data.display_name, data.description, data.icon)
+    return {"status": "updated", "screen_id": screen_id, "display_name": data.display_name}
+
+
+@app.get("/api/screens/registry")
+async def api_screen_registry():
+    """Get all screen registry entries (includes offline screens that have connected before)."""
+    return await get_all_screen_registry()
 
 @app.post("/api/screens/{screen_id}/navigate")
 async def api_navigate_screen(screen_id: str, cmd: NavigateCommand):
@@ -643,6 +671,7 @@ async def api_mqtt_publish(body: dict):
 async def api_screen_health():
     """Get health status of all connected screens."""
     now = datetime.now(timezone.utc)
+    registry = {r["screen_id"]: r for r in await get_all_screen_registry()}
     results = []
     for screen_id, screen_data in app_state["screens"].items():
         connected_at = screen_data.get("connected_at")
@@ -662,8 +691,10 @@ async def api_screen_health():
             status = "online"
 
         meta = app_state["screen_meta"].get(screen_id, {})
+        reg = registry.get(screen_id, {})
         results.append({
             "screen_id": screen_id,
+            "display_name": reg.get("display_name", ""),
             "status": status,
             "page": screen_data.get("page"),
             "connected_at": connected_at,
@@ -695,6 +726,9 @@ async def ws_screen(websocket: WebSocket, screen_id: str):
         "page": None,
         "connected_at": datetime.now(timezone.utc).isoformat()
     }
+
+    # Register in persistent screen registry
+    await register_screen(screen_id)
 
     # Publish connection event to MQTT
     if mqtt_bus.is_connected():

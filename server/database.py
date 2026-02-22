@@ -95,6 +95,18 @@ async def init_db():
             )
         """)
 
+        # Screen registry - global screen identity (name, description, icon)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS screen_registry (
+                screen_id TEXT PRIMARY KEY,
+                display_name TEXT DEFAULT '',
+                description TEXT DEFAULT '',
+                icon TEXT DEFAULT 'ti-device-desktop',
+                first_seen TEXT DEFAULT (datetime('now')),
+                last_seen TEXT DEFAULT (datetime('now'))
+            )
+        """)
+
         await db.commit()
 
         # Migrations for existing databases
@@ -426,3 +438,43 @@ async def _get_scene_screens(db, scene_id: str):
             screen["playlist"] = []
 
     return screens
+
+
+# ── Screen Registry Operations ───────────────────────────────
+
+async def register_screen(screen_id: str):
+    """Register or update a screen in the global registry on connect."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("""
+            INSERT INTO screen_registry (screen_id, last_seen)
+            VALUES (?, datetime('now'))
+            ON CONFLICT(screen_id) DO UPDATE SET last_seen = datetime('now')
+        """, (screen_id,))
+        await db.commit()
+
+
+async def get_screen_registry(screen_id: str):
+    """Get a single screen's registry entry."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute("SELECT * FROM screen_registry WHERE screen_id = ?", (screen_id,))
+        row = await cursor.fetchone()
+        return dict(row) if row else None
+
+
+async def get_all_screen_registry():
+    """Get all screen registry entries."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute("SELECT * FROM screen_registry ORDER BY display_name, screen_id")
+        return [dict(row) for row in await cursor.fetchall()]
+
+
+async def update_screen_name(screen_id: str, display_name: str, description: str = "", icon: str = ""):
+    """Update a screen's display name, description, and icon."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("""
+            UPDATE screen_registry SET display_name = ?, description = ?, icon = ?
+            WHERE screen_id = ?
+        """, (display_name, description, icon, screen_id))
+        await db.commit()
