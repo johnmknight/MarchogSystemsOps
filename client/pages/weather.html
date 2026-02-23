@@ -1049,8 +1049,36 @@ function showCelestialWeather() {
     document.getElementById('conditionIcon').textContent = e.is_dayside ? '☀️' : '🌑';
     document.getElementById('conditionText').textContent =
       e.is_dayside ? 'LUNAR DAY' : 'LUNAR NIGHT';
-    document.getElementById('feelsLike').textContent =
-      `Subsurface: ${Math.round(e.subsurface_temp_c)}°C  ·  Regolith: ${e.regolith_depth_m}m`;
+
+    // Compute hours until next lunar day/night transition
+    // Synodic period = 29.53 Earth days; sub-solar lon advances ~12.19°/day
+    // phase_day 0 = new moon (sub-solar lon ~0°), advances eastward
+    const SYNODIC = 29.53;
+    const flon = normLon(feat.lon); // -180..180
+    const subSolarLon = ((e.phase_day / SYNODIC) * 360) % 360; // 0..360
+    // Angular distance from sub-solar point (how far past local noon)
+    let angDist = ((subSolarLon - flon) % 360 + 360) % 360; // 0..360, 0=noon
+    // Sunset at 90°, Sunrise at 270° (or -90°)
+    let hoursToNight, hoursToDay;
+    if (angDist < 180) {
+      // Currently dayside: angDist 0..180 (noon→sunset→midnight approach)
+      hoursToNight = ((180 - angDist) / 360) * SYNODIC * 24;
+      hoursToDay = ((360 - angDist) / 360) * SYNODIC * 24;
+    } else {
+      // Currently nightside: angDist 180..360 (midnight→sunrise approach)
+      hoursToDay = ((360 - angDist) / 360) * SYNODIC * 24;
+      hoursToNight = ((180 + (360 - angDist)) / 360) * SYNODIC * 24;
+    }
+    const fmtHrs = (h) => {
+      const days = Math.floor(h / 24);
+      const hrs = Math.round(h % 24);
+      return days > 0 ? `${days}d ${hrs}h` : `${hrs}h`;
+    };
+    const transitionInfo = e.is_dayside
+      ? `☀ ${fmtHrs(hoursToNight)} to night  ·  🌑 ${fmtHrs(hoursToDay)} to dawn`
+      : `🌑 ${fmtHrs(hoursToDay)} to dawn  ·  ☀ ${fmtHrs(hoursToNight)} to dusk`;
+
+    document.getElementById('feelsLike').textContent = transitionInfo;
 
     document.getElementById('windValue').textContent = `${e.solar_wind_kms} km/s`;
     document.getElementById('windDir').textContent = 'Solar Wind';
