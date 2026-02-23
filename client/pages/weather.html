@@ -495,26 +495,40 @@ function drawMap() {
 
     // Only draw if target is within or near the map canvas
     if (tx < MW + 200) {
+      // Leader line with glow
+      ctx.shadowColor = 'rgba(0,229,255,0.7)';
+      ctx.shadowBlur = 12;
       ctx.beginPath();
       ctx.moveTo(lx, ly);
-      // Elbow: go horizontal first to edge of map, then diagonal to panel corner
       const elbowX = MW - 10;
       ctx.lineTo(elbowX, ly);
       ctx.lineTo(tx, ty);
-      ctx.strokeStyle = 'rgba(0,229,255,0.18)';
-      ctx.lineWidth = 1;
+      ctx.strokeStyle = 'rgba(0,229,255,0.5)';
+      ctx.lineWidth = 1.6;
+      ctx.setLineDash([6, 4]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0;
+
+      // Crisp inner line
+      ctx.beginPath();
+      ctx.moveTo(lx, ly);
+      ctx.lineTo(elbowX, ly);
+      ctx.lineTo(tx, ty);
+      ctx.strokeStyle = 'rgba(0,229,255,0.7)';
+      ctx.lineWidth = 1.1;
       ctx.setLineDash([6, 4]);
       ctx.stroke();
       ctx.setLineDash([]);
 
-      // Small dot at beacon end
+      // Ring at beacon end
       ctx.beginPath(); ctx.arc(lx, ly, 8, 0, Math.PI*2);
-      ctx.strokeStyle = 'rgba(0,229,255,0.12)'; ctx.lineWidth = 0.8;
+      ctx.strokeStyle = 'rgba(0,229,255,0.3)'; ctx.lineWidth = 1;
       ctx.stroke();
 
-      // Small dot at panel corner
+      // Dot at panel corner
       ctx.beginPath(); ctx.arc(tx, ty, 3, 0, Math.PI*2);
-      ctx.fillStyle = 'rgba(0,229,255,0.4)'; ctx.fill();
+      ctx.fillStyle = 'rgba(0,229,255,0.6)'; ctx.fill();
     }
   }
 
@@ -565,27 +579,27 @@ function initGlobe() {
   // Wireframe sphere (subtle)
   const sphereGeo = new THREE.SphereGeometry(1, 36, 24);
   const sphereMat = new THREE.MeshBasicMaterial({
-    color: 0x00e5ff, wireframe: true, transparent: true, opacity: 0.04
+    color: 0x00e5ff, wireframe: true, transparent: true, opacity: 0.08
   });
   globeGroup.add(new THREE.Mesh(sphereGeo, sphereMat));
 
   // Equator ring
   const ringGeo = new THREE.RingGeometry(1.002, 1.004, 64);
   const ringMat = new THREE.MeshBasicMaterial({
-    color: 0x00e5ff, transparent: true, opacity: 0.12, side: THREE.DoubleSide
+    color: 0x00e5ff, transparent: true, opacity: 0.25, side: THREE.DoubleSide
   });
   globeGroup.add(new THREE.Mesh(ringGeo, ringMat));
 
   // Outer glow
   const glowGeo = new THREE.SphereGeometry(1.06, 32, 20);
   const glowMat = new THREE.MeshBasicMaterial({
-    color: 0x00e5ff, transparent: true, opacity: 0.025, side: THREE.BackSide
+    color: 0x00e5ff, transparent: true, opacity: 0.05, side: THREE.BackSide
   });
   globeGroup.add(new THREE.Mesh(glowGeo, glowMat));
 
   // ── CONTINENT OUTLINES from LAND_DATA ──
   const lineMat = new THREE.LineBasicMaterial({
-    color: 0x00e5ff, transparent: true, opacity: 0.25
+    color: 0x00e5ff, transparent: true, opacity: 0.5
   });
   LAND_DATA.forEach(ring => {
     if (ring.length < 3) return;
