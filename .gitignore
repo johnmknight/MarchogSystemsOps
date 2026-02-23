@@ -7,3 +7,9 @@ __pycache__/
 server/venv/
 *.db
 node_modules/
+
+# Temp processing directories (raw shapefiles, geodatabases)
+_temp_moon/
+_temp_mars/
+data/moon_raw/
+data/mars_raw/
