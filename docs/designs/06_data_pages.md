@@ -270,3 +270,50 @@ New category: `"data"` — distinguishes data pages from ambient/hud/general.
 
 ## Estimated effort
 2-3 sessions (1 per page + server proxy + thumbnails)
+
+
+---
+
+## Weather Page — Geographic Data & Visual Design Notes
+
+### Data Sources
+
+| File | Source | License | Size | Contents |
+|------|--------|---------|------|----------|
+| `states_data.js` | Natural Earth 10m admin-1 | CC0 Public Domain | 42 KB | US state boundaries, high-fidelity GIS shorelines |
+| `lakes_data.js` | Natural Earth 10m lakes | CC0 Public Domain | 19 KB | 12 major US lakes (rank 0-2), reduced resolution |
+| `land_data.js` | Natural Earth coastlines | CC0 Public Domain | 21 KB | Global continent outlines for Three.js globe |
+
+All sourced from [martynafford/natural-earth-geojson](https://github.com/martynafford/natural-earth-geojson)
+and [nvkelso/natural-earth-vector](https://github.com/nvkelso/natural-earth-vector).
+
+### Lake Data — 75% Point Reduction (Intentional)
+
+The Natural Earth 10m lakes dataset provides high-fidelity shoreline polygons
+(5,185 total coordinate points across 12 major US lakes). We deliberately reduced
+these to **~25% of original resolution** (1,233 points) by sampling every 4th vertex.
+
+**Why:** The full-resolution lake outlines produced smooth, organic curves that
+visually clashed with the tactical HUD aesthetic. The state boundary data — while
+also high-fidelity — renders as angular wireframe segments due to vertex node
+rendering and the glow/double-stroke treatment. At full resolution, lakes looked
+like they belonged to a different visual system: too smooth, too "GIS", not enough
+"sensor scan". The reduced resolution produces geometric, angular lake outlines
+that match the state borders and reinforce the "Planetary Surface Monitor" concept
+of digitized terrain data being reconstructed from limited sensor readings.
+
+**Before/after comparison:**
+- Lake Okeechobee: 66 pts → 18 pts (27%) — still clearly recognizable at FL zoom
+- Lake Superior: 897 pts → 213 pts (24%) — angular but reads correctly at MI zoom
+- All lakes maintain shape recognition while gaining visual consistency
+
+**Rendering:** Lakes use identical border treatment as active state boundaries:
+outer glow (shadowBlur 12), double stroke (1.6px + 1.1px inner), vertex nodes
+(1.8px radius), and dark water fill (rgba 0,8,24 @ 0.7 opacity).
+
+### Future: Regional Data Loading
+
+Currently all geographic data loads monolithically. A backlog item exists in
+PRODUCTION_QUEUE.md to re-download both datasets and split by geographic region
+(Northeast, Southeast, Midwest, Southwest, West, Great Lakes, Pacific) for
+on-demand loading per active state, reducing initial page payload.
