@@ -34,10 +34,10 @@
     #mapCanvas { position: absolute; top: 0; left: 0; width: 65%; height: 100%; z-index: 1; }
     #globeContainer {
       position: absolute; top: 0; right: 0; width: 35%; height: 50%;
-      z-index: 1;
+      z-index: 2;
       border-left: 1px solid rgba(0,229,255,0.06);
       border-bottom: 1px solid rgba(0,229,255,0.06);
-      background: radial-gradient(ellipse at center, #061020 0%, #010408 100%);
+      background: #010408;
     }
     #globeCanvas { width: 100%; height: 100%; display: block; }
 
@@ -556,7 +556,7 @@ function initGlobe() {
   const renderer = new THREE.WebGLRenderer({ canvas: gc, alpha: true, antialias: true });
   renderer.setSize(gw, gh);
   renderer.setPixelRatio(window.devicePixelRatio);
-  renderer.setClearColor(0x000000, 0);
+  renderer.setClearColor(0x010408, 1);
 
   // Group for all rotating elements
   const globeGroup = new THREE.Group();
