@@ -33,13 +33,78 @@
 
     #mapCanvas { position: absolute; top: 0; left: 0; width: 65%; height: 100%; z-index: 1; }
     #globeContainer {
-      position: absolute; top: 0; right: 0; width: 35%; height: 55%;
+      position: absolute; top: 0; right: 0; width: 35%; height: 50%;
       z-index: 1;
       border-left: 1px solid rgba(0,229,255,0.06);
       border-bottom: 1px solid rgba(0,229,255,0.06);
       background: radial-gradient(ellipse at center, #061020 0%, #010408 100%);
     }
     #globeCanvas { width: 100%; height: 100%; display: block; }
+
+    /* ── Weather Panel — bottom-right 35% × 50% ── */
+    #weatherPanel {
+      position: absolute; bottom: 0; right: 0;
+      width: 35%; height: 50%;
+      z-index: 2;
+      background: var(--bg-panel);
+      border-left: 1px solid var(--border-glow);
+      border-top: 1px solid var(--border-glow);
+      backdrop-filter: blur(8px);
+      padding: 14px 18px;
+      display: flex; flex-direction: column;
+      overflow: hidden;
+    }
+    #weatherPanel::before {
+      content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px;
+      background: linear-gradient(90deg, var(--cyan), transparent);
+      opacity: 0.5;
+    }
+
+    .wp-temp {
+      font-family: 'Orbitron', sans-serif;
+      font-size: clamp(2.4em, 5vw, 4em); font-weight: 900;
+      color: var(--white-bright); line-height: 1;
+      text-shadow: 0 0 14px rgba(0,229,255,0.2);
+    }
+    .wp-temp .unit { font-size: 0.3em; font-weight: 500; color: var(--cyan-bright); vertical-align: super; }
+    .wp-condition-row { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+    .wp-condition-icon { font-size: 1.5em; }
+    .wp-condition-text {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 0.6em; font-weight: 600; color: var(--white); letter-spacing: 0.08em;
+    }
+    .wp-feels { font-size: 0.72em; color: var(--text-secondary); margin-top: 2px; }
+    .wp-divider { height: 1px; margin: 8px 0; background: linear-gradient(90deg, var(--cyan-dim), transparent); }
+    .wp-grid {
+      display: grid; grid-template-columns: 1fr 1fr;
+      gap: 4px 16px;
+    }
+    .wp-row { display: flex; justify-content: space-between; align-items: baseline; }
+    .wp-label { font-size: 0.62em; color: var(--text-secondary); }
+    .wp-val { font-family: 'Orbitron', sans-serif; font-size: 0.72em; font-weight: 600; color: var(--white-bright); }
+
+    .wp-forecast-label {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 0.4em; font-weight: 500; letter-spacing: 0.15em;
+      color: var(--cyan); opacity: 0.6; margin-top: auto; margin-bottom: 4px;
+    }
+    .wp-forecast-strip {
+      display: flex; gap: 2px;
+    }
+    .wp-forecast-day { text-align: center; flex: 1; padding: 3px 2px; border-right: 1px solid rgba(0,229,255,0.06); }
+    .wp-forecast-day:last-child { border-right: none; }
+    .wp-forecast-day-name { font-family: 'Orbitron', sans-serif; font-size: 0.4em; font-weight: 600; color: var(--cyan); letter-spacing: 0.08em; }
+    .wp-forecast-day-icon { font-size: 1em; margin: 1px 0; }
+    .wp-forecast-day-temp { font-size: 0.68em; color: var(--white-bright); }
+    .wp-forecast-day-lo { font-size: 0.52em; color: var(--text-secondary); }
+
+    /* ── Leader line canvas (full viewport, behind panels) ── */
+    #leaderCanvas {
+      position: absolute; top: 0; left: 0;
+      width: 100%; height: 100%;
+      z-index: 1; pointer-events: none;
+    }
+
     #hud { position: absolute; inset: 0; z-index: 10; pointer-events: none; }
 
     .hud-system {
@@ -69,55 +134,6 @@
     .hud-location-coords {
       font-size: 0.72em; color: var(--cyan-bright); margin-top: 2px;
     }
-
-    .hud-callout { position: absolute; pointer-events: auto; }
-    .callout-inner {
-      background: var(--bg-panel); border: 1px solid var(--border-glow);
-      border-radius: 4px; padding: 10px 14px;
-      backdrop-filter: blur(8px); min-width: 160px;
-    }
-    .callout-inner::before {
-      content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px;
-      background: linear-gradient(90deg, transparent, var(--cyan), transparent);
-      opacity: 0.5;
-    }
-    .callout-temp {
-      font-family: 'Orbitron', sans-serif;
-      font-size: clamp(2em,4vw,3.2em); font-weight: 900;
-      color: var(--white-bright); line-height: 1;
-    }
-    .callout-temp .unit { font-size: 0.35em; font-weight: 500; color: var(--cyan-bright); vertical-align: super; }
-    .callout-condition-row { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
-    .callout-condition-icon { font-size: 1.3em; }
-    .callout-condition-text {
-      font-family: 'Orbitron', sans-serif;
-      font-size: 0.55em; font-weight: 600; color: var(--white); letter-spacing: 0.08em;
-    }
-    .callout-feels { font-size: 0.68em; color: var(--text-secondary); margin-top: 3px; }
-    .callout-divider { height: 1px; margin: 7px 0; background: linear-gradient(90deg, var(--cyan-dim), transparent); }
-    .callout-row { display: flex; justify-content: space-between; align-items: baseline; margin-top: 3px; }
-    .callout-label { font-size: 0.62em; color: var(--text-secondary); }
-    .callout-val { font-family: 'Orbitron', sans-serif; font-size: 0.72em; font-weight: 600; color: var(--white-bright); }
-
-    .globe-label {
-      position: absolute; right: 14px; top: calc(55% + 4px);
-      font-family: 'Orbitron', sans-serif;
-      font-size: 0.42em; font-weight: 500; letter-spacing: 0.15em;
-      color: var(--cyan); opacity: 0.4; text-align: right; width: 35%;
-    }
-
-    .hud-forecast { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); pointer-events: auto; }
-    .forecast-strip {
-      display: flex; gap: 3px; background: var(--bg-panel);
-      border: 1px solid var(--border-glow); border-radius: 4px;
-      padding: 6px 10px; backdrop-filter: blur(8px);
-    }
-    .forecast-day { text-align: center; padding: 3px 8px; min-width: 52px; border-right: 1px solid rgba(0,229,255,0.06); }
-    .forecast-day:last-child { border-right: none; }
-    .forecast-day-name { font-family: 'Orbitron', sans-serif; font-size: 0.45em; font-weight: 600; color: var(--cyan); letter-spacing: 0.1em; }
-    .forecast-day-icon { font-size: 1.1em; margin: 1px 0; }
-    .forecast-day-temp { font-size: 0.72em; color: var(--white-bright); }
-    .forecast-day-lo { font-size: 0.58em; color: var(--text-secondary); }
 
     #settingsToggle {
       position: absolute; top: 10px; right: 120px; z-index: 100;
@@ -154,7 +170,33 @@
 </head>
 <body>
   <canvas id="mapCanvas"></canvas>
+  <canvas id="leaderCanvas"></canvas>
   <div id="globeContainer"><canvas id="globeCanvas"></canvas></div>
+
+  <!-- Weather Panel — bottom-right -->
+  <div id="weatherPanel">
+    <div class="wp-temp" id="tempValue"><span class="loading">--</span></div>
+    <div class="wp-condition-row">
+      <span class="wp-condition-icon" id="conditionIcon"></span>
+      <span class="wp-condition-text" id="conditionText">---</span>
+    </div>
+    <div class="wp-feels" id="feelsLike"></div>
+    <div class="wp-divider"></div>
+    <div class="wp-grid">
+      <div class="wp-row"><span class="wp-label">Wind</span><span class="wp-val" id="windValue">---</span></div>
+      <div class="wp-row"><span class="wp-label">Direction</span><span class="wp-val" id="windDir">---</span></div>
+      <div class="wp-row"><span class="wp-label">Humidity</span><span class="wp-val" id="humidity">---</span></div>
+      <div class="wp-row"><span class="wp-label">Pressure</span><span class="wp-val" id="pressure">---</span></div>
+      <div class="wp-row"><span class="wp-label">Visibility</span><span class="wp-val" id="visibility">---</span></div>
+      <div class="wp-row"><span class="wp-label">Clouds</span><span class="wp-val" id="cloudCover">---</span></div>
+    </div>
+    <div class="wp-forecast-label">7-DAY FORECAST</div>
+    <div class="wp-forecast-strip" id="forecastStrip">
+      <div class="loading" style="padding:4px 10px;">Loading...</div>
+    </div>
+  </div>
+
+  <!-- HUD overlays (location name, clock) -->
   <div id="hud">
     <div class="hud-system">Marchog Planetary Surface Monitor</div>
     <div class="hud-clock">
@@ -164,27 +206,6 @@
     <div class="hud-location">
       <div class="hud-location-name" id="locationName">LOADING...</div>
       <div class="hud-location-coords" id="locationCoords">---.---- N / ---.---- W</div>
-    </div>
-    <div class="hud-callout" id="callout">
-      <div class="callout-inner">
-        <div class="callout-temp" id="tempValue"><span class="loading">--</span></div>
-        <div class="callout-condition-row">
-          <span class="callout-condition-icon" id="conditionIcon"></span>
-          <span class="callout-condition-text" id="conditionText">---</span>
-        </div>
-        <div class="callout-feels" id="feelsLike"></div>
-        <div class="callout-divider"></div>
-        <div class="callout-row"><span class="callout-label">Wind</span><span class="callout-val" id="windValue">---</span></div>
-        <div class="callout-row"><span class="callout-label">Direction</span><span class="callout-val" id="windDir">---</span></div>
-        <div class="callout-row"><span class="callout-label">Humidity</span><span class="callout-val" id="humidity">---</span></div>
-        <div class="callout-row"><span class="callout-label">Pressure</span><span class="callout-val" id="pressure">---</span></div>
-        <div class="callout-row"><span class="callout-label">Visibility</span><span class="callout-val" id="visibility">---</span></div>
-        <div class="callout-row"><span class="callout-label">Clouds</span><span class="callout-val" id="cloudCover">---</span></div>
-      </div>
-    </div>
-    <div class="globe-label">Global Position Reference</div>
-    <div class="hud-forecast">
-      <div class="forecast-strip" id="forecastStrip"><div class="loading" style="padding:8px 20px;">Loading forecast...</div></div>
     </div>
   </div>
   <button id="settingsToggle" onclick="toggleSettings()">&#9881;</button>
@@ -463,18 +484,38 @@ function drawMap() {
   ctx.fillStyle='#00e5ff'; ctx.fill();
   ctx.shadowColor='transparent'; ctx.shadowBlur=0;
 
-  // ── Leader line to callout ──
-  const callout = document.getElementById('callout');
-  if (callout && callout.offsetWidth) {
-    const cr = callout.getBoundingClientRect();
-    const mr = canvas.getBoundingClientRect();
-    const cx = cr.left - mr.left + cr.width + 6;
-    const cy = cr.top - mr.top + cr.height * 0.3;
-    ctx.beginPath(); ctx.moveTo(lx, ly); ctx.lineTo(cx, cy);
-    ctx.strokeStyle = 'rgba(0,229,255,0.2)'; ctx.lineWidth = 1;
-    ctx.setLineDash([5,5]); ctx.stroke(); ctx.setLineDash([]);
-    ctx.beginPath(); ctx.arc(cx, cy, 3, 0, Math.PI*2);
-    ctx.fillStyle = 'rgba(0,229,255,0.3)'; ctx.fill();
+  // ── Leader line: beacon → weather panel top-left corner ──
+  const wp = document.getElementById('weatherPanel');
+  if (wp) {
+    const wpRect = wp.getBoundingClientRect();
+    const mapRect = canvas.getBoundingClientRect();
+    // Target: top-left corner of weather panel, relative to map canvas
+    const tx = wpRect.left - mapRect.left;
+    const ty = wpRect.top - mapRect.top;
+
+    // Only draw if target is within or near the map canvas
+    if (tx < MW + 200) {
+      ctx.beginPath();
+      ctx.moveTo(lx, ly);
+      // Elbow: go horizontal first to edge of map, then diagonal to panel corner
+      const elbowX = MW - 10;
+      ctx.lineTo(elbowX, ly);
+      ctx.lineTo(tx, ty);
+      ctx.strokeStyle = 'rgba(0,229,255,0.18)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([6, 4]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Small dot at beacon end
+      ctx.beginPath(); ctx.arc(lx, ly, 8, 0, Math.PI*2);
+      ctx.strokeStyle = 'rgba(0,229,255,0.12)'; ctx.lineWidth = 0.8;
+      ctx.stroke();
+
+      // Small dot at panel corner
+      ctx.beginPath(); ctx.arc(tx, ty, 3, 0, Math.PI*2);
+      ctx.fillStyle = 'rgba(0,229,255,0.4)'; ctx.fill();
+    }
   }
 
   // Scan line
@@ -594,25 +635,11 @@ function resizeGlobe() {
 //  HUD POSITIONING + WEATHER DATA + CLOCK + SETTINGS + INIT
 // ═══════════════════════════════════════════════════════════════
 
-function positionHUD() {
-  const [bx, by] = beaconXY();
-  const callout = document.getElementById('callout');
-  const cw = callout.offsetWidth || 200;
-  const ch = callout.offsetHeight || 220;
-  let cx = bx - cw - 50;
-  let cy = by - ch * 0.3;
-  cx = Math.max(14, Math.min(cx, MW - cw - 14));
-  cy = Math.max(80, Math.min(cy, MH - ch - 60));
-  callout.style.left = cx + 'px';
-  callout.style.top = cy + 'px';
-}
-
 function resizeCanvas() {
   const el = document.getElementById('mapCanvas');
   MW = el.width = el.clientWidth;
   MH = el.height = el.clientHeight;
   viewBounds = getViewBounds();
-  positionHUD();
   resizeGlobe();
 }
 
@@ -657,15 +684,14 @@ function updateUI(data) {
       const dayName = i === 0 ? 'TODAY' : DAYS[date.getDay()];
       const fwmo = WMO_CODES[d.weather_code[i]] || {i:'❓'};
       const el = document.createElement('div');
-      el.className = 'forecast-day';
-      el.innerHTML = `<div class="forecast-day-name">${dayName}</div>
-        <div class="forecast-day-icon">${fwmo.i}</div>
-        <div class="forecast-day-temp">${Math.round(d.temperature_2m_max[i])}°</div>
-        <div class="forecast-day-lo">${Math.round(d.temperature_2m_min[i])}°</div>`;
+      el.className = 'wp-forecast-day';
+      el.innerHTML = `<div class="wp-forecast-day-name">${dayName}</div>
+        <div class="wp-forecast-day-icon">${fwmo.i}</div>
+        <div class="wp-forecast-day-temp">${Math.round(d.temperature_2m_max[i])}°</div>
+        <div class="wp-forecast-day-lo">${Math.round(d.temperature_2m_min[i])}°</div>`;
       strip.appendChild(el);
     }
   }
-  setTimeout(positionHUD, 50);
 }
 
 function degToCompass(deg) {
