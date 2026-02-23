@@ -553,7 +553,7 @@ function initGlobe() {
   const camera = new THREE.PerspectiveCamera(45, gw/gh, 0.1, 1000);
   camera.position.z = 2.8;
 
-  const renderer = new THREE.WebGLRenderer({ canvas: gc, alpha: true, antialias: true });
+  const renderer = new THREE.WebGLRenderer({ canvas: gc, alpha: false, antialias: true });
   renderer.setSize(gw, gh);
   renderer.setPixelRatio(window.devicePixelRatio);
   renderer.setClearColor(0x010408, 1);
