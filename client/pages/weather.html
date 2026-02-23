@@ -40,6 +40,11 @@
     }
 
     #mapCanvas { position: absolute; top: 0; left: 0; width: 65%; height: 100%; z-index: 1; }
+    #polarGlobeContainer {
+      position: absolute; top: 0; left: 0; width: 65%; height: 100%;
+      z-index: 1; background: #010408; display: none;
+    }
+    #polarGlobeCanvas { width: 100%; height: 100%; display: block; }
     #globeContainer {
       position: absolute; top: 0; right: 0; width: 35%; height: 50%;
       z-index: 2;
@@ -202,6 +207,7 @@
 <body>
   <canvas id="mapCanvas"></canvas>
   <canvas id="leaderCanvas"></canvas>
+  <div id="polarGlobeContainer" style="display:none;"><canvas id="polarGlobeCanvas"></canvas></div>
   <div id="globeContainer"><canvas id="globeCanvas"></canvas></div>
 
   <!-- Weather Panel — bottom-right -->
@@ -488,11 +494,13 @@ function drawCelestialMap() {
 
   // Scan line
   const scanY = (animT * 30) % MH;
-  const sg = ctx.createLinearGradient(0, scanY-25, 0, scanY+25);
-  sg.addColorStop(0, `${accent},0)`);
-  sg.addColorStop(0.5, `${accent},0.025)`);
-  sg.addColorStop(1, `${accent},0)`);
-  ctx.fillStyle = sg; ctx.fillRect(0, scanY-25, MW, 50);
+  if (isFinite(scanY)) {
+    const sg = ctx.createLinearGradient(0, scanY-25, 0, scanY+25);
+    sg.addColorStop(0, `${accent},0)`);
+    sg.addColorStop(0.5, `${accent},0.025)`);
+    sg.addColorStop(1, `${accent},0)`);
+    ctx.fillStyle = sg; ctx.fillRect(0, scanY-25, MW, 50);
+  }
 }
 
 function drawMap() {
@@ -773,7 +781,7 @@ function initGlobe() {
 
   function animateGlobe() {
     requestAnimationFrame(animateGlobe);
-    if (globe.globeGroup) globe.globeGroup.rotation.y += 0.002;
+    if (globe.globeGroup) {} // globe frozen on selected region
     if (globe.locDot) {
       const s = 1 + Math.sin(Date.now() * 0.003) * 0.3;
       globe.locDot.scale.set(s, s, s);
@@ -791,6 +799,180 @@ function resizeGlobe() {
   globe.camera.aspect = gw / gh;
   globe.camera.updateProjectionMatrix();
   globe.renderer.setSize(gw, gh);
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  POLAR GLOBE — replaces flat map for high-latitude views
+// ═══════════════════════════════════════════════════════════════
+const POLAR_THRESHOLD = 70; // degrees latitude
+let polarGlobe = { scene: null, camera: null, renderer: null, group: null, active: false };
+
+function initPolarGlobe() {
+  const container = document.getElementById('polarGlobeContainer');
+  const gc = document.getElementById('polarGlobeCanvas');
+  const gw = container.clientWidth || 800, gh = container.clientHeight || 600;
+
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(30, gw/gh, 0.1, 1000);
+  camera.position.set(0, 0, 1.6);
+
+  const renderer = new THREE.WebGLRenderer({ canvas: gc, alpha: false, antialias: true });
+  renderer.setSize(gw, gh);
+  renderer.setPixelRatio(window.devicePixelRatio);
+  renderer.setClearColor(0x010408, 1);
+
+  polarGlobe = { scene, camera, renderer, group: null, active: false, animId: null };
+}
+
+function rebuildPolarGlobe(lat, lon) {
+  if (!polarGlobe.scene) initPolarGlobe();
+  const { scene, camera, renderer } = polarGlobe;
+
+  // Remove old group
+  if (polarGlobe.group) scene.remove(polarGlobe.group);
+  const g = new THREE.Group();
+  scene.add(g);
+  polarGlobe.group = g;
+
+  const isMars = currentBody === 'mars';
+  const isLuna = currentBody === 'luna';
+  const colors = {
+    luna:  { wire: 0x8090a0, inner: 0x080808, line: 0x8090a0 },
+    mars:  { wire: 0xff6030, inner: 0x0a0404, line: 0xff6030 },
+  };
+  const c = colors[currentBody] || colors.luna;
+
+  // Opaque inner sphere
+  g.add(new THREE.Mesh(
+    new THREE.SphereGeometry(0.995, 64, 48),
+    new THREE.MeshBasicMaterial({ color: c.inner })
+  ));
+
+  // Wireframe sphere — denser for detail
+  g.add(new THREE.Mesh(
+    new THREE.SphereGeometry(1, 64, 48),
+    new THREE.MeshBasicMaterial({ color: c.wire, wireframe: true, transparent: true, opacity: 0.06 })
+  ));
+
+  // Latitude/longitude grid rings every 5° near poles
+  const gridMat = new THREE.LineBasicMaterial({ color: c.wire, transparent: true, opacity: 0.1 });
+  for (let glat = -85; glat <= 85; glat += 5) {
+    const pts = [];
+    for (let glon = -180; glon <= 180; glon += 5) {
+      pts.push(latLonToVec3(glat, glon, 1.003));
+    }
+    g.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), gridMat));
+  }
+  for (let glon = -180; glon < 180; glon += 15) {
+    const pts = [];
+    for (let glat = -90; glat <= 90; glat += 2) {
+      pts.push(latLonToVec3(glat, glon, 1.003));
+    }
+    g.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), gridMat));
+  }
+
+  // Body-specific outlines
+  const lineMat = new THREE.LineBasicMaterial({ color: c.line, transparent: true, opacity: 0.5 });
+
+  if (isLuna && typeof LUNA_MARE_BOUNDARIES !== 'undefined') {
+    LUNA_MARE_BOUNDARIES.forEach(mare => {
+      mare.polys.forEach(ring => {
+        if (ring.length < 3) return;
+        const points = ring.map(([lo, la]) => latLonToVec3(la, lo, 1.005));
+        g.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), lineMat));
+      });
+    });
+  }
+  if (isMars && typeof MARS_GEOLOGY !== 'undefined') {
+    MARS_GEOLOGY.forEach(unit => {
+      unit.polys.forEach(ring => {
+        if (ring.length < 3) return;
+        const points = ring.map(([lo, la]) => latLonToVec3(la, lo, 1.005));
+        g.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), lineMat));
+      });
+    });
+  }
+
+  // Location dot
+  const locDotGeo = new THREE.SphereGeometry(0.02, 8, 8);
+  const locDotMat = new THREE.MeshBasicMaterial({ color: c.line });
+  const locDot = new THREE.Mesh(locDotGeo, locDotMat);
+  locDot.position.copy(latLonToVec3(lat, lon, 1.02));
+  g.add(locDot);
+  polarGlobe.locDot = locDot;
+
+  // Orient globe: rotate so target lat/lon faces camera (looking down at pole)
+  // Convert lat/lon to unit vector, then orient globe so that vector points at camera (0,0,1)
+  const target = latLonToVec3(lat, lon, 1);
+  const up = new THREE.Vector3(0, 1, 0);
+
+  // Use lookAt-style: we want the target point on the sphere surface to face the camera
+  // Rotate group so target aligns with +Z axis
+  const q = new THREE.Quaternion();
+  q.setFromUnitVectors(target.clone().normalize(), new THREE.Vector3(0, 0, 1));
+  g.quaternion.copy(q);
+
+  renderer.setClearColor(c.inner, 1);
+
+  // Start animation if not running
+  if (!polarGlobe.active) {
+    polarGlobe.active = true;
+    function animPolar() {
+      if (!polarGlobe.active) return;
+      polarGlobe.animId = requestAnimationFrame(animPolar);
+      // Slow rotation disabled — globe frozen on selected region
+      // if (polarGlobe.group) {
+      //   polarGlobe.group.rotateOnWorldAxis(target.clone().normalize(), 0.001);
+      // }
+      if (polarGlobe.locDot) {
+        const s = 1 + Math.sin(Date.now() * 0.003) * 0.3;
+        polarGlobe.locDot.scale.set(s, s, s);
+      }
+      renderer.render(scene, camera);
+    }
+    animPolar();
+  }
+}
+
+function showPolarGlobe(lat, lon) {
+  const container = document.getElementById('polarGlobeContainer');
+  const mapCanvas = document.getElementById('mapCanvas');
+  container.style.display = 'block';
+  mapCanvas.style.display = 'none';
+  rebuildPolarGlobe(lat, lon);
+  resizePolarGlobe();
+}
+
+function hidePolarGlobe() {
+  const container = document.getElementById('polarGlobeContainer');
+  const mapCanvas = document.getElementById('mapCanvas');
+  container.style.display = 'none';
+  mapCanvas.style.display = 'block';
+  polarGlobe.active = false;
+  if (polarGlobe.animId) cancelAnimationFrame(polarGlobe.animId);
+  // Re-measure canvas after showing it again
+  MW = mapCanvas.width = mapCanvas.clientWidth;
+  MH = mapCanvas.height = mapCanvas.clientHeight;
+  viewBounds = getViewBounds();
+}
+
+function resizePolarGlobe() {
+  if (!polarGlobe.renderer) return;
+  const c = document.getElementById('polarGlobeContainer');
+  const gw = c.clientWidth, gh = c.clientHeight;
+  if (gw === 0 || gh === 0) return;
+  polarGlobe.camera.aspect = gw / gh;
+  polarGlobe.camera.updateProjectionMatrix();
+  polarGlobe.renderer.setSize(gw, gh);
+}
+
+function isPolarView() {
+  if (currentBody === 'earth') return false;
+  const features = getCelestialFeatures();
+  const regions = features.filter(f => f.category === 'region');
+  if (regions.length === 0) return false;
+  const f = regions[selectedFeatureIdx % regions.length];
+  return Math.abs(f.lat) > POLAR_THRESHOLD;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -815,6 +997,7 @@ function switchBody(body) {
 
   // Update weather panel
   if (body === 'earth') {
+    hidePolarGlobe();
     fetchWeather();
   } else {
     showCelestialWeather();
@@ -907,6 +1090,13 @@ function showCelestialWeather() {
   // Update globe location dot to selected feature
   if (globe.locDot) {
     globe.locDot.position.copy(latLonToVec3(feat.lat, normLon(feat.lon), 1.02));
+  }
+
+  // Polar view: switch to zoomed 3D globe for high-latitude locations
+  if (Math.abs(feat.lat) > POLAR_THRESHOLD) {
+    showPolarGlobe(feat.lat, normLon(feat.lon));
+  } else {
+    hidePolarGlobe();
   }
 }
 
@@ -1087,6 +1277,7 @@ function resizeCanvas() {
   MH = el.height = el.clientHeight;
   viewBounds = getViewBounds();
   resizeGlobe();
+  if (polarGlobe.active) resizePolarGlobe();
 }
 
 async function fetchWeather() {
