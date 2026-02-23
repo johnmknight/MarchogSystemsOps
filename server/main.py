@@ -36,6 +36,9 @@ import mqtt_bus
 # Paths
 BASE_DIR = Path(__file__).parent
 CLIENT_DIR = BASE_DIR.parent / "client"
+MEDIA_DIR = BASE_DIR.parent / "media"
+MEDIA_DIR.mkdir(exist_ok=True)
+(MEDIA_DIR / "videos").mkdir(exist_ok=True)
 
 # ── Device Type Taxonomy ─────────────────────────────────────
 
@@ -921,7 +924,31 @@ async def generate_thumbnails():
     return {"status": "complete", "results": results}
 
 
+# ── Media Library ────────────────────────────────────────────
+
+MEDIA_EXTENSIONS = {'.mp4', '.webm', '.ogg', '.mov', '.m3u8'}
+
+@app.get("/api/media/videos")
+async def list_media_videos():
+    """List video files in the server media library."""
+    video_dir = MEDIA_DIR / "videos"
+    videos = []
+    for f in video_dir.iterdir():
+        if f.is_file() and f.suffix.lower() in MEDIA_EXTENSIONS:
+            stat = f.stat()
+            videos.append({
+                "asset_id": f.name,
+                "filename": f.name,
+                "size": stat.st_size,
+                "url": f"/media/videos/{f.name}",
+            })
+    return sorted(videos, key=lambda v: v["filename"])
+
+
 # ── Static Files ─────────────────────────────────────────────
+
+# Serve media files (must be before catch-all client mount)
+app.mount("/media", StaticFiles(directory=str(MEDIA_DIR)), name="media")
 
 # Serve client files
 app.mount("/", StaticFiles(directory=str(CLIENT_DIR), html=True), name="client")

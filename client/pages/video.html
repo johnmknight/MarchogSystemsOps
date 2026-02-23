@@ -223,8 +223,20 @@
   <!-- URL Entry Prompt -->
   <div id="urlPrompt">
     <h2>VIDEO FEED</h2>
-    <input id="urlInput" type="text" placeholder="Paste YouTube URL or Video ID" autofocus>
-    <div class="hint">YouTube URL/ID or direct video URL (.mp4, .webm, etc.)</div>
+    <input id="urlInput" type="text" placeholder="YouTube URL, video URL, or pick from library" autofocus>
+    <div class="hint">YouTube URL/ID, direct video URL (.mp4, .webm), or use the media library</div>
+    <button id="promptMediaBtn" onclick="openMediaPicker()" style="
+      margin-top: 8px;
+      background: rgba(74, 158, 255, 0.1);
+      border: 1px solid rgba(74, 158, 255, 0.3);
+      color: #4a9eff;
+      font-family: 'Orbitron', sans-serif;
+      font-size: 0.65em;
+      letter-spacing: 0.1em;
+      padding: 8px 20px;
+      border-radius: 3px;
+      cursor: pointer;
+    ">MEDIA LIBRARY</button>
   </div>
 
   <!-- Video Player -->
@@ -248,8 +260,19 @@
     </div>
 
     <div class="setting-group">
-      <label>YouTube URL / Video ID</label>
-      <input id="videoUrl" type="text" placeholder="Paste URL or ID">
+      <label>VIDEO SOURCE</label>
+      <div style="display:flex; gap:4px;">
+        <input id="videoUrl" type="text" placeholder="YouTube URL, video URL, or asset ID" style="flex:1;">
+        <button onclick="openMediaPicker()" title="Browse media library" style="
+          background: rgba(74, 158, 255, 0.1);
+          border: 1px solid rgba(74, 158, 255, 0.2);
+          color: #4a9eff;
+          font-size: 14px;
+          padding: 4px 8px;
+          border-radius: 3px;
+          cursor: pointer;
+        ">&#128194;</button>
+      </div>
     </div>
 
     <div class="setting-group">
@@ -260,7 +283,86 @@
     <button class="btn-apply" onclick="applySettings()">APPLY</button>
   </div>
 
+  <!-- Media Picker Modal -->
+  <div id="mediaModal" style="
+    position: absolute; inset: 0; z-index: 200;
+    display: none; align-items: center; justify-content: center;
+    background: rgba(5, 8, 14, 0.92);
+  ">
+    <div style="
+      width: 420px; max-width: 90vw; max-height: 80vh;
+      background: rgba(10, 16, 28, 0.98);
+      border: 1px solid rgba(100, 140, 200, 0.25);
+      border-radius: 6px;
+      padding: 20px;
+      overflow-y: auto;
+      backdrop-filter: blur(10px);
+    ">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+        <div class="settings-title" style="margin:0;">Media Library</div>
+        <button onclick="closeMediaPicker()" style="
+          background: none; border: 1px solid rgba(100,140,200,0.2);
+          color: #5a6a7a; font-size: 14px; padding: 2px 8px;
+          border-radius: 3px; cursor: pointer;
+        ">X</button>
+      </div>
+      <div id="mediaList"></div>
+    </div>
+  </div>
+
   <script>
+    // ═══════════════════════════════════════════════════
+    //  MEDIA LIBRARY PICKER
+    // ═══════════════════════════════════════════════════
+    function formatBytes(bytes) {
+      if (bytes < 1024) return bytes + ' B';
+      if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+      if (bytes < 1073741824) return (bytes / 1048576).toFixed(1) + ' MB';
+      return (bytes / 1073741824).toFixed(2) + ' GB';
+    }
+
+    async function openMediaPicker() {
+      const modal = document.getElementById('mediaModal');
+      const list = document.getElementById('mediaList');
+      modal.style.display = 'flex';
+      list.innerHTML = '<div style="color:#5a6a7a; text-align:center; padding:20px;">Loading...</div>';
+      try {
+        // Resolve API URL relative to parent shell origin (not iframe origin)
+        const apiBase = window.parent.location.origin;
+        const resp = await fetch(apiBase + '/api/media/videos');
+        const videos = await resp.json();
+        list.innerHTML = '';
+        if (videos.length === 0) {
+          list.innerHTML = '<div style="color:#5a6a7a; text-align:center; padding:20px; line-height:1.8;">' +
+            'No videos in media library.<br>' +
+            '<span style="font-size:0.85em;">Place MP4/WebM files in the server\'s<br><code style="color:#4a9eff;">media/videos/</code> directory.</span></div>';
+          return;
+        }
+        videos.forEach(v => {
+          const item = document.createElement('div');
+          item.style.cssText = 'display:flex; justify-content:space-between; align-items:center; padding:10px 12px; border:1px solid rgba(100,140,200,0.1); border-radius:3px; margin-bottom:6px; cursor:pointer; transition:all 0.15s;';
+          item.innerHTML = '<span style="color:#c8d6e5; font-family:Share Tech Mono,monospace; font-size:0.85em;">' + v.filename + '</span>' +
+            '<span style="color:#5a6a7a; font-size:0.75em;">' + formatBytes(v.size) + '</span>';
+          item.onmouseenter = () => { item.style.borderColor = 'rgba(74,158,255,0.4)'; item.style.background = 'rgba(74,158,255,0.05)'; };
+          item.onmouseleave = () => { item.style.borderColor = 'rgba(100,140,200,0.1)'; item.style.background = 'transparent'; };
+          item.onclick = () => {
+            const url = v.url;
+            document.getElementById('videoUrl').value = url;
+            document.getElementById('urlInput').value = url;
+            loadVideo(url);
+            closeMediaPicker();
+          };
+          list.appendChild(item);
+        });
+      } catch (e) {
+        list.innerHTML = '<div style="color:#e74c3c; text-align:center; padding:20px;">Failed to load media library</div>';
+      }
+    }
+
+    function closeMediaPicker() {
+      document.getElementById('mediaModal').style.display = 'none';
+    }
+
     // ═══════════════════════════════════════════════════
     //  STATE
     // ═══════════════════════════════════════════════════
