@@ -1078,17 +1078,18 @@ function showCelestialWeather() {
       ? `☀ ${fmtHrs(hoursToNight)} to night  ·  🌑 ${fmtHrs(hoursToDay)} to dawn`
       : `🌑 ${fmtHrs(hoursToDay)} to dawn  ·  ☀ ${fmtHrs(hoursToNight)} to dusk`;
 
-    document.getElementById('feelsLike').textContent = transitionInfo;
+    document.getElementById('feelsLike').textContent =
+      `Subsurface: ${Math.round(e.subsurface_temp_c)}°C  ·  Regolith: ${e.regolith_depth_m}m`;
 
-    document.getElementById('windValue').textContent = `${e.solar_wind_kms} km/s`;
-    document.getElementById('windDir').textContent = 'Solar Wind';
+    document.getElementById('windValue').textContent = fmtHrs(hoursToDay);
+    document.getElementById('windDir').textContent = fmtHrs(hoursToNight);
     document.getElementById('humidity').textContent = `${e.radiation_msv_day} mSv/d`;
-    document.getElementById('pressure').textContent = '~0 (vacuum)';
+    document.getElementById('pressure').textContent = `${e.solar_wind_kms} km/s`;
     document.getElementById('visibility').textContent = `${e.illumination_pct}% illum`;
     document.getElementById('cloudCover').textContent = `${e.static_charge_v}V`;
 
     // Relabel grid
-    setGridLabels(['Solar Wind', 'Source', 'Radiation', 'Pressure', 'Illumination', 'Static Chg']);
+    setGridLabels(['☀ To Dawn', '🌑 To Night', 'Radiation', 'Solar Wind', 'Illumination', 'Static Chg']);
 
     // Forecast strip: show nearby features
     showFeatureStrip(features, feat);
