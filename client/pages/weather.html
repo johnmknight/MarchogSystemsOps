@@ -279,6 +279,7 @@ let CFG = {
   lat: 27.5222, lon: -82.5276,
   name: 'ELLENTON, FL', state: 'FL',
   units: 'fahrenheit', refreshInterval: 300000,
+  globeRotate: false,
 };
 const params = new URLSearchParams(window.location.search);
 if (params.get('lat')) CFG.lat = parseFloat(params.get('lat'));
@@ -286,6 +287,7 @@ if (params.get('lon')) CFG.lon = parseFloat(params.get('lon'));
 if (params.get('name')) CFG.name = decodeURIComponent(params.get('name')).toUpperCase();
 if (params.get('state')) CFG.state = params.get('state').toUpperCase();
 if (params.get('units')) CFG.units = params.get('units');
+if (params.get('rotate') === '1') CFG.globeRotate = true;
 
 const WMO_CODES = {
   0:{d:'Clear Sky',i:'☀️'},1:{d:'Mainly Clear',i:'🌤️'},2:{d:'Partly Cloudy',i:'⛅'},
@@ -387,7 +389,7 @@ function drawCelestialMap() {
   const accent = `rgba(${accentR},${accentG},${accentB}`;
 
   // Grid lines
-  ctx.strokeStyle = `${accent},0.08)`; ctx.lineWidth = 0.5;
+  ctx.strokeStyle = `${accent},0.12)`; ctx.lineWidth = 0.5;
   for (let lat = -80; lat <= 80; lat += 20) {
     const [x1,y1] = projectPoint(-180, lat);
     const [x2,y2] = projectPoint(180, lat);
@@ -402,7 +404,7 @@ function drawCelestialMap() {
   // Draw region boundaries
   if (currentBody === 'luna' && typeof LUNA_MARE_BOUNDARIES !== 'undefined') {
     // Mare boundaries — bright like Earth continent outlines
-    ctx.strokeStyle = 'rgba(128,144,160,0.6)'; ctx.lineWidth = 1.2;
+    ctx.strokeStyle = 'rgba(128,144,160,0.9)'; ctx.lineWidth = 1.2;
     LUNA_MARE_BOUNDARIES.forEach(mare => {
       mare.polys.forEach(ring => {
         if (ring.length < 3) return;
@@ -411,7 +413,7 @@ function drawCelestialMap() {
         ctx.moveTo(pts[0][0], pts[0][1]);
         for (let i=1; i<pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
         ctx.closePath();
-        ctx.fillStyle = 'rgba(40,60,80,0.12)';
+        ctx.fillStyle = 'rgba(40,60,80,0.18)';
         ctx.fill(); ctx.stroke();
       });
     });
@@ -429,9 +431,9 @@ function drawCelestialMap() {
         ctx.moveTo(pts[0][0], pts[0][1]);
         for (let i=1; i<pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
         ctx.closePath();
-        ctx.fillStyle = `rgba(${accentR},${accentG},${accentB},0.04)`;
-        ctx.strokeStyle = `${accent},0.5)`;
-        ctx.lineWidth = 0.8;
+        ctx.fillStyle = `rgba(${accentR},${accentG},${accentB},0.06)`;
+        ctx.strokeStyle = `${accent},0.75)`;
+        ctx.lineWidth = 1.2;
         ctx.fill(); ctx.stroke();
       });
     });
@@ -449,15 +451,15 @@ function drawCelestialMap() {
     const [x, y] = projectPoint(flon, f.lat);
     const isSel = (i === selIdx);
     const r = isSel ? 6 : 3;
-    const a = isSel ? 0.8 : 0.25;
+    const a = isSel ? 1.0 : 0.38;
     ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI*2);
     ctx.fillStyle = `${accent},${a})`;
     ctx.fill();
     if (isSel) {
       ctx.beginPath(); ctx.arc(x, y, 12 + Math.sin(pulseT) * 4, 0, Math.PI*2);
-      ctx.strokeStyle = `${accent},0.4)`; ctx.lineWidth = 1; ctx.stroke();
+      ctx.strokeStyle = `${accent},0.6)`; ctx.lineWidth = 1; ctx.stroke();
       ctx.font = '600 9px Orbitron, sans-serif';
-      ctx.fillStyle = `${accent},0.9)`;
+      ctx.fillStyle = `${accent},1.0)`;
       ctx.fillText(f.name.toUpperCase(), x + 14, y + 3);
     }
   });
@@ -467,10 +469,10 @@ function drawCelestialMap() {
   viewLandmarks.forEach(f => {
     const [x, y] = projectPoint(normLon(f.lon), f.lat);
     ctx.beginPath(); ctx.arc(x, y, 2, 0, Math.PI*2);
-    ctx.fillStyle = `${accent},0.35)`;
+    ctx.fillStyle = `${accent},0.53)`;
     ctx.fill();
-    ctx.font = '500 7px "Share Tech Mono", monospace';
-    ctx.fillStyle = `${accent},0.25)`;
+    ctx.font = '500 11px "Share Tech Mono", monospace';
+    ctx.fillStyle = `${accent},0.76)`;
     ctx.fillText(f.name, x + 5, y + 2);
   });
 
@@ -483,11 +485,11 @@ function drawCelestialMap() {
     const craterDegRadius = (f.diameter / 2) / kmPerDeg;
     const craterPx = Math.max(craterDegRadius * pixPerDeg, 2);
     ctx.beginPath(); ctx.arc(x, y, craterPx, 0, Math.PI*2);
-    ctx.strokeStyle = `${accent},0.15)`;
+    ctx.strokeStyle = `${accent},0.23)`;
     ctx.lineWidth = 0.8; ctx.stroke();
     if (craterPx > 12) {
-      ctx.font = '500 7px "Share Tech Mono", monospace';
-      ctx.fillStyle = `${accent},0.2)`;
+      ctx.font = '500 11px "Share Tech Mono", monospace';
+      ctx.fillStyle = `${accent},0.6)`;
       ctx.fillText(f.name, x + craterPx + 3, y + 2);
     }
   });
@@ -781,7 +783,10 @@ function initGlobe() {
 
   function animateGlobe() {
     requestAnimationFrame(animateGlobe);
-    if (globe.globeGroup) {} // globe frozen on selected region
+    // Optional slow rotation — controlled by ?rotate=1 URL param
+    if (globe.globeGroup && CFG.globeRotate) {
+      globe.globeGroup.rotation.y += 0.002;
+    }
     if (globe.locDot) {
       const s = 1 + Math.sin(Date.now() * 0.003) * 0.3;
       globe.locDot.scale.set(s, s, s);
@@ -848,14 +853,10 @@ function rebuildPolarGlobe(lat, lon) {
     new THREE.MeshBasicMaterial({ color: c.inner })
   ));
 
-  // Wireframe sphere — denser for detail
-  g.add(new THREE.Mesh(
-    new THREE.SphereGeometry(1, 64, 48),
-    new THREE.MeshBasicMaterial({ color: c.wire, wireframe: true, transparent: true, opacity: 0.06 })
-  ));
+  // Grid lines instead of wireframe to avoid diagonal artifacts (polar globe uses its own denser grid below)
 
   // Latitude/longitude grid rings every 5° near poles
-  const gridMat = new THREE.LineBasicMaterial({ color: c.wire, transparent: true, opacity: 0.1 });
+  const gridMat = new THREE.LineBasicMaterial({ color: c.wire, transparent: true, opacity: 0.15 });
   for (let glat = -85; glat <= 85; glat += 5) {
     const pts = [];
     for (let glon = -180; glon <= 180; glon += 5) {
@@ -872,7 +873,7 @@ function rebuildPolarGlobe(lat, lon) {
   }
 
   // Body-specific outlines
-  const lineMat = new THREE.LineBasicMaterial({ color: c.line, transparent: true, opacity: 0.5 });
+  const lineMat = new THREE.LineBasicMaterial({ color: c.line, transparent: true, opacity: 0.75 });
 
   if (isLuna && typeof LUNA_MARE_BOUNDARIES !== 'undefined') {
     LUNA_MARE_BOUNDARIES.forEach(mare => {
@@ -1197,30 +1198,45 @@ function rebuildGlobe() {
   const solidMat = new THREE.MeshBasicMaterial({ color: c.inner });
   g.add(new THREE.Mesh(solidGeo, solidMat));
 
-  // Wireframe sphere
-  const sphereGeo = new THREE.SphereGeometry(1, 36, 24);
-  const sphereMat = new THREE.MeshBasicMaterial({
-    color: c.wire, wireframe: true, transparent: true, opacity: 0.08
-  });
-  g.add(new THREE.Mesh(sphereGeo, sphereMat));
+  // Grid sphere — lat/lon lines instead of wireframe to avoid diagonal artifacts
+  const gridOpacity = 0.12;
+  const gridMat = new THREE.LineBasicMaterial({ color: c.wire, transparent: true, opacity: gridOpacity });
+  // Latitude rings every 15°
+  for (let lat = -75; lat <= 75; lat += 15) {
+    const pts = [];
+    for (let lon = -180; lon <= 180; lon += 5) {
+      pts.push(latLonToVec3(lat, lon, 1.001));
+    }
+    g.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), gridMat));
+  }
+  // Longitude lines every 30°
+  for (let lon = -180; lon < 180; lon += 30) {
+    const pts = [];
+    for (let lat = -90; lat <= 90; lat += 3) {
+      pts.push(latLonToVec3(lat, lon, 1.001));
+    }
+    g.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), gridMat));
+  }
 
-  // Equator ring
-  const ringGeo = new THREE.RingGeometry(1.002, 1.004, 64);
-  const ringMat = new THREE.MeshBasicMaterial({
-    color: c.wire, transparent: true, opacity: 0.25, side: THREE.DoubleSide
-  });
-  g.add(new THREE.Mesh(ringGeo, ringMat));
+  // Equator ring — drawn as a line loop instead of mesh to avoid diagonal triangulation
+  const eqPts = [];
+  for (let i = 0; i <= 128; i++) {
+    const theta = (i / 128) * Math.PI * 2;
+    eqPts.push(new THREE.Vector3(Math.cos(theta) * 1.003, 0, Math.sin(theta) * 1.003));
+  }
+  const eqMat = new THREE.LineBasicMaterial({ color: c.wire, transparent: true, opacity: 0.38 });
+  g.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(eqPts), eqMat));
 
   // Outer glow
   const glowGeo = new THREE.SphereGeometry(1.06, 32, 20);
   const glowMat = new THREE.MeshBasicMaterial({
-    color: c.glow, transparent: true, opacity: 0.05, side: THREE.BackSide
+    color: c.glow, transparent: true, opacity: 0.08, side: THREE.BackSide
   });
   g.add(new THREE.Mesh(glowGeo, glowMat));
 
   // ── OUTLINES ── body-specific
   const lineMat = new THREE.LineBasicMaterial({
-    color: c.line, transparent: true, opacity: 0.5
+    color: c.line, transparent: true, opacity: 0.75
   });
 
   if (currentBody === 'earth') {
@@ -1234,7 +1250,7 @@ function rebuildGlobe() {
   } else if (currentBody === 'luna') {
     // Mare boundaries
     if (typeof LUNA_MARE_BOUNDARIES !== 'undefined') {
-      const mareMat = new THREE.LineBasicMaterial({ color: 0x8090a0, transparent: true, opacity: 0.6 });
+      const mareMat = new THREE.LineBasicMaterial({ color: 0x8090a0, transparent: true, opacity: 0.9 });
       LUNA_MARE_BOUNDARIES.forEach(mare => {
         mare.polys.forEach(ring => {
           if (ring.length < 3) return;
@@ -1247,7 +1263,7 @@ function rebuildGlobe() {
     if (typeof LUNA_REGIONS !== 'undefined') {
       LUNA_REGIONS.forEach(region => {
         const rMat = new THREE.LineBasicMaterial({
-          color: new THREE.Color(region.color), transparent: true, opacity: region.opacity * 0.5
+          color: new THREE.Color(region.color), transparent: true, opacity: region.opacity * 0.75
         });
         region.polys.forEach(ring => {
           if (ring.length < 3) return;
@@ -1260,7 +1276,7 @@ function rebuildGlobe() {
   } else if (currentBody === 'mars') {
     // Mars USGS geologic unit boundaries (SIM 3292)
     if (typeof MARS_GEOLOGY !== 'undefined') {
-      const rMat = new THREE.LineBasicMaterial({ color: 0xff6030, transparent: true, opacity: 0.35 });
+      const rMat = new THREE.LineBasicMaterial({ color: 0xff6030, transparent: true, opacity: 0.53 });
       MARS_GEOLOGY.forEach(unit => {
         unit.polys.forEach(ring => {
           if (ring.length < 3) return;
