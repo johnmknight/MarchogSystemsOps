@@ -16,6 +16,20 @@ fills the console. The exponential backoff caps at 30s but the
 initial burst is noisy.
 **Fix:** Add a flag to suppress repeated log messages after first warning.
 
+### 3. Weather modal save does not persist params
+**Severity:** Medium (user-facing)
+When configuring a screen to display the weather page via the config panel's
+params override modal, clicking Save does not correctly persist the selected
+location/body/feature parameters. The modal closes but the screen either
+reverts to defaults or loses the weather configuration on next load.
+**Repro:** Assign weather.html to a screen → open params override → select
+body/feature/location → click Save → reload config panel → params are missing
+or reset.
+**Fix:** Debug the `saveScreenParams()` flow for the `weather.html` branch.
+Verify that `paramsOverride` object is correctly built and that the POST to
+`/api/zones/{zoneId}/screens` actually stores the override. Check if the
+navigate POST also sends params correctly.
+
 ---
 
 ## Known Limitations
