@@ -16,19 +16,16 @@ fills the console. The exponential backoff caps at 30s but the
 initial burst is noisy.
 **Fix:** Add a flag to suppress repeated log messages after first warning.
 
-### 3. Weather modal save does not persist params
+### 3. ~~Weather modal save does not persist params~~ FIXED
 **Severity:** Medium (user-facing)
-When configuring a screen to display the weather page via the config panel's
-params override modal, clicking Save does not correctly persist the selected
-location/body/feature parameters. The modal closes but the screen either
-reverts to defaults or loses the weather configuration on next load.
-**Repro:** Assign weather.html to a screen → open params override → select
-body/feature/location → click Save → reload config panel → params are missing
-or reset.
-**Fix:** Debug the `saveScreenParams()` flow for the `weather.html` branch.
-Verify that `paramsOverride` object is correctly built and that the POST to
-`/api/zones/{zoneId}/screens` actually stores the override. Check if the
-navigate POST also sends params correctly.
+**Root cause:** `get_zone()` from `rooms.py` is a sync function but was called
+with `await` in two places in `main.py` (lines 336 and 787). Python raises
+`TypeError: object dict can't be used in 'await' expression`, causing the
+POST `/api/zones/{zone_id}/screens` handler to return a 500 error.
+The save *appeared* to fail because the assignment POST crashed after the DB
+write but before the response, so the config panel saw a network error.
+**Fix:** Removed `await` from both `get_zone()` call sites in `main.py`.
+The third call site (line 302, GET `/api/zones/{zone_id}`) was already correct.
 
 ---
 

@@ -333,7 +333,7 @@ async def api_assign_screen_to_zone(zone_id: str, data: ZoneScreenAssign):
         raise HTTPException(400, "No active scene")
     await assign_screen_to_zone(active["id"], data.screen_id, zone_id, data.page_id, data.label, data.params_override, data.device_type, data.device_type_secondary)
     # Update screen_meta for MQTT targeting
-    zone = await get_zone(zone_id)
+    zone = get_zone(zone_id)
     room_id = zone.get("room_id") if zone else None
     app_state["screen_meta"][data.screen_id] = {
         "device_type": data.device_type,
@@ -784,7 +784,7 @@ async def ws_screen(websocket: WebSocket, screen_id: str):
         # Look up room_id from zone
         room_id = None
         if zone_id:
-            zone = await get_zone(zone_id)
+            zone = get_zone(zone_id)
             if zone:
                 room_id = zone.get("room_id")
         app_state["screen_meta"][screen_id] = {
