@@ -1091,6 +1091,12 @@ function showCelestialWeather() {
   if (globe.locDot) {
     globe.locDot.position.copy(latLonToVec3(feat.lat, normLon(feat.lon), 1.02));
   }
+  // Rotate globe to face selected location
+  if (globe.globeGroup) {
+    const lonRad = -normLon(feat.lon) * Math.PI / 180 - Math.PI / 2;
+    const latRad = feat.lat * Math.PI / 180;
+    globe.globeGroup.rotation.set(latRad, lonRad, 0);
+  }
 
   // Polar view: switch to zoomed 3D globe for high-latitude locations
   if (Math.abs(feat.lat) > POLAR_THRESHOLD) {
@@ -1262,6 +1268,22 @@ function rebuildGlobe() {
       locDot.position.copy(latLonToVec3(CFG.lat, CFG.lon, 1.02));
     }
   };
+
+  // Orient globe to face selected location
+  if (currentBody === 'earth') {
+    const lonRad = -CFG.lon * Math.PI / 180 - Math.PI / 2;
+    const latRad = CFG.lat * Math.PI / 180;
+    g.rotation.set(latRad, lonRad, 0);
+  } else {
+    const features = getCelestialFeatures();
+    const regions = features.filter(f => f.category === 'region');
+    if (regions.length > 0) {
+      const f = regions[selectedFeatureIdx % regions.length];
+      const lonRad = -normLon(f.lon) * Math.PI / 180 - Math.PI / 2;
+      const latRad = f.lat * Math.PI / 180;
+      g.rotation.set(latRad, lonRad, 0);
+    }
+  }
 
   // Update renderer background
   renderer.setClearColor(c.inner, 1);
