@@ -306,14 +306,17 @@ function getViewBounds() {
     const regions = features.filter(f => f.category === 'region');
     if (regions.length > 0) {
       const f = regions[selectedFeatureIdx % regions.length];
+      // Normalize lon to -180..180
+      let flon = f.lon; if (flon > 180) flon -= 360;
       // Use diameter to determine zoom (Moon: 1°≈30.3km, Mars: 1°≈59.2km)
       const kmPerDeg = currentBody === 'luna' ? 30.3 : 59.2;
       const radiusDeg = (f.diameter / 2) / kmPerDeg;
-      const span = Math.max(radiusDeg * 1.4, 8);
+      // Target span similar to US state view (~8-12°), scale up for large features
+      const span = Math.max(radiusDeg * 3, 8);
       const cosLat = Math.cos(f.lat * Math.PI / 180);
       const lonSpan = span / Math.max(cosLat, 0.2);
       return {
-        lonMin: f.lon - lonSpan, lonMax: f.lon + lonSpan,
+        lonMin: flon - lonSpan, lonMax: flon + lonSpan,
         latMin: Math.max(-90, f.lat - span), latMax: Math.min(90, f.lat + span)
       };
     }
@@ -428,7 +431,7 @@ function drawCelestialMap() {
   const selIdx = selectedFeatureIdx % Math.max(selectedRegions.length, 1);
 
   regions.forEach((f, i) => {
-    const [x, y] = projectPoint(f.lon, f.lat);
+    const [x, y] = projectPoint(normLon(f.lon), f.lat);
     const isSel = (i === selIdx);
     const r = isSel ? 6 : 3;
     const a = isSel ? 0.8 : 0.25;
@@ -445,20 +448,37 @@ function drawCelestialMap() {
     }
   });
 
-  // Landmarks as tiny dots
+  // Landmarks as small dots with labels for visible ones
   landmarks.forEach(f => {
-    const [x, y] = projectPoint(f.lon, f.lat);
-    ctx.beginPath(); ctx.arc(x, y, 1.2, 0, Math.PI*2);
-    ctx.fillStyle = `${accent},0.12)`;
+    const [x, y] = projectPoint(normLon(f.lon), f.lat);
+    if (x < -20 || x > MW+20 || y < -20 || y > MH+20) return;
+    ctx.beginPath(); ctx.arc(x, y, 2, 0, Math.PI*2);
+    ctx.fillStyle = `${accent},0.35)`;
     ctx.fill();
+    // Show name for landmarks in view
+    ctx.font = '500 7px "Share Tech Mono", monospace';
+    ctx.fillStyle = `${accent},0.25)`;
+    ctx.fillText(f.name, x + 5, y + 2);
   });
 
-  // Major craters as rings
+  // Major craters as rings with proportional size
   craters.forEach(f => {
-    const [x, y] = projectPoint(f.lon, f.lat);
-    ctx.beginPath(); ctx.arc(x, y, 2, 0, Math.PI*2);
-    ctx.strokeStyle = `${accent},0.08)`;
-    ctx.lineWidth = 0.5; ctx.stroke();
+    const [x, y] = projectPoint(normLon(f.lon), f.lat);
+    if (x < -50 || x > MW+50 || y < -50 || y > MH+50) return;
+    // Scale crater ring by diameter relative to view
+    const kmPerDeg = currentBody === 'luna' ? 30.3 : 59.2;
+    const craterDegRadius = (f.diameter / 2) / kmPerDeg;
+    const b = viewBounds;
+    const pixPerDeg = MW / (b.lonMax - b.lonMin);
+    const craterPx = Math.max(craterDegRadius * pixPerDeg, 2);
+    ctx.beginPath(); ctx.arc(x, y, craterPx, 0, Math.PI*2);
+    ctx.strokeStyle = `${accent},0.15)`;
+    ctx.lineWidth = 0.8; ctx.stroke();
+    if (craterPx > 8) {
+      ctx.font = '500 7px "Share Tech Mono", monospace';
+      ctx.fillStyle = `${accent},0.2)`;
+      ctx.fillText(f.name, x + craterPx + 3, y + 2);
+    }
   });
 
   // Scan line
@@ -803,6 +823,9 @@ function switchBody(body) {
 // ── Celestial body feature selection ──
 let selectedFeatureIdx = 0;
 
+// Normalize longitude to -180..180 (Moon data uses 0..360)
+function normLon(lon) { return lon > 180 ? lon - 360 : lon; }
+
 function getCelestialFeatures() {
   if (currentBody === 'luna') return typeof LUNA_FEATURES !== 'undefined' ? LUNA_FEATURES : [];
   if (currentBody === 'mars') return typeof MARS_FEATURES !== 'undefined' ? MARS_FEATURES : [];
@@ -827,8 +850,9 @@ function showCelestialWeather() {
   const bodyLabel = currentBody === 'luna' ? 'LUNA' : 'MARS';
 
   document.getElementById('locationName').textContent = feat.name.toUpperCase();
+  const flon = normLon(feat.lon);
   document.getElementById('locationCoords').textContent =
-    `${Math.abs(feat.lat).toFixed(2)}° ${feat.lat>=0?'N':'S'} / ${Math.abs(feat.lon).toFixed(2)}° ${feat.lon>=0?'E':'W'}  ·  ${feat.type}`;
+    `${Math.abs(feat.lat).toFixed(2)}° ${feat.lat>=0?'N':'S'} / ${Math.abs(flon).toFixed(2)}° ${flon>=0?'E':'W'}  ·  ${feat.type}`;
 
   if (currentBody === 'luna') {
     // Luna weather display
@@ -877,7 +901,7 @@ function showCelestialWeather() {
 
   // Update globe location dot to selected feature
   if (globe.locDot) {
-    globe.locDot.position.copy(latLonToVec3(feat.lat, feat.lon, 1.02));
+    globe.locDot.position.copy(latLonToVec3(feat.lat, normLon(feat.lon), 1.02));
   }
 }
 
@@ -1031,7 +1055,7 @@ function rebuildGlobe() {
     const regions = features.filter(f => f.category === 'region');
     if (regions.length > 0) {
       const f = regions[selectedFeatureIdx % regions.length];
-      locDot.position.copy(latLonToVec3(f.lat, f.lon, 1.02));
+      locDot.position.copy(latLonToVec3(f.lat, normLon(f.lon), 1.02));
     }
   }
 
