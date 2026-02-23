@@ -140,6 +140,15 @@ Timed sequences and chained automations. Incorporates scene scheduling.
       *Source: Product Review strategic observation.*
 
 ### Technical Backlog
+- [ ] **Geo data regionalization** — Re-download Natural Earth 10m GeoJSON datasets
+      (states/provinces + lakes) and break them into logical geographic regions for
+      on-demand loading. Current monolithic files: states_data.js (42KB), lakes_data.js
+      (73KB), land_data.js (21KB). Proposed regions: Northeast, Southeast, Midwest,
+      Southwest, West, Great Lakes, Pacific. Each region file loads only when that
+      state is active, reducing initial payload. Script should fetch from Natural Earth
+      GitHub (martynafford/natural-earth-geojson 10m/physical/ne_10m_lakes.json +
+      nvkelso/natural-earth-vector admin_1 states), filter by region bounding boxes,
+      simplify coordinates, and output compact JS per region.
 - [ ] MQTT WebSocket bridge for direct browser-to-broker (Option B in architecture)
 - [ ] MQTT Last Will and Testament for automatic offline detection by broker
 - [ ] Multi-broker bridging for multi-building installations

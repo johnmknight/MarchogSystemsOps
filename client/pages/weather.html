@@ -391,10 +391,9 @@ function drawMap() {
 
   // ── Lakes (major bodies of water) ──
   if (typeof LAKES_DATA !== 'undefined') {
+    const b = viewBounds;
     LAKES_DATA.forEach(lake => {
       lake.p.forEach(ring => {
-        // Check if any point falls within current view bounds
-        const b = viewBounds;
         let inView = false;
         for (const [lon, lat] of ring) {
           if (lon >= b.lonMin && lon <= b.lonMax && lat >= b.latMin && lat <= b.latMax) {
@@ -406,22 +405,40 @@ function drawMap() {
         const pts = ring.map(([lon, lat]) => projectPoint(lon, lat));
         if (pts.length < 3) return;
 
-        // Fill — dark water
-        ctx.beginPath();
-        ctx.moveTo(pts[0][0], pts[0][1]);
-        for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
-        ctx.closePath();
-        ctx.fillStyle = 'rgba(0, 12, 30, 0.6)';
+        function tracePath() {
+          ctx.beginPath();
+          ctx.moveTo(pts[0][0], pts[0][1]);
+          for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+          ctx.closePath();
+        }
+
+        // Dark water fill
+        tracePath();
+        ctx.fillStyle = 'rgba(0, 8, 24, 0.7)';
         ctx.fill();
 
-        // Border — subtle cyan wireframe
-        ctx.beginPath();
-        ctx.moveTo(pts[0][0], pts[0][1]);
-        for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
-        ctx.closePath();
-        ctx.strokeStyle = 'rgba(0, 229, 255, 0.12)';
-        ctx.lineWidth = 0.8;
+        // Glow border (matches active state)
+        ctx.shadowColor = 'rgba(0,229,255,0.7)';
+        ctx.shadowBlur = 12;
+        tracePath();
+        ctx.strokeStyle = 'rgba(0,229,255,0.5)';
+        ctx.lineWidth = 1.6;
         ctx.stroke();
+        ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0;
+
+        // Crisp inner line
+        tracePath();
+        ctx.strokeStyle = 'rgba(0,229,255,0.7)';
+        ctx.lineWidth = 1.1;
+        ctx.stroke();
+
+        // Vertex nodes
+        ring.forEach(([lon, lat]) => {
+          const [x, y] = projectPoint(lon, lat);
+          ctx.beginPath(); ctx.arc(x, y, 1.8, 0, Math.PI * 2);
+          ctx.fillStyle = 'rgba(0,229,255,0.5)';
+          ctx.fill();
+        });
       });
     });
   }
