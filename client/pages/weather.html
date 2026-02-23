@@ -291,6 +291,8 @@ if (params.get('name')) CFG.name = decodeURIComponent(params.get('name')).toUppe
 if (params.get('state')) CFG.state = params.get('state').toUpperCase();
 if (params.get('units')) CFG.units = params.get('units');
 if (params.get('rotate') === '1') CFG.globeRotate = true;
+if (params.get('body')) CFG.body = params.get('body').toLowerCase();
+if (params.get('feature')) CFG.feature = decodeURIComponent(params.get('feature'));
 
 const WMO_CODES = {
   0:{d:'Clear Sky',i:'☀️'},1:{d:'Mainly Clear',i:'🌤️'},2:{d:'Partly Cloudy',i:'⛅'},
@@ -1451,11 +1453,33 @@ window.addEventListener('message', (event) => {
     if (msg.name) CFG.name = msg.name.toUpperCase();
     if (msg.state) CFG.state = msg.state.toUpperCase();
     if (msg.units) CFG.units = msg.units;
+    if (msg.rotate === '1' || msg.rotate === true) CFG.globeRotate = true;
+
+    // Body/feature switching via config
+    if (msg.body && ['earth','luna','mars'].includes(msg.body.toLowerCase())) {
+      const b = msg.body.toLowerCase();
+      if (msg.feature) CFG.feature = msg.feature;
+      switchBody(b);
+      if (CFG.feature) applyFeatureParam();
+      return;
+    }
+
     viewBounds = getViewBounds();
     resizeCanvas(); fetchWeather();
     if (globe.updateLocDot) globe.updateLocDot();
   }
 });
+
+// ── Feature param helper ──
+function applyFeatureParam() {
+  if (!CFG.feature) return;
+  const features = getCelestialFeatures();
+  const idx = features.findIndex(f => f.name.toLowerCase() === CFG.feature.toLowerCase());
+  if (idx >= 0) {
+    selectedFeatureIdx = idx;
+    showCelestialWeather();
+  }
+}
 
 // ── INIT ──
 window.addEventListener('resize', resizeCanvas);
@@ -1463,7 +1487,17 @@ resizeCanvas();
 requestAnimationFrame(drawMap);
 initGlobe();
 updateClock(); setInterval(updateClock, 1000);
-fetchWeather(); setInterval(fetchWeather, CFG.refreshInterval);
+
+// Apply body/feature from URL params, or default to Earth weather
+if (CFG.body && CFG.body !== 'earth') {
+  switchBody(CFG.body);
+  applyFeatureParam();
+} else {
+  fetchWeather();
+}
+setInterval(() => {
+  if (currentBody === 'earth') fetchWeather();
+}, CFG.refreshInterval);
 
 document.addEventListener('keydown', (e) => {
   if (['ArrowLeft','ArrowRight'].includes(e.key))
