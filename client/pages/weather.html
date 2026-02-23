@@ -138,6 +138,12 @@
     .hud-clock-date { font-size: 0.65em; color: var(--cyan-bright); }
 
     .hud-location { position: absolute; top: 30px; left: 14px; }
+    .hud-body-label {
+      font-family: 'Orbitron', sans-serif;
+      font-size: clamp(0.7em,1.5vw,1.1em); font-weight: 600;
+      color: var(--cyan-bright); letter-spacing: 0.2em;
+      margin-bottom: 2px;
+    }
     .hud-location-name {
       font-family: 'Orbitron', sans-serif;
       font-size: clamp(1.4em,3vw,2.4em); font-weight: 800;
@@ -241,6 +247,7 @@
       <div class="hud-clock-date" id="clockDate">----.--.--</div>
     </div>
     <div class="hud-location">
+      <div class="hud-body-label" id="bodyLabel">EARTH</div>
       <div class="hud-location-name" id="locationName">LOADING...</div>
       <div class="hud-location-coords" id="locationCoords">---.---- N / ---.---- W</div>
     </div>
@@ -1038,6 +1045,7 @@ function showCelestialWeather() {
   const e = feat.env;
   const bodyLabel = currentBody === 'luna' ? 'LUNA' : 'MARS';
 
+  document.getElementById('bodyLabel').textContent = bodyLabel;
   document.getElementById('locationName').textContent = feat.name.toUpperCase();
   const flon = normLon(feat.lon);
   document.getElementById('locationCoords').textContent =
@@ -1363,6 +1371,7 @@ function updateUI(data) {
   const c = data.current;
   const us = CFG.units === 'celsius' ? '°C' : '°F';
   const ws = CFG.units === 'celsius' ? 'km/h' : 'mph';
+  document.getElementById('bodyLabel').textContent = 'EARTH';
   document.getElementById('locationName').textContent = CFG.name;
   document.getElementById('locationCoords').textContent =
     `${Math.abs(CFG.lat).toFixed(4)}° ${CFG.lat>=0?'N':'S'} / ${Math.abs(CFG.lon).toFixed(4)}° ${CFG.lon>=0?'E':'W'}`;
