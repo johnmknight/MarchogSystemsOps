@@ -300,8 +300,23 @@ let MW, MH;
 
 // Compute view bounds: primarily the ACTIVE state, with small padding
 function getViewBounds() {
-  // Non-Earth bodies: show full globe projection
+  // Non-Earth bodies: zoom to selected feature region
   if (currentBody !== 'earth') {
+    const features = getCelestialFeatures();
+    const regions = features.filter(f => f.category === 'region');
+    if (regions.length > 0) {
+      const f = regions[selectedFeatureIdx % regions.length];
+      // Use diameter to determine zoom (Moon: 1°≈30.3km, Mars: 1°≈59.2km)
+      const kmPerDeg = currentBody === 'luna' ? 30.3 : 59.2;
+      const radiusDeg = (f.diameter / 2) / kmPerDeg;
+      const span = Math.max(radiusDeg * 1.4, 8);
+      const cosLat = Math.cos(f.lat * Math.PI / 180);
+      const lonSpan = span / Math.max(cosLat, 0.2);
+      return {
+        lonMin: f.lon - lonSpan, lonMax: f.lon + lonSpan,
+        latMin: Math.max(-90, f.lat - span), latMax: Math.min(90, f.lat + span)
+      };
+    }
     return { lonMin: -180, lonMax: 180, latMin: -90, latMax: 90 };
   }
   const active = STATE_MAP[CFG.state];
@@ -895,6 +910,7 @@ function showFeatureStrip(features, current) {
     el.onclick = () => {
       selectedFeatureIdx = features.indexOf(f);
       showCelestialWeather();
+      viewBounds = getViewBounds();
     };
     strip.appendChild(el);
   });
