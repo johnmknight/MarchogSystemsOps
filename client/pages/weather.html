@@ -8,6 +8,13 @@
   <script src="states_data.js"></script>
   <script src="land_data.js"></script>
   <script src="lakes_data.js"></script>
+  <!-- Moon data -->
+  <script src="data/moon/moon_data.js"></script>
+  <script src="data/moon/mare_boundaries.js"></script>
+  <script src="data/moon/moon_regions.js"></script>
+  <!-- Mars data -->
+  <script src="data/mars/mars_data.js"></script>
+  <script src="data/mars/mars_regions.js"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&family=Share+Tech+Mono&display=swap');
 
@@ -166,6 +173,29 @@
     }
     .loading { color: var(--text-secondary); font-size: 0.8em; animation: pulse 1.5s ease-in-out infinite; }
     @keyframes pulse { 0%,100% { opacity: 0.4; } 50% { opacity: 1; } }
+
+    /* ── Body Selector (Earth / Luna / Mars) ── */
+    #bodySelector {
+      position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+      z-index: 100; display: flex; gap: 2px;
+      background: rgba(4,16,32,0.7); border: 1px solid var(--border-glow);
+      border-radius: 4px; padding: 2px; pointer-events: auto;
+      opacity: 0; transition: opacity 0.3s;
+    }
+    body:hover #bodySelector { opacity: 1; }
+    .body-btn {
+      font-family: 'Orbitron', sans-serif; font-size: 0.45em; font-weight: 600;
+      letter-spacing: 0.12em; padding: 5px 14px;
+      background: transparent; border: 1px solid transparent;
+      color: var(--text-secondary); cursor: pointer; border-radius: 3px;
+      transition: all 0.2s;
+    }
+    .body-btn:hover { color: var(--cyan); border-color: rgba(0,229,255,0.2); }
+    .body-btn.active {
+      color: var(--cyan-bright); background: rgba(0,229,255,0.1);
+      border-color: rgba(0,229,255,0.4);
+      text-shadow: 0 0 8px rgba(0,229,255,0.3);
+    }
   </style>
 </head>
 <body>
@@ -190,7 +220,7 @@
       <div class="wp-row"><span class="wp-label">Visibility</span><span class="wp-val" id="visibility">---</span></div>
       <div class="wp-row"><span class="wp-label">Clouds</span><span class="wp-val" id="cloudCover">---</span></div>
     </div>
-    <div class="wp-forecast-label">7-DAY FORECAST</div>
+    <div class="wp-forecast-label" id="forecastLabel">7-DAY FORECAST</div>
     <div class="wp-forecast-strip" id="forecastStrip">
       <div class="loading" style="padding:4px 10px;">Loading...</div>
     </div>
@@ -209,6 +239,11 @@
     </div>
   </div>
   <button id="settingsToggle" onclick="toggleSettings()">&#9881;</button>
+  <div id="bodySelector">
+    <button class="body-btn active" data-body="earth" onclick="switchBody('earth')">EARTH</button>
+    <button class="body-btn" data-body="luna" onclick="switchBody('luna')">LUNA</button>
+    <button class="body-btn" data-body="mars" onclick="switchBody('mars')">MARS</button>
+  </div>
   <div id="settingsPanel">
     <div class="settings-title">WEATHER SETTINGS</div>
     <div class="setting-group"><label>Location Name</label><input id="setLocationName" type="text"></div>
@@ -221,7 +256,10 @@
 <script>
 // ═══════════════════════════════════════════════════════════════
 //  MARCHOG WEATHER — State Zoom + Globe + Tactical HUD v3
+//  Multi-body: Earth / Luna / Mars
 // ═══════════════════════════════════════════════════════════════
+
+let currentBody = 'earth';  // 'earth' | 'luna' | 'mars'
 
 // STATES_DATA loaded from states_data.js: [{a:'FL',c:[cx,cy],n:['AL','GA'],p:[[[lon,lat],...]]}]
 // LAND_DATA loaded from land_data.js: [[[lon,lat],...],...]
@@ -262,6 +300,10 @@ let MW, MH;
 
 // Compute view bounds: primarily the ACTIVE state, with small padding
 function getViewBounds() {
+  // Non-Earth bodies: show full globe projection
+  if (currentBody !== 'earth') {
+    return { lonMin: -180, lonMax: 180, latMin: -90, latMax: 90 };
+  }
   const active = STATE_MAP[CFG.state];
   if (!active) return { lonMin:-130, lonMax:-63, latMin:22, latMax:52 };
 
@@ -307,6 +349,112 @@ function beaconXY() { return projectPoint(CFG.lon, CFG.lat); }
 
 let animT = 0, pulseT = 0;
 
+// ── Celestial body flat map (replaces state map for Moon/Mars) ──
+function drawCelestialMap() {
+  const features = getCelestialFeatures();
+  const regions = features.filter(f => f.category === 'region');
+  const landmarks = features.filter(f => f.category === 'landmark');
+  const craters = features.filter(f => f.category === 'crater');
+  const isMars = currentBody === 'mars';
+  const accentR = isMars ? 255 : 128;
+  const accentG = isMars ? 96 : 144;
+  const accentB = isMars ? 48 : 160;
+  const accent = `rgba(${accentR},${accentG},${accentB}`;
+
+  // Grid lines
+  ctx.strokeStyle = `${accent},0.03)`; ctx.lineWidth = 0.5;
+  for (let lat = -80; lat <= 80; lat += 20) {
+    const [x1,y1] = projectPoint(-180, lat);
+    const [x2,y2] = projectPoint(180, lat);
+    ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+  }
+  for (let lon = -160; lon <= 160; lon += 40) {
+    const [x1,y1] = projectPoint(lon, -90);
+    const [x2,y2] = projectPoint(lon, 90);
+    ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+  }
+
+  // Draw region boundaries
+  if (currentBody === 'luna' && typeof LUNA_MARE_BOUNDARIES !== 'undefined') {
+    // Mare boundaries as primary outlines
+    ctx.strokeStyle = 'rgba(128,144,160,0.25)'; ctx.lineWidth = 1;
+    LUNA_MARE_BOUNDARIES.forEach(mare => {
+      mare.polys.forEach(ring => {
+        if (ring.length < 3) return;
+        const pts = ring.map(([lon,lat]) => projectPoint(lon, lat));
+        ctx.beginPath();
+        ctx.moveTo(pts[0][0], pts[0][1]);
+        for (let i=1; i<pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+        ctx.closePath();
+        ctx.fillStyle = 'rgba(40,60,80,0.08)';
+        ctx.fill(); ctx.stroke();
+      });
+    });
+  }
+  if (currentBody === 'mars' && typeof MARS_REGIONS !== 'undefined') {
+    MARS_REGIONS.forEach(r => {
+      r.polys.forEach(ring => {
+        if (ring.length < 3) return;
+        const pts = ring.map(([lon,lat]) => projectPoint(lon, lat));
+        ctx.beginPath();
+        ctx.moveTo(pts[0][0], pts[0][1]);
+        for (let i=1; i<pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+        ctx.closePath();
+        ctx.fillStyle = `rgba(${accentR},${accentG},${accentB},0.04)`;
+        ctx.strokeStyle = `${accent},0.15)`;
+        ctx.lineWidth = 0.8;
+        ctx.fill(); ctx.stroke();
+      });
+    });
+  }
+
+  // Draw features as beacons
+  const selectedRegions = regions;
+  const selIdx = selectedFeatureIdx % Math.max(selectedRegions.length, 1);
+
+  regions.forEach((f, i) => {
+    const [x, y] = projectPoint(f.lon, f.lat);
+    const isSel = (i === selIdx);
+    const r = isSel ? 6 : 3;
+    const a = isSel ? 0.8 : 0.25;
+    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI*2);
+    ctx.fillStyle = `${accent},${a})`;
+    ctx.fill();
+    if (isSel) {
+      ctx.beginPath(); ctx.arc(x, y, 12 + Math.sin(pulseT) * 4, 0, Math.PI*2);
+      ctx.strokeStyle = `${accent},0.4)`; ctx.lineWidth = 1; ctx.stroke();
+      // Label
+      ctx.font = '600 9px Orbitron, sans-serif';
+      ctx.fillStyle = `${accent},0.9)`;
+      ctx.fillText(f.name.toUpperCase(), x + 14, y + 3);
+    }
+  });
+
+  // Landmarks as tiny dots
+  landmarks.forEach(f => {
+    const [x, y] = projectPoint(f.lon, f.lat);
+    ctx.beginPath(); ctx.arc(x, y, 1.2, 0, Math.PI*2);
+    ctx.fillStyle = `${accent},0.12)`;
+    ctx.fill();
+  });
+
+  // Major craters as rings
+  craters.forEach(f => {
+    const [x, y] = projectPoint(f.lon, f.lat);
+    ctx.beginPath(); ctx.arc(x, y, 2, 0, Math.PI*2);
+    ctx.strokeStyle = `${accent},0.08)`;
+    ctx.lineWidth = 0.5; ctx.stroke();
+  });
+
+  // Scan line
+  const scanY = (animT * 30) % MH;
+  const sg = ctx.createLinearGradient(0, scanY-25, 0, scanY+25);
+  sg.addColorStop(0, `${accent},0)`);
+  sg.addColorStop(0.5, `${accent},0.025)`);
+  sg.addColorStop(1, `${accent},0)`);
+  ctx.fillStyle = sg; ctx.fillRect(0, scanY-25, MW, 50);
+}
+
 function drawMap() {
   ctx.clearRect(0, 0, MW, MH);
 
@@ -317,6 +465,12 @@ function drawMap() {
 
   animT += 0.016; pulseT += 0.04;
   ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+
+  if (currentBody !== 'earth') {
+    drawCelestialMap();
+    requestAnimationFrame(drawMap);
+    return;
+  }
 
   const activeAbbr = CFG.state;
   const active = STATE_MAP[activeAbbr];
@@ -572,70 +726,19 @@ function initGlobe() {
   renderer.setPixelRatio(window.devicePixelRatio);
   renderer.setClearColor(0x010408, 1);
 
-  // Group for all rotating elements
-  const globeGroup = new THREE.Group();
-  scene.add(globeGroup);
+  globe = { scene, camera, renderer, globeGroup: null, locDot: null, updateLocDot: function(){} };
 
-  // Opaque inner sphere — occludes far-side geometry
-  const solidGeo = new THREE.SphereGeometry(0.995, 36, 24);
-  const solidMat = new THREE.MeshBasicMaterial({ color: 0x010408 });
-  globeGroup.add(new THREE.Mesh(solidGeo, solidMat));
-
-  // Wireframe sphere (subtle)
-  const sphereGeo = new THREE.SphereGeometry(1, 36, 24);
-  const sphereMat = new THREE.MeshBasicMaterial({
-    color: 0x00e5ff, wireframe: true, transparent: true, opacity: 0.08
-  });
-  globeGroup.add(new THREE.Mesh(sphereGeo, sphereMat));
-
-  // Equator ring
-  const ringGeo = new THREE.RingGeometry(1.002, 1.004, 64);
-  const ringMat = new THREE.MeshBasicMaterial({
-    color: 0x00e5ff, transparent: true, opacity: 0.25, side: THREE.DoubleSide
-  });
-  globeGroup.add(new THREE.Mesh(ringGeo, ringMat));
-
-  // Outer glow
-  const glowGeo = new THREE.SphereGeometry(1.06, 32, 20);
-  const glowMat = new THREE.MeshBasicMaterial({
-    color: 0x00e5ff, transparent: true, opacity: 0.05, side: THREE.BackSide
-  });
-  globeGroup.add(new THREE.Mesh(glowGeo, glowMat));
-
-  // ── CONTINENT OUTLINES from LAND_DATA ──
-  const lineMat = new THREE.LineBasicMaterial({
-    color: 0x00e5ff, transparent: true, opacity: 0.5
-  });
-  LAND_DATA.forEach(ring => {
-    if (ring.length < 3) return;
-    const points = [];
-    ring.forEach(([lon, lat]) => {
-      points.push(latLonToVec3(lat, lon, 1.005));
-    });
-    const geom = new THREE.BufferGeometry().setFromPoints(points);
-    const line = new THREE.Line(geom, lineMat);
-    globeGroup.add(line);
-  });
-
-  // Location dot
-  const locDotGeo = new THREE.SphereGeometry(0.03, 8, 8);
-  const locDotMat = new THREE.MeshBasicMaterial({ color: 0x00e5ff });
-  const locDot = new THREE.Mesh(locDotGeo, locDotMat);
-  globeGroup.add(locDot);
-
-  function updateLocDot() {
-    locDot.position.copy(latLonToVec3(CFG.lat, CFG.lon, 1.02));
-  }
-  updateLocDot();
-
-  globe = { scene, camera, renderer, globeGroup, locDot, updateLocDot };
+  // Build body-specific content
+  rebuildGlobe();
 
   function animateGlobe() {
     requestAnimationFrame(animateGlobe);
-    globeGroup.rotation.y += 0.002;
-    const s = 1 + Math.sin(Date.now() * 0.003) * 0.3;
-    locDot.scale.set(s, s, s);
-    locDot.material.opacity = 0.6 + Math.sin(Date.now() * 0.004) * 0.3;
+    if (globe.globeGroup) globe.globeGroup.rotation.y += 0.002;
+    if (globe.locDot) {
+      const s = 1 + Math.sin(Date.now() * 0.003) * 0.3;
+      globe.locDot.scale.set(s, s, s);
+      globe.locDot.material.opacity = 0.6 + Math.sin(Date.now() * 0.004) * 0.3;
+    }
     renderer.render(scene, camera);
   }
   animateGlobe();
@@ -648,6 +751,285 @@ function resizeGlobe() {
   globe.camera.aspect = gw / gh;
   globe.camera.updateProjectionMatrix();
   globe.renderer.setSize(gw, gh);
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  MULTI-BODY SUPPORT — switchBody() rebuilds globe + weather panel
+// ═══════════════════════════════════════════════════════════════
+
+function switchBody(body) {
+  if (body === currentBody) return;
+  currentBody = body;
+
+  // Update selector UI
+  document.querySelectorAll('.body-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.body === body);
+  });
+
+  // Update HUD system label
+  const labels = { earth: 'Marchog Planetary Surface Monitor', luna: 'Marchog Lunar Surface Monitor', mars: 'Marchog Martian Surface Monitor' };
+  document.querySelector('.hud-system').textContent = labels[body] || labels.earth;
+
+  // Rebuild globe with new body data
+  rebuildGlobe();
+
+  // Update weather panel
+  if (body === 'earth') {
+    fetchWeather();
+  } else {
+    showCelestialWeather();
+  }
+
+  // Redraw map (Earth shows state map, others show feature map)
+  viewBounds = getViewBounds();
+  resizeCanvas();
+}
+
+// ── Celestial body feature selection ──
+let selectedFeatureIdx = 0;
+
+function getCelestialFeatures() {
+  if (currentBody === 'luna') return typeof LUNA_FEATURES !== 'undefined' ? LUNA_FEATURES : [];
+  if (currentBody === 'mars') return typeof MARS_FEATURES !== 'undefined' ? MARS_FEATURES : [];
+  return [];
+}
+
+function getCelestialRef() {
+  if (currentBody === 'luna') return typeof LUNA_REFERENCE !== 'undefined' ? LUNA_REFERENCE : null;
+  if (currentBody === 'mars') return typeof MARS_REFERENCE !== 'undefined' ? MARS_REFERENCE : null;
+  return null;
+}
+
+function showCelestialWeather() {
+  const features = getCelestialFeatures();
+  const ref = getCelestialRef();
+  if (!features.length) return;
+
+  // Pick a region feature by default
+  const regions = features.filter(f => f.category === 'region');
+  const feat = regions.length > 0 ? regions[selectedFeatureIdx % regions.length] : features[0];
+  const e = feat.env;
+  const bodyLabel = currentBody === 'luna' ? 'LUNA' : 'MARS';
+
+  document.getElementById('locationName').textContent = feat.name.toUpperCase();
+  document.getElementById('locationCoords').textContent =
+    `${Math.abs(feat.lat).toFixed(2)}° ${feat.lat>=0?'N':'S'} / ${Math.abs(feat.lon).toFixed(2)}° ${feat.lon>=0?'E':'W'}  ·  ${feat.type}`;
+
+  if (currentBody === 'luna') {
+    // Luna weather display
+    document.getElementById('tempValue').innerHTML =
+      `${Math.round(e.surface_temp_c)}<span class="unit">°C</span>`;
+    document.getElementById('conditionIcon').textContent = e.is_dayside ? '☀️' : '🌑';
+    document.getElementById('conditionText').textContent =
+      e.is_dayside ? 'LUNAR DAY' : 'LUNAR NIGHT';
+    document.getElementById('feelsLike').textContent =
+      `Subsurface: ${Math.round(e.subsurface_temp_c)}°C  ·  Regolith: ${e.regolith_depth_m}m`;
+
+    document.getElementById('windValue').textContent = `${e.solar_wind_kms} km/s`;
+    document.getElementById('windDir').textContent = 'Solar Wind';
+    document.getElementById('humidity').textContent = `${e.radiation_msv_day} mSv/d`;
+    document.getElementById('pressure').textContent = '~0 (vacuum)';
+    document.getElementById('visibility').textContent = `${e.illumination_pct}% illum`;
+    document.getElementById('cloudCover').textContent = `${e.static_charge_v}V`;
+
+    // Relabel grid
+    setGridLabels(['Solar Wind', 'Source', 'Radiation', 'Pressure', 'Illumination', 'Static Chg']);
+
+    // Forecast strip: show nearby features
+    showFeatureStrip(features, feat);
+
+  } else if (currentBody === 'mars') {
+    // Mars weather display
+    document.getElementById('tempValue').innerHTML =
+      `${Math.round(e.surface_temp_c)}<span class="unit">°C</span>`;
+    document.getElementById('conditionIcon').textContent =
+      e.dust_opacity_tau > 0.5 ? '🌫️' : (e.is_dayside ? '☀️' : '🌑');
+    document.getElementById('conditionText').textContent =
+      e.dust_opacity_tau > 0.7 ? 'DUST HAZE' : (e.is_dayside ? 'MARTIAN DAY' : 'MARTIAN NIGHT');
+    document.getElementById('feelsLike').textContent =
+      `Ls ${e.solar_longitude_ls}° · ${e.season_nh} · Sky: ${e.sky_color}${e.co2_frost ? ' · CO₂ FROST' : ''}`;
+
+    document.getElementById('windValue').textContent = `${e.wind_speed_ms} m/s`;
+    document.getElementById('windDir').textContent = e.wind_direction;
+    document.getElementById('humidity').textContent = `${e.precip_water_um} μm`;
+    document.getElementById('pressure').textContent = `${e.pressure_mbar} mbar`;
+    document.getElementById('visibility').textContent = `τ ${e.dust_opacity_tau}`;
+    document.getElementById('cloudCover').textContent = `${e.radiation_msv_day} mSv/d`;
+
+    setGridLabels(['Wind', 'Direction', 'Pr. Water', 'Pressure', 'Dust Tau', 'Radiation']);
+    showFeatureStrip(features, feat);
+  }
+
+  // Update globe location dot to selected feature
+  if (globe.locDot) {
+    globe.locDot.position.copy(latLonToVec3(feat.lat, feat.lon, 1.02));
+  }
+}
+
+function setGridLabels(labels) {
+  const els = document.querySelectorAll('.wp-label');
+  labels.forEach((l, i) => { if (els[i]) els[i].textContent = l; });
+}
+
+function showFeatureStrip(features, current) {
+  const strip = document.getElementById('forecastStrip');
+  const label = document.getElementById('forecastLabel');
+  label.textContent = currentBody === 'luna' ? 'LUNAR REGIONS' : 'MARTIAN REGIONS';
+  strip.innerHTML = '';
+  // Show nearest 7 features of same category or regions
+  const regions = features.filter(f => f.category === 'region');
+  const show = regions.slice(0, 7);
+  show.forEach(f => {
+    const e = f.env;
+    const temp = currentBody === 'luna' ? e.surface_temp_c : e.surface_temp_c;
+    const icon = currentBody === 'luna'
+      ? (e.is_dayside ? '☀️' : '🌑')
+      : (e.dust_opacity_tau > 0.5 ? '🌫️' : (e.is_dayside ? '☀️' : '🌑'));
+    const el = document.createElement('div');
+    el.className = 'wp-forecast-day';
+    el.style.cursor = 'pointer';
+    el.innerHTML = `<div class="wp-forecast-day-name">${f.name.slice(0,6).toUpperCase()}</div>
+      <div class="wp-forecast-day-icon">${icon}</div>
+      <div class="wp-forecast-day-temp">${Math.round(temp)}°</div>
+      <div class="wp-forecast-day-lo">${f.type}</div>`;
+    el.onclick = () => {
+      selectedFeatureIdx = features.indexOf(f);
+      showCelestialWeather();
+    };
+    strip.appendChild(el);
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  GLOBE REBUILD — switch between Earth / Luna / Mars outlines
+// ═══════════════════════════════════════════════════════════════
+
+function rebuildGlobe() {
+  if (!globe.scene) return;
+  const { scene, camera, renderer, globeGroup: oldGroup } = globe;
+
+  // Remove old group
+  if (oldGroup) scene.remove(oldGroup);
+
+  const g = new THREE.Group();
+  scene.add(g);
+
+  // Body color schemes
+  const colors = {
+    earth: { wire: 0x00e5ff, inner: 0x010408, glow: 0x00e5ff, line: 0x00e5ff },
+    luna:  { wire: 0x8090a0, inner: 0x080808, glow: 0x8090a0, line: 0x8090a0 },
+    mars:  { wire: 0xff6030, inner: 0x0a0404, glow: 0xff6030, line: 0xff6030 },
+  };
+  const c = colors[currentBody] || colors.earth;
+
+  // Opaque inner sphere — occludes far-side geometry
+  const solidGeo = new THREE.SphereGeometry(0.995, 36, 24);
+  const solidMat = new THREE.MeshBasicMaterial({ color: c.inner });
+  g.add(new THREE.Mesh(solidGeo, solidMat));
+
+  // Wireframe sphere
+  const sphereGeo = new THREE.SphereGeometry(1, 36, 24);
+  const sphereMat = new THREE.MeshBasicMaterial({
+    color: c.wire, wireframe: true, transparent: true, opacity: 0.08
+  });
+  g.add(new THREE.Mesh(sphereGeo, sphereMat));
+
+  // Equator ring
+  const ringGeo = new THREE.RingGeometry(1.002, 1.004, 64);
+  const ringMat = new THREE.MeshBasicMaterial({
+    color: c.wire, transparent: true, opacity: 0.25, side: THREE.DoubleSide
+  });
+  g.add(new THREE.Mesh(ringGeo, ringMat));
+
+  // Outer glow
+  const glowGeo = new THREE.SphereGeometry(1.06, 32, 20);
+  const glowMat = new THREE.MeshBasicMaterial({
+    color: c.glow, transparent: true, opacity: 0.05, side: THREE.BackSide
+  });
+  g.add(new THREE.Mesh(glowGeo, glowMat));
+
+  // ── OUTLINES ── body-specific
+  const lineMat = new THREE.LineBasicMaterial({
+    color: c.line, transparent: true, opacity: 0.5
+  });
+
+  if (currentBody === 'earth') {
+    // Continent outlines from LAND_DATA
+    LAND_DATA.forEach(ring => {
+      if (ring.length < 3) return;
+      const points = ring.map(([lon, lat]) => latLonToVec3(lat, lon, 1.005));
+      g.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), lineMat));
+    });
+
+  } else if (currentBody === 'luna') {
+    // Mare boundaries
+    if (typeof LUNA_MARE_BOUNDARIES !== 'undefined') {
+      const mareMat = new THREE.LineBasicMaterial({ color: 0x8090a0, transparent: true, opacity: 0.6 });
+      LUNA_MARE_BOUNDARIES.forEach(mare => {
+        mare.polys.forEach(ring => {
+          if (ring.length < 3) return;
+          const points = ring.map(([lon, lat]) => latLonToVec3(lat, lon, 1.005));
+          g.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), mareMat));
+        });
+      });
+    }
+    // Terrain region fills (subtle)
+    if (typeof LUNA_REGIONS !== 'undefined') {
+      LUNA_REGIONS.forEach(region => {
+        const rMat = new THREE.LineBasicMaterial({
+          color: new THREE.Color(region.color), transparent: true, opacity: region.opacity * 0.5
+        });
+        region.polys.forEach(ring => {
+          if (ring.length < 3) return;
+          const points = ring.map(([lon, lat]) => latLonToVec3(lat, lon, 1.003));
+          g.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), rMat));
+        });
+      });
+    }
+
+  } else if (currentBody === 'mars') {
+    // Mars region outlines
+    if (typeof MARS_REGIONS !== 'undefined') {
+      const rMat = new THREE.LineBasicMaterial({ color: 0xff6030, transparent: true, opacity: 0.4 });
+      MARS_REGIONS.forEach(region => {
+        region.polys.forEach(ring => {
+          if (ring.length < 3) return;
+          const points = ring.map(([lon, lat]) => latLonToVec3(lat, lon, 1.005));
+          g.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), rMat));
+        });
+      });
+    }
+  }
+
+  // Location dot
+  const locDotGeo = new THREE.SphereGeometry(0.03, 8, 8);
+  const locDotMat = new THREE.MeshBasicMaterial({ color: c.line });
+  const locDot = new THREE.Mesh(locDotGeo, locDotMat);
+  g.add(locDot);
+
+  // Position dot
+  if (currentBody === 'earth') {
+    locDot.position.copy(latLonToVec3(CFG.lat, CFG.lon, 1.02));
+  } else {
+    const features = getCelestialFeatures();
+    const regions = features.filter(f => f.category === 'region');
+    if (regions.length > 0) {
+      const f = regions[selectedFeatureIdx % regions.length];
+      locDot.position.copy(latLonToVec3(f.lat, f.lon, 1.02));
+    }
+  }
+
+  // Update globe refs
+  globe.globeGroup = g;
+  globe.locDot = locDot;
+  globe.updateLocDot = function() {
+    if (currentBody === 'earth') {
+      locDot.position.copy(latLonToVec3(CFG.lat, CFG.lon, 1.02));
+    }
+  };
+
+  // Update renderer background
+  renderer.setClearColor(c.inner, 1);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -693,9 +1075,12 @@ function updateUI(data) {
   document.getElementById('pressure').textContent = `${Math.round(c.surface_pressure)} hPa`;
   document.getElementById('visibility').textContent = c.visibility ? `${(c.visibility/1000).toFixed(1)} km` : '---';
   document.getElementById('cloudCover').textContent = `${c.cloud_cover}%`;
+  setGridLabels(['Wind', 'Direction', 'Humidity', 'Pressure', 'Visibility', 'Clouds']);
 
   if (data.daily) {
     const strip = document.getElementById('forecastStrip');
+    const label = document.getElementById('forecastLabel');
+    label.textContent = '7-DAY FORECAST';
     strip.innerHTML = '';
     const d = data.daily;
     for (let i = 0; i < d.time.length; i++) {
