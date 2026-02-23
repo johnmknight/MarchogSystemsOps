@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Marchog Systems — Weather</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="states_data.js"></script>
+  <script src="land_data.js"></script>
+  <script src="lakes_data.js"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&family=Share+Tech+Mono&display=swap');
 
@@ -12,9 +15,6 @@
       --cyan: #00e5ff;
       --cyan-bright: #40efff;
       --cyan-dim: rgba(0, 229, 255, 0.35);
-      --teal: #00bfa5;
-      --orange: #ff9100;
-      --red: #ff3d00;
       --white: #e8f0ff;
       --white-bright: #ffffff;
       --text-primary: #e8f0ff;
@@ -23,7 +23,6 @@
       --bg-panel: rgba(4, 16, 32, 0.82);
       --border-glow: rgba(0, 229, 255, 0.18);
     }
-
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body {
       width: 100%; height: 100%; overflow: hidden;
@@ -32,26 +31,15 @@
       color: var(--text-primary);
     }
 
-    /* ── Layout: left map, right globe ── */
-    #mapCanvas {
-      position: absolute; top: 0; left: 0;
-      width: 65%; height: 100%;
-      z-index: 1;
-    }
+    #mapCanvas { position: absolute; top: 0; left: 0; width: 65%; height: 100%; z-index: 1; }
     #globeContainer {
-      position: absolute; top: 0; right: 0;
-      width: 35%; height: 55%;
+      position: absolute; top: 0; right: 0; width: 35%; height: 55%;
       z-index: 1;
-      border-left: 1px solid rgba(0, 229, 255, 0.06);
-      border-bottom: 1px solid rgba(0, 229, 255, 0.06);
+      border-left: 1px solid rgba(0,229,255,0.06);
+      border-bottom: 1px solid rgba(0,229,255,0.06);
       background: radial-gradient(ellipse at center, #061020 0%, #010408 100%);
     }
-    #globeCanvas {
-      width: 100%; height: 100%;
-      display: block;
-    }
-
-    /* ── HUD Layer ── */
+    #globeCanvas { width: 100%; height: 100%; display: block; }
     #hud { position: absolute; inset: 0; z-index: 10; pointer-events: none; }
 
     .hud-system {
@@ -59,212 +47,114 @@
       font-family: 'Orbitron', sans-serif;
       font-size: 0.5em; font-weight: 500;
       letter-spacing: 0.2em; color: var(--cyan); opacity: 0.5;
-      text-transform: uppercase;
     }
     .hud-clock {
-      position: absolute; top: 10px; right: 14px;
-      text-align: right;
+      position: absolute; top: 10px; right: 14px; text-align: right;
     }
     .hud-clock-time {
       font-family: 'Orbitron', sans-serif;
-      font-size: clamp(1em, 2vw, 1.5em);
-      font-weight: 700; color: var(--white-bright);
-      letter-spacing: 0.06em;
-      text-shadow: 0 0 10px rgba(0, 229, 255, 0.25);
+      font-size: clamp(1em,2vw,1.5em); font-weight: 700;
+      color: var(--white-bright); letter-spacing: 0.06em;
+      text-shadow: 0 0 10px rgba(0,229,255,0.25);
     }
-    .hud-clock-date {
-      font-family: 'Share Tech Mono', monospace;
-      font-size: 0.65em; color: var(--cyan-bright);
-    }
+    .hud-clock-date { font-size: 0.65em; color: var(--cyan-bright); }
 
-    /* ── Location Name (top-left, above map) ── */
-    .hud-location {
-      position: absolute; top: 30px; left: 14px;
-    }
+    .hud-location { position: absolute; top: 30px; left: 14px; }
     .hud-location-name {
       font-family: 'Orbitron', sans-serif;
-      font-size: clamp(1.4em, 3vw, 2.4em);
-      font-weight: 800; letter-spacing: 0.04em;
+      font-size: clamp(1.4em,3vw,2.4em); font-weight: 800;
       color: var(--white-bright);
-      text-shadow: 0 0 20px rgba(0, 229, 255, 0.4), 0 0 40px rgba(0, 229, 255, 0.15);
-      line-height: 1.1;
+      text-shadow: 0 0 20px rgba(0,229,255,0.4), 0 0 40px rgba(0,229,255,0.15);
     }
     .hud-location-coords {
-      font-family: 'Share Tech Mono', monospace;
-      font-size: 0.72em; color: var(--cyan-bright);
-      letter-spacing: 0.06em; margin-top: 2px;
+      font-size: 0.72em; color: var(--cyan-bright); margin-top: 2px;
     }
 
-    /* ── Weather Callout (overlaid on state map near beacon) ── */
-    .hud-callout {
-      position: absolute;
-      pointer-events: auto;
-    }
+    .hud-callout { position: absolute; pointer-events: auto; }
     .callout-inner {
-      background: var(--bg-panel);
-      border: 1px solid var(--border-glow);
-      border-radius: 4px;
-      padding: 10px 14px;
-      backdrop-filter: blur(8px);
-      min-width: 160px;
+      background: var(--bg-panel); border: 1px solid var(--border-glow);
+      border-radius: 4px; padding: 10px 14px;
+      backdrop-filter: blur(8px); min-width: 160px;
     }
     .callout-inner::before {
-      content: '';
-      position: absolute; top: 0; left: 0; right: 0; height: 1px;
+      content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px;
       background: linear-gradient(90deg, transparent, var(--cyan), transparent);
       opacity: 0.5;
     }
     .callout-temp {
       font-family: 'Orbitron', sans-serif;
-      font-size: clamp(2em, 4vw, 3.2em);
-      font-weight: 900; color: var(--white-bright);
-      line-height: 1;
-      text-shadow: 0 0 14px rgba(0, 229, 255, 0.2);
+      font-size: clamp(2em,4vw,3.2em); font-weight: 900;
+      color: var(--white-bright); line-height: 1;
     }
-    .callout-temp .unit {
-      font-size: 0.35em; font-weight: 500;
-      color: var(--cyan-bright); vertical-align: super;
-    }
-    .callout-condition-row {
-      display: flex; align-items: center; gap: 6px; margin-top: 4px;
-    }
+    .callout-temp .unit { font-size: 0.35em; font-weight: 500; color: var(--cyan-bright); vertical-align: super; }
+    .callout-condition-row { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
     .callout-condition-icon { font-size: 1.3em; }
     .callout-condition-text {
       font-family: 'Orbitron', sans-serif;
-      font-size: 0.55em; font-weight: 600;
-      color: var(--white); letter-spacing: 0.08em;
+      font-size: 0.55em; font-weight: 600; color: var(--white); letter-spacing: 0.08em;
     }
-    .callout-feels {
-      font-size: 0.68em; color: var(--text-secondary);
-      margin-top: 3px;
-    }
-    .callout-divider {
-      height: 1px; margin: 7px 0;
-      background: linear-gradient(90deg, var(--cyan-dim), transparent);
-    }
-    .callout-row {
-      display: flex; justify-content: space-between;
-      align-items: baseline; margin-top: 3px;
-    }
-    .callout-label {
-      font-size: 0.62em; color: var(--text-secondary);
-    }
-    .callout-val {
-      font-family: 'Orbitron', sans-serif;
-      font-size: 0.72em; font-weight: 600;
-      color: var(--white-bright);
-    }
+    .callout-feels { font-size: 0.68em; color: var(--text-secondary); margin-top: 3px; }
+    .callout-divider { height: 1px; margin: 7px 0; background: linear-gradient(90deg, var(--cyan-dim), transparent); }
+    .callout-row { display: flex; justify-content: space-between; align-items: baseline; margin-top: 3px; }
+    .callout-label { font-size: 0.62em; color: var(--text-secondary); }
+    .callout-val { font-family: 'Orbitron', sans-serif; font-size: 0.72em; font-weight: 600; color: var(--white-bright); }
 
-    /* ── Globe Label ── */
     .globe-label {
-      position: absolute; right: 14px;
-      top: calc(55% + 4px);
+      position: absolute; right: 14px; top: calc(55% + 4px);
       font-family: 'Orbitron', sans-serif;
-      font-size: 0.42em; font-weight: 500;
-      letter-spacing: 0.15em; color: var(--cyan); opacity: 0.4;
-      text-transform: uppercase;
-      text-align: right;
-      width: 35%;
+      font-size: 0.42em; font-weight: 500; letter-spacing: 0.15em;
+      color: var(--cyan); opacity: 0.4; text-align: right; width: 35%;
     }
 
-    /* ── Forecast Strip (bottom, full width) ── */
-    .hud-forecast {
-      position: absolute; bottom: 10px;
-      left: 50%; transform: translateX(-50%);
-      pointer-events: auto;
-    }
+    .hud-forecast { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); pointer-events: auto; }
     .forecast-strip {
-      display: flex; gap: 3px;
-      background: var(--bg-panel);
-      border: 1px solid var(--border-glow);
-      border-radius: 4px;
-      padding: 6px 10px;
-      backdrop-filter: blur(8px);
+      display: flex; gap: 3px; background: var(--bg-panel);
+      border: 1px solid var(--border-glow); border-radius: 4px;
+      padding: 6px 10px; backdrop-filter: blur(8px);
     }
-    .forecast-day {
-      text-align: center; padding: 3px 8px; min-width: 52px;
-      border-right: 1px solid rgba(0, 229, 255, 0.06);
-    }
+    .forecast-day { text-align: center; padding: 3px 8px; min-width: 52px; border-right: 1px solid rgba(0,229,255,0.06); }
     .forecast-day:last-child { border-right: none; }
-    .forecast-day-name {
-      font-family: 'Orbitron', sans-serif;
-      font-size: 0.45em; font-weight: 600;
-      color: var(--cyan); letter-spacing: 0.1em;
-    }
+    .forecast-day-name { font-family: 'Orbitron', sans-serif; font-size: 0.45em; font-weight: 600; color: var(--cyan); letter-spacing: 0.1em; }
     .forecast-day-icon { font-size: 1.1em; margin: 1px 0; }
-    .forecast-day-temp {
-      font-family: 'Share Tech Mono', monospace;
-      font-size: 0.72em; color: var(--white-bright);
-    }
+    .forecast-day-temp { font-size: 0.72em; color: var(--white-bright); }
     .forecast-day-lo { font-size: 0.58em; color: var(--text-secondary); }
 
-    /* ── Settings ── */
     #settingsToggle {
       position: absolute; top: 10px; right: 120px; z-index: 100;
-      width: 28px; height: 28px;
-      background: rgba(4, 16, 32, 0.5);
+      width: 28px; height: 28px; background: rgba(4,16,32,0.5);
       border: 1px solid var(--border-glow); border-radius: 3px;
-      color: var(--text-secondary); font-size: 14px;
-      cursor: pointer; display: flex; align-items: center; justify-content: center;
-      transition: all 0.2s; opacity: 0; pointer-events: auto;
+      color: var(--text-secondary); font-size: 14px; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      opacity: 0; pointer-events: auto;
     }
     body:hover #settingsToggle { opacity: 1; }
-    #settingsToggle:hover { color: var(--cyan); border-color: var(--cyan); }
     #settingsPanel {
       position: absolute; top: 44px; right: 14px; z-index: 100;
       width: 260px; background: var(--bg-panel);
       border: 1px solid var(--border-glow); border-radius: 6px;
-      padding: 14px; display: none;
-      backdrop-filter: blur(12px); pointer-events: auto;
+      padding: 14px; display: none; backdrop-filter: blur(12px); pointer-events: auto;
     }
     #settingsPanel.open { display: block; }
-    .settings-title {
-      font-family: 'Orbitron', sans-serif;
-      font-size: 0.6em; font-weight: 600;
-      letter-spacing: 0.12em; color: var(--cyan);
-      margin-bottom: 10px; text-transform: uppercase;
-    }
+    .settings-title { font-family: 'Orbitron', sans-serif; font-size: 0.6em; font-weight: 600; letter-spacing: 0.12em; color: var(--cyan); margin-bottom: 10px; }
     .setting-group { margin-bottom: 10px; }
-    .setting-group label {
-      display: block; font-size: 0.65em;
-      color: var(--text-secondary); margin-bottom: 3px;
-    }
+    .setting-group label { display: block; font-size: 0.65em; color: var(--text-secondary); margin-bottom: 3px; }
     .setting-group input, .setting-group select {
-      width: 100%; background: rgba(4, 16, 32, 0.9);
-      border: 1px solid rgba(0, 229, 255, 0.15);
+      width: 100%; background: rgba(4,16,32,0.9); border: 1px solid rgba(0,229,255,0.15);
       color: var(--text-primary); font-family: 'Share Tech Mono', monospace;
       font-size: 0.75em; padding: 5px 8px; border-radius: 3px;
     }
-    .setting-group input:focus, .setting-group select:focus {
-      outline: none; border-color: var(--cyan);
-    }
     .btn-apply {
-      width: 100%; background: rgba(0, 229, 255, 0.1);
-      border: 1px solid rgba(0, 229, 255, 0.3);
+      width: 100%; background: rgba(0,229,255,0.1); border: 1px solid rgba(0,229,255,0.3);
       color: var(--cyan); font-family: 'Orbitron', sans-serif;
-      font-size: 0.55em; font-weight: 500;
-      letter-spacing: 0.1em; padding: 7px; border-radius: 3px;
-      cursor: pointer;
+      font-size: 0.55em; padding: 7px; border-radius: 3px; cursor: pointer;
     }
-    .btn-apply:hover { background: rgba(0, 229, 255, 0.2); }
-
-    .loading {
-      color: var(--text-secondary); font-size: 0.8em;
-      animation: pulse 1.5s ease-in-out infinite;
-    }
+    .loading { color: var(--text-secondary); font-size: 0.8em; animation: pulse 1.5s ease-in-out infinite; }
     @keyframes pulse { 0%,100% { opacity: 0.4; } 50% { opacity: 1; } }
   </style>
 </head>
 <body>
-  <!-- State Vector Map (left 65%) -->
   <canvas id="mapCanvas"></canvas>
-
-  <!-- 3JS Globe (right 35% upper) -->
-  <div id="globeContainer">
-    <canvas id="globeCanvas"></canvas>
-  </div>
-
-  <!-- HUD Overlays -->
+  <div id="globeContainer"><canvas id="globeCanvas"></canvas></div>
   <div id="hud">
     <div class="hud-system">Marchog Planetary Surface Monitor</div>
     <div class="hud-clock">
@@ -275,8 +165,6 @@
       <div class="hud-location-name" id="locationName">LOADING...</div>
       <div class="hud-location-coords" id="locationCoords">---.---- N / ---.---- W</div>
     </div>
-
-    <!-- Weather Callout (positioned by JS on map near beacon) -->
     <div class="hud-callout" id="callout">
       <div class="callout-inner">
         <div class="callout-temp" id="tempValue"><span class="loading">--</span></div>
@@ -286,85 +174,46 @@
         </div>
         <div class="callout-feels" id="feelsLike"></div>
         <div class="callout-divider"></div>
-        <div class="callout-row">
-          <span class="callout-label">Wind</span>
-          <span class="callout-val" id="windValue">---</span>
-        </div>
-        <div class="callout-row">
-          <span class="callout-label">Direction</span>
-          <span class="callout-val" id="windDir">---</span>
-        </div>
-        <div class="callout-row">
-          <span class="callout-label">Humidity</span>
-          <span class="callout-val" id="humidity">---</span>
-        </div>
-        <div class="callout-row">
-          <span class="callout-label">Pressure</span>
-          <span class="callout-val" id="pressure">---</span>
-        </div>
-        <div class="callout-row">
-          <span class="callout-label">Visibility</span>
-          <span class="callout-val" id="visibility">---</span>
-        </div>
-        <div class="callout-row">
-          <span class="callout-label">Clouds</span>
-          <span class="callout-val" id="cloudCover">---</span>
-        </div>
+        <div class="callout-row"><span class="callout-label">Wind</span><span class="callout-val" id="windValue">---</span></div>
+        <div class="callout-row"><span class="callout-label">Direction</span><span class="callout-val" id="windDir">---</span></div>
+        <div class="callout-row"><span class="callout-label">Humidity</span><span class="callout-val" id="humidity">---</span></div>
+        <div class="callout-row"><span class="callout-label">Pressure</span><span class="callout-val" id="pressure">---</span></div>
+        <div class="callout-row"><span class="callout-label">Visibility</span><span class="callout-val" id="visibility">---</span></div>
+        <div class="callout-row"><span class="callout-label">Clouds</span><span class="callout-val" id="cloudCover">---</span></div>
       </div>
     </div>
-
     <div class="globe-label">Global Position Reference</div>
-
-    <!-- Forecast (bottom center) -->
     <div class="hud-forecast">
-      <div class="forecast-strip" id="forecastStrip">
-        <div class="loading" style="padding:8px 20px;">Loading forecast...</div>
-      </div>
+      <div class="forecast-strip" id="forecastStrip"><div class="loading" style="padding:8px 20px;">Loading forecast...</div></div>
     </div>
   </div>
-
   <button id="settingsToggle" onclick="toggleSettings()">&#9881;</button>
   <div id="settingsPanel">
-    <div class="settings-title">Weather Settings</div>
-    <div class="setting-group">
-      <label>Location Name</label>
-      <input id="setLocationName" type="text" placeholder="e.g. Ellenton, FL">
-    </div>
-    <div class="setting-group">
-      <label>Latitude</label>
-      <input id="setLat" type="number" step="0.0001" placeholder="27.5222">
-    </div>
-    <div class="setting-group">
-      <label>Longitude</label>
-      <input id="setLon" type="number" step="0.0001" placeholder="-82.5276">
-    </div>
-    <div class="setting-group">
-      <label>State (abbr)</label>
-      <input id="setState" type="text" maxlength="2" placeholder="FL">
-    </div>
-    <div class="setting-group">
-      <label>Units</label>
-      <select id="setUnits">
-        <option value="fahrenheit">Fahrenheit</option>
-        <option value="celsius">Celsius</option>
-      </select>
-    </div>
+    <div class="settings-title">WEATHER SETTINGS</div>
+    <div class="setting-group"><label>Location Name</label><input id="setLocationName" type="text"></div>
+    <div class="setting-group"><label>Latitude</label><input id="setLat" type="number" step="0.0001"></div>
+    <div class="setting-group"><label>Longitude</label><input id="setLon" type="number" step="0.0001"></div>
+    <div class="setting-group"><label>State (abbr)</label><input id="setState" type="text" maxlength="2"></div>
+    <div class="setting-group"><label>Units</label><select id="setUnits"><option value="fahrenheit">Fahrenheit</option><option value="celsius">Celsius</option></select></div>
     <button class="btn-apply" onclick="applySettings()">APPLY</button>
   </div>
-
 <script>
 // ═══════════════════════════════════════════════════════════════
-//  MARCHOG WEATHER — State Zoom + Globe + Tactical HUD
+//  MARCHOG WEATHER — State Zoom + Globe + Tactical HUD v3
 // ═══════════════════════════════════════════════════════════════
+
+// STATES_DATA loaded from states_data.js: [{a:'FL',c:[cx,cy],n:['AL','GA'],p:[[[lon,lat],...]]}]
+// LAND_DATA loaded from land_data.js: [[[lon,lat],...],...]
+
+// Build lookup
+const STATE_MAP = {};
+STATES_DATA.forEach(s => STATE_MAP[s.a] = s);
 
 let CFG = {
   lat: 27.5222, lon: -82.5276,
-  name: 'ELLENTON, FL',
-  state: 'FL',
-  units: 'fahrenheit',
-  refreshInterval: 300000,
+  name: 'ELLENTON, FL', state: 'FL',
+  units: 'fahrenheit', refreshInterval: 300000,
 };
-
 const params = new URLSearchParams(window.location.search);
 if (params.get('lat')) CFG.lat = parseFloat(params.get('lat'));
 if (params.get('lon')) CFG.lon = parseFloat(params.get('lon'));
@@ -373,102 +222,38 @@ if (params.get('state')) CFG.state = params.get('state').toUpperCase();
 if (params.get('units')) CFG.units = params.get('units');
 
 const WMO_CODES = {
-  0:{desc:'Clear Sky',icon:'☀️'},1:{desc:'Mainly Clear',icon:'🌤️'},
-  2:{desc:'Partly Cloudy',icon:'⛅'},3:{desc:'Overcast',icon:'☁️'},
-  45:{desc:'Fog',icon:'🌫️'},48:{desc:'Rime Fog',icon:'🌫️'},
-  51:{desc:'Light Drizzle',icon:'🌧️'},53:{desc:'Mod. Drizzle',icon:'🌧️'},
-  55:{desc:'Dense Drizzle',icon:'🌧️'},61:{desc:'Slight Rain',icon:'🌧️'},
-  63:{desc:'Mod. Rain',icon:'🌧️'},65:{desc:'Heavy Rain',icon:'🌧️'},
-  71:{desc:'Slight Snow',icon:'🌨️'},73:{desc:'Mod. Snow',icon:'🌨️'},
-  75:{desc:'Heavy Snow',icon:'🌨️'},80:{desc:'Rain Showers',icon:'🌦️'},
-  81:{desc:'Mod. Showers',icon:'🌦️'},82:{desc:'Heavy Showers',icon:'⛈️'},
-  95:{desc:'Thunderstorm',icon:'⛈️'},96:{desc:'T-Storm+Hail',icon:'⛈️'},
-  99:{desc:'Heavy T-Storm',icon:'⛈️'},
+  0:{d:'Clear Sky',i:'☀️'},1:{d:'Mainly Clear',i:'🌤️'},2:{d:'Partly Cloudy',i:'⛅'},
+  3:{d:'Overcast',i:'☁️'},45:{d:'Fog',i:'🌫️'},48:{d:'Rime Fog',i:'🌫️'},
+  51:{d:'Light Drizzle',i:'🌧️'},53:{d:'Mod. Drizzle',i:'🌧️'},55:{d:'Dense Drizzle',i:'🌧️'},
+  61:{d:'Slight Rain',i:'🌧️'},63:{d:'Mod. Rain',i:'🌧️'},65:{d:'Heavy Rain',i:'🌧️'},
+  71:{d:'Slight Snow',i:'🌨️'},73:{d:'Mod. Snow',i:'🌨️'},75:{d:'Heavy Snow',i:'🌨️'},
+  80:{d:'Rain Showers',i:'🌦️'},81:{d:'Mod. Showers',i:'🌦️'},82:{d:'Heavy Showers',i:'⛈️'},
+  95:{d:'Thunderstorm',i:'⛈️'},96:{d:'T-Storm+Hail',i:'⛈️'},99:{d:'Heavy T-Storm',i:'⛈️'},
 };
 const DAYS = ['SUN','MON','TUE','WED','THU','FRI','SAT'];
 
 // ═══════════════════════════════════════════════════════════════
-//  STATE DATA — boundaries + neighbor lists
-// ═══════════════════════════════════════════════════════════════
-const STATES = [
-  {abbr:'WA',center:[-120.5,47.4],neighbors:['OR','ID'],paths:[[[-117,49],[-124.7,48.4],[-124.7,46.3],[-123.2,46.2],[-117,46],[-117,49]]]},
-  {abbr:'OR',center:[-120.5,44],neighbors:['WA','ID','NV','CA'],paths:[[[-124.6,46.3],[-124.6,42],[-117,42],[-117,46],[-123.2,46.2],[-124.6,46.3]]]},
-  {abbr:'CA',center:[-119.5,37],neighbors:['OR','NV','AZ'],paths:[[[-124.4,42],[-124.4,40],[-122.4,37.8],[-121.8,36.6],[-120.6,35],[-118.5,34],[-117.2,32.5],[-114.6,32.7],[-114.6,35],[-120,39],[-120,42],[-124.4,42]]]},
-  {abbr:'NV',center:[-116.8,39],neighbors:['OR','ID','UT','AZ','CA'],paths:[[[-120,42],[-114.6,35],[-114.6,37],[-114,37],[-114,42],[-120,42]]]},
-  {abbr:'ID',center:[-114.5,44.5],neighbors:['WA','OR','NV','UT','WY','MT'],paths:[[[-117,49],[-117,46],[-117,42],[-114,42],[-111.1,44.5],[-111.1,45],[-112.5,44.5],[-114.5,46],[-116.1,46],[-117,46.4],[-117,49]]]},
-  {abbr:'UT',center:[-111.5,39.3],neighbors:['ID','NV','AZ','CO','WY'],paths:[[[-114,42],[-114,37],[-109,37],[-109,41],[-111.1,41],[-111.1,42],[-114,42]]]},
-  {abbr:'AZ',center:[-111.5,34.2],neighbors:['NV','UT','CO','NM','CA'],paths:[[[-114.6,37],[-114.6,32.7],[-111.1,31.3],[-109,31.3],[-109,37],[-114.6,37]]]},
-  {abbr:'MT',center:[-109.5,47],neighbors:['ID','WY','ND','SD'],paths:[[[-116.1,49],[-104,49],[-104,45],[-111.1,45],[-111.1,44.5],[-112.5,44.5],[-114.5,46],[-116.1,46],[-116.1,49]]]},
-  {abbr:'WY',center:[-107.5,43],neighbors:['MT','ID','UT','CO','NE','SD'],paths:[[[-111.1,45],[-104,45],[-104,41],[-111.1,41],[-111.1,45]]]},
-  {abbr:'CO',center:[-105.5,39],neighbors:['WY','UT','AZ','NM','OK','KS','NE'],paths:[[[-109,41],[-102,41],[-102,37],[-109,37],[-109,41]]]},
-  {abbr:'NM',center:[-106,34.5],neighbors:['CO','AZ','TX','OK'],paths:[[[-109,37],[-103,37],[-103,32],[-106.6,32],[-106.6,31.8],[-108.2,31.8],[-109,31.3],[-109,37]]]},
-  {abbr:'ND',center:[-100.5,47.5],neighbors:['MT','SD','MN'],paths:[[[-104,49],[-97,49],[-97,46],[-104,46],[-104,49]]]},
-  {abbr:'SD',center:[-100,44.5],neighbors:['ND','MT','WY','NE','IA','MN'],paths:[[[-104,46],[-96.5,46],[-96.5,43],[-96.4,42.5],[-104,43],[-104,46]]]},
-  {abbr:'NE',center:[-100,41.5],neighbors:['SD','WY','CO','KS','MO','IA'],paths:[[[-104,43],[-96.4,42.5],[-95.3,40],[-102,40],[-104,41],[-104,43]]]},
-  {abbr:'KS',center:[-98.5,38.5],neighbors:['NE','CO','OK','MO'],paths:[[[-102,40],[-94.6,40],[-94.6,37],[-102,37],[-102,40]]]},
-  {abbr:'OK',center:[-97.5,35.5],neighbors:['KS','CO','NM','TX','AR','MO'],paths:[[[-103,37],[-94.4,37],[-94.4,36.5],[-94.8,33.8],[-100,34],[-100,36.5],[-103,36.5],[-103,37]]]},
-  {abbr:'TX',center:[-99,31],neighbors:['OK','NM','AR','LA'],paths:[[[-106.6,32],[-103,32],[-103,36.5],[-100,36.5],[-100,34],[-94.8,33.8],[-93.5,31],[-94,30],[-94,29.7],[-96.4,28.5],[-97.1,26],[-97.8,26.5],[-99.2,26.5],[-100.5,28.5],[-103,29],[-104.7,29.6],[-106.4,31.7],[-106.6,32]]]},
-  {abbr:'MN',center:[-94.5,46],neighbors:['ND','SD','IA','WI'],paths:[[[-97,49],[-89.5,48],[-89.7,47.3],[-92.3,46.7],[-92.5,45.6],[-92.7,45],[-92.8,44.5],[-91.2,43.5],[-96.5,43.5],[-96.5,46],[-97,46],[-97,49]]]},
-  {abbr:'IA',center:[-93.5,42],neighbors:['MN','SD','NE','MO','IL','WI'],paths:[[[-96.5,43.5],[-91.2,43.5],[-90.2,42.5],[-90.2,41.5],[-91,40.6],[-95.3,40.6],[-96.4,42.5],[-96.5,43.5]]]},
-  {abbr:'MO',center:[-92.5,38.5],neighbors:['IA','NE','KS','OK','AR','TN','KY','IL'],paths:[[[-95.3,40.6],[-91,40.6],[-91.4,39.8],[-90.3,38.2],[-89.1,36.5],[-90.2,36.5],[-90.3,36],[-94.6,36],[-94.6,37],[-94.6,40],[-95.3,40.6]]]},
-  {abbr:'AR',center:[-92.4,34.8],neighbors:['MO','OK','TX','LA','MS','TN'],paths:[[[-94.4,36.5],[-90,36],[-90,35.5],[-91,33],[-94.5,33],[-94.4,36.5]]]},
-  {abbr:'LA',center:[-92,30.8],neighbors:['AR','TX','MS'],paths:[[[-94.5,33],[-91,33],[-91,31],[-89.8,30.2],[-89,29.5],[-90.2,29],[-92,29.5],[-93.5,29.8],[-94,30],[-94.5,33]]]},
-  {abbr:'WI',center:[-89.5,44.5],neighbors:['MN','IA','IL','MI'],paths:[[[-92.8,46.8],[-87,45],[-87,43],[-87.8,42.5],[-90.6,42.5],[-91.2,43.5],[-92.8,44.5],[-92.3,46.7],[-92.8,46.8]]]},
-  {abbr:'IL',center:[-89.5,40],neighbors:['WI','IA','MO','KY','IN'],paths:[[[-90.6,42.5],[-87.5,42],[-87.5,39],[-88.1,37.5],[-89.1,36.5],[-90.3,38.2],[-91.4,39.8],[-91,40.6],[-90.2,41.5],[-90.2,42.5],[-90.6,42.5]]]},
-  {abbr:'MS',center:[-89.6,32.5],neighbors:['AR','LA','TN','AL'],paths:[[[-91,33],[-89,32.5],[-88.5,31],[-88.5,30.2],[-89,29.5],[-89.8,30.2],[-91,31],[-91,33]]]},
-  {abbr:'MI',center:[-84.7,44.3],neighbors:['WI','IN','OH'],paths:[[[-87,45],[-84.8,46],[-83.4,45.1],[-82.4,43],[-83.5,42],[-84.8,41.7],[-87,42.5],[-87,45]]]},
-  {abbr:'IN',center:[-86.3,39.7],neighbors:['MI','IL','KY','OH'],paths:[[[-87.5,42],[-84.8,41.7],[-84.8,39],[-88,37.8],[-87.5,39],[-87.5,42]]]},
-  {abbr:'OH',center:[-82.7,40.2],neighbors:['MI','IN','KY','WV','PA'],paths:[[[-84.8,41.7],[-80.5,42],[-80.5,40],[-81.8,39.1],[-84.3,38.5],[-84.8,39],[-84.8,41.7]]]},
-  {abbr:'KY',center:[-85.3,37.8],neighbors:['IN','IL','MO','TN','VA','WV','OH'],paths:[[[-89.1,36.5],[-82,36.5],[-81.9,37.3],[-82.6,38.1],[-84.3,38.5],[-84.8,39],[-88,37.8],[-88.1,37.5],[-89.1,36.5]]]},
-  {abbr:'TN',center:[-86,35.7],neighbors:['KY','MO','AR','MS','AL','GA','NC','VA'],paths:[[[-90,36],[-81.7,36.5],[-82,36.5],[-82,35],[-84.3,35],[-90,35],[-90,36]]]},
-  {abbr:'AL',center:[-86.8,32.8],neighbors:['TN','MS','FL','GA'],paths:[[[-88.5,35],[-85,35],[-85,32],[-85,31],[-87.5,30.2],[-88.5,30.2],[-88.5,31],[-88.5,35]]]},
-  {abbr:'GA',center:[-83.5,32.7],neighbors:['TN','AL','FL','SC','NC'],paths:[[[-85,35],[-81.2,35],[-81,32],[-81.1,31],[-82,30.5],[-84,30.5],[-85,31],[-85,32],[-85,35]]]},
-  {abbr:'FL',center:[-81.5,28.5],neighbors:['AL','GA'],paths:[[[-87.5,31],[-85,31],[-84,30.5],[-82,30.5],[-81.1,31],[-81,29],[-80.5,28],[-80.2,26],[-80.4,25.2],[-81.8,25],[-82.6,27.5],[-82.8,29.5],[-84.9,30],[-87.5,30.2],[-87.5,31]]]},
-  {abbr:'SC',center:[-80.9,33.8],neighbors:['NC','GA'],paths:[[[-83.1,35],[-81.2,35],[-81,34],[-79,33.2],[-78.5,33.8],[-80.8,32],[-83.1,35]]]},
-  {abbr:'NC',center:[-79.8,35.5],neighbors:['VA','TN','GA','SC'],paths:[[[-84.3,35],[-75.5,36.5],[-75.5,35],[-77,34],[-78.5,33.8],[-79,33.2],[-81,34],[-81.2,35],[-83.1,35],[-84.3,35]]]},
-  {abbr:'VA',center:[-79.3,37.5],neighbors:['KY','TN','NC','WV','MD','DC'],paths:[[[-83.7,36.5],[-75.5,37],[-75.5,38.5],[-77,38.5],[-77.2,38],[-79.5,39.5],[-80.5,40],[-81.8,39.1],[-82,37.3],[-81.9,37.3],[-82,36.5],[-83.7,36.5]]]},
-  {abbr:'WV',center:[-80.5,38.6],neighbors:['VA','KY','OH','PA','MD'],paths:[[[-82.6,38.1],[-81.8,39.1],[-80.5,40],[-79.5,39.5],[-77.8,39.5],[-78.4,39.2],[-79.5,38.5],[-80.5,37.5],[-82,36.5],[-82,37.3],[-82.6,38.1]]]},
-  {abbr:'MD',center:[-76.7,39],neighbors:['VA','WV','PA','DE'],paths:[[[-79.5,39.5],[-77.2,38],[-76,38],[-75.2,38.5],[-75.5,38.5],[-75.5,39.7],[-79.5,39.7],[-79.5,39.5]]]},
-  {abbr:'DE',center:[-75.5,39],neighbors:['MD','PA','NJ'],paths:[[[-75.8,39.7],[-75.1,39.5],[-75.5,38.5],[-75.8,39.7]]]},
-  {abbr:'NJ',center:[-74.5,40.1],neighbors:['DE','PA','NY'],paths:[[[-75.5,39.7],[-75.5,41.4],[-74,41],[-73.9,40.4],[-74.3,39.5],[-75.5,39.7]]]},
-  {abbr:'PA',center:[-77.5,41],neighbors:['OH','WV','MD','DE','NJ','NY'],paths:[[[-80.5,42],[-80.5,40],[-79.5,39.7],[-75.5,39.7],[-75.5,41.4],[-80,42],[-80.5,42]]]},
-  {abbr:'NY',center:[-75.5,42.5],neighbors:['PA','NJ','CT','MA','VT'],paths:[[[-79.8,42.5],[-73.8,42],[-73.7,41],[-74,41],[-75.5,41.4],[-80,42],[-79.8,42.5]]]},
-  {abbr:'CT',center:[-72.7,41.6],neighbors:['NY','MA','RI'],paths:[[[-73.7,42.1],[-71.8,42.1],[-71.8,41],[-73.7,41],[-73.7,42.1]]]},
-  {abbr:'RI',center:[-71.5,41.7],neighbors:['CT','MA'],paths:[[[-71.8,42.1],[-71.1,42.1],[-71.1,41.2],[-71.8,41.2],[-71.8,42.1]]]},
-  {abbr:'MA',center:[-71.8,42.3],neighbors:['NY','CT','RI','VT','NH'],paths:[[[-73.5,42.8],[-69.9,41.7],[-71.1,41.2],[-71.1,42.1],[-71.8,42.1],[-73.5,42.1],[-73.5,42.8]]]},
-  {abbr:'VT',center:[-72.6,44],neighbors:['NY','MA','NH'],paths:[[[-73.4,45],[-71.5,45],[-71.5,42.7],[-73.3,42.7],[-73.4,44],[-73.4,45]]]},
-  {abbr:'NH',center:[-71.5,43.7],neighbors:['VT','MA','ME'],paths:[[[-72.6,45.3],[-71,45.3],[-71,43],[-71.5,42.7],[-71.5,45],[-72.6,45.3]]]},
-  {abbr:'ME',center:[-69,45.2],neighbors:['NH'],paths:[[[-71,45.3],[-67,47.3],[-67,44.5],[-68,44],[-69.5,43.5],[-71,43],[-71,45.3]]]},
-];
-
-// ═══════════════════════════════════════════════════════════════
-//  MAP — Zoomed to active state
+//  MAP — Zoomed to ACTIVE STATE (fills ~95% of left panel)
 // ═══════════════════════════════════════════════════════════════
 const canvas = document.getElementById('mapCanvas');
 const ctx = canvas.getContext('2d');
-let MW, MH; // map canvas dimensions
+let MW, MH;
 
-// Compute bounding box for a state + neighbors with padding
+// Compute view bounds: primarily the ACTIVE state, with small padding
 function getViewBounds() {
-  const active = STATES.find(s => s.abbr === CFG.state);
-  if (!active) return { lonMin: -130, lonMax: -63, latMin: 22, latMax: 52 };
+  const active = STATE_MAP[CFG.state];
+  if (!active) return { lonMin:-130, lonMax:-63, latMin:22, latMax:52 };
 
-  // Collect all points from active + neighbors
-  const show = [active.abbr, ...active.neighbors];
-  let lonMin = 999, lonMax = -999, latMin = 999, latMax = -999;
-  STATES.forEach(s => {
-    if (!show.includes(s.abbr)) return;
-    s.paths.forEach(p => p.forEach(([lon, lat]) => {
-      lonMin = Math.min(lonMin, lon);
-      lonMax = Math.max(lonMax, lon);
-      latMin = Math.min(latMin, lat);
-      latMax = Math.max(latMax, lat);
-    }));
-  });
+  // Bounding box of ONLY the active state
+  let lonMin=999, lonMax=-999, latMin=999, latMax=-999;
+  active.p.forEach(ring => ring.forEach(([lon,lat]) => {
+    lonMin = Math.min(lonMin, lon); lonMax = Math.max(lonMax, lon);
+    latMin = Math.min(latMin, lat); latMax = Math.max(latMax, lat);
+  }));
 
-  // Padding (15% on each side)
-  const lonPad = (lonMax - lonMin) * 0.15;
-  const latPad = (latMax - latMin) * 0.15;
+  // Small padding (5%) so state isn't jammed to edges
+  const lonPad = (lonMax - lonMin) * 0.05;
+  const latPad = (latMax - latMin) * 0.05;
   return {
     lonMin: lonMin - lonPad, lonMax: lonMax + lonPad,
     latMin: latMin - latPad, latMax: latMax + latPad
@@ -479,27 +264,21 @@ let viewBounds = getViewBounds();
 
 function projectPoint(lon, lat) {
   const b = viewBounds;
-  const aspect = (b.lonMax - b.lonMin) / (b.latMax - b.latMin);
+  const geoW = b.lonMax - b.lonMin;
+  const geoH = b.latMax - b.latMin;
+  const geoAspect = geoW / geoH;
   const canvasAspect = MW / MH;
-
   let mapW, mapH, mapX, mapY;
-  if (aspect > canvasAspect) {
-    // Width-constrained
-    mapW = MW * 0.88;
-    mapH = mapW / aspect;
-    mapX = (MW - mapW) / 2;
-    mapY = (MH - mapH) / 2;
+  if (geoAspect > canvasAspect) {
+    mapW = MW * 0.95; mapH = mapW / geoAspect;
+    mapX = (MW - mapW) / 2; mapY = (MH - mapH) / 2;
   } else {
-    // Height-constrained
-    mapH = MH * 0.88;
-    mapW = mapH * aspect;
-    mapX = (MW - mapW) / 2;
-    mapY = (MH - mapH) / 2;
+    mapH = MH * 0.95; mapW = mapH * geoAspect;
+    mapX = (MW - mapW) / 2; mapY = (MH - mapH) / 2;
   }
-
   return [
-    mapX + ((lon - b.lonMin) / (b.lonMax - b.lonMin)) * mapW,
-    mapY + ((b.latMax - lat) / (b.latMax - b.latMin)) * mapH
+    mapX + ((lon - b.lonMin) / geoW) * mapW,
+    mapY + ((b.latMax - lat) / geoH) * mapH
   ];
 }
 
@@ -510,143 +289,160 @@ let animT = 0, pulseT = 0;
 function drawMap() {
   ctx.clearRect(0, 0, MW, MH);
 
-  // Background
+  // Background gradient
   const bg = ctx.createRadialGradient(MW*0.4, MH*0.45, 0, MW*0.4, MH*0.45, MW*0.8);
-  bg.addColorStop(0, '#061020');
-  bg.addColorStop(0.5, '#030a16');
-  bg.addColorStop(1, '#010408');
-  ctx.fillStyle = bg;
-  ctx.fillRect(0, 0, MW, MH);
+  bg.addColorStop(0, '#061020'); bg.addColorStop(0.5, '#030a16'); bg.addColorStop(1, '#010408');
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, MW, MH);
 
-  animT += 0.016;
-  pulseT += 0.04;
-  ctx.lineCap = 'round';
-  ctx.lineJoin = 'round';
+  animT += 0.016; pulseT += 0.04;
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
 
-  const active = STATES.find(s => s.abbr === CFG.state);
-  const neighborSet = active ? new Set(active.neighbors) : new Set();
+  const activeAbbr = CFG.state;
+  const active = STATE_MAP[activeAbbr];
+  const neighborSet = active ? new Set(active.n) : new Set();
 
-  // Grid lines
-  ctx.strokeStyle = 'rgba(0, 229, 255, 0.02)';
-  ctx.lineWidth = 0.5;
+  // Faint grid
   const b = viewBounds;
-  const latStart = Math.floor(b.latMin / 2) * 2;
-  const lonStart = Math.floor(b.lonMin / 2) * 2;
-  for (let lat = latStart; lat <= b.latMax; lat += 2) {
+  ctx.strokeStyle = 'rgba(0,229,255,0.02)'; ctx.lineWidth = 0.5;
+  for (let lat = Math.floor(b.latMin); lat <= Math.ceil(b.latMax); lat++) {
     const [x1,y1] = projectPoint(b.lonMin, lat);
     const [x2,y2] = projectPoint(b.lonMax, lat);
     ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
   }
-  for (let lon = lonStart; lon <= b.lonMax; lon += 2) {
+  for (let lon = Math.floor(b.lonMin); lon <= Math.ceil(b.lonMax); lon++) {
     const [x1,y1] = projectPoint(lon, b.latMin);
     const [x2,y2] = projectPoint(lon, b.latMax);
     ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
   }
 
-  // ── Draw states (neighbors faded, active bright) ──
-  STATES.forEach(s => {
-    const isActive = s.abbr === CFG.state;
-    const isNeighbor = neighborSet.has(s.abbr);
+  // ── Draw states: active bright, neighbors faded, others hidden ──
+  STATES_DATA.forEach(s => {
+    const isActive = s.a === activeAbbr;
+    const isNeighbor = neighborSet.has(s.a);
     if (!isActive && !isNeighbor) return;
 
-    const fillAlpha = isActive ? 0.04 : 0.012;
-    const strokeAlpha = isActive ? 0.45 : 0.1;
-    const glowAlpha = isActive ? 0.6 : 0.15;
-    const nodeAlpha = isActive ? 0.55 : 0.15;
-    const lineWidth = isActive ? 1.2 : 0.6;
+    const fillAlpha = isActive ? 0.05 : 0.01;
+    const strokeAlpha = isActive ? 0.5 : 0.08;
+    const glowAlpha = isActive ? 0.7 : 0;
+    const nodeAlpha = isActive ? 0.5 : 0.1;
+    const lw = isActive ? 1.6 : 0.5;
 
-    s.paths.forEach(path => {
-      if (path.length < 3) return;
+    s.p.forEach(ring => {
+      if (ring.length < 4) return;
+      const pts = ring.map(([lon,lat]) => projectPoint(lon, lat));
 
       // Fill
       ctx.beginPath();
-      const [sx,sy] = projectPoint(path[0][0], path[0][1]);
-      ctx.moveTo(sx,sy);
-      for (let i=1; i<path.length; i++) {
-        const [px,py] = projectPoint(path[i][0], path[i][1]);
-        ctx.lineTo(px,py);
-      }
+      ctx.moveTo(pts[0][0], pts[0][1]);
+      for (let i=1; i<pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
       ctx.closePath();
-      ctx.fillStyle = `rgba(0, 229, 255, ${fillAlpha})`;
+      ctx.fillStyle = `rgba(0,229,255,${fillAlpha})`;
       ctx.fill();
 
-      // Border glow
+      // Glow (active only)
       if (isActive) {
-        ctx.shadowColor = `rgba(0, 229, 255, ${glowAlpha})`;
-        ctx.shadowBlur = 10;
+        ctx.shadowColor = `rgba(0,229,255,${glowAlpha})`;
+        ctx.shadowBlur = 12;
       }
+
+      // Border stroke
       ctx.beginPath();
-      ctx.moveTo(sx,sy);
-      for (let i=1; i<path.length; i++) {
-        const [px,py] = projectPoint(path[i][0], path[i][1]);
-        ctx.lineTo(px,py);
-      }
+      ctx.moveTo(pts[0][0], pts[0][1]);
+      for (let i=1; i<pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
       ctx.closePath();
-      ctx.strokeStyle = `rgba(0, 229, 255, ${strokeAlpha})`;
-      ctx.lineWidth = lineWidth + (isActive ? 0.8 : 0);
+      ctx.strokeStyle = `rgba(0,229,255,${strokeAlpha})`;
+      ctx.lineWidth = lw;
       ctx.stroke();
       ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0;
 
-      // Crisp inner line
-      ctx.beginPath();
-      ctx.moveTo(sx,sy);
-      for (let i=1; i<path.length; i++) {
-        const [px,py] = projectPoint(path[i][0], path[i][1]);
-        ctx.lineTo(px,py);
+      // Crisp inner line for active
+      if (isActive) {
+        ctx.beginPath();
+        ctx.moveTo(pts[0][0], pts[0][1]);
+        for (let i=1; i<pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+        ctx.closePath();
+        ctx.strokeStyle = `rgba(0,229,255,${strokeAlpha * 1.4})`;
+        ctx.lineWidth = lw * 0.7;
+        ctx.stroke();
       }
-      ctx.closePath();
-      ctx.strokeStyle = `rgba(0, 229, 255, ${strokeAlpha * 1.5})`;
-      ctx.lineWidth = lineWidth;
-      ctx.stroke();
 
-      // Vertex nodes
-      path.forEach(([lon, lat]) => {
-        const [x,y] = projectPoint(lon, lat);
-        ctx.beginPath(); ctx.arc(x,y, isActive ? 2.5 : 1.2, 0, Math.PI*2);
-        ctx.fillStyle = `rgba(0, 229, 255, ${nodeAlpha})`;
-        ctx.fill();
-      });
+      // Vertex nodes (active only)
+      if (isActive) {
+        ring.forEach(([lon, lat]) => {
+          const [x,y] = projectPoint(lon, lat);
+          ctx.beginPath(); ctx.arc(x, y, 1.8, 0, Math.PI*2);
+          ctx.fillStyle = `rgba(0,229,255,${nodeAlpha})`;
+          ctx.fill();
+        });
+      }
     });
   });
 
-  // Network connections between visible state centers
-  const visible = STATES.filter(s => s.abbr === CFG.state || neighborSet.has(s.abbr));
-  ctx.strokeStyle = 'rgba(0, 229, 255, 0.04)';
-  ctx.lineWidth = 0.5;
+  // Network lines between visible centers
+  const visible = STATES_DATA.filter(s => s.a === activeAbbr || neighborSet.has(s.a));
+  ctx.strokeStyle = 'rgba(0,229,255,0.03)'; ctx.lineWidth = 0.5;
   for (let i=0; i<visible.length; i++) {
     for (let j=i+1; j<visible.length; j++) {
-      const [x1,y1] = projectPoint(visible[i].center[0], visible[i].center[1]);
-      const [x2,y2] = projectPoint(visible[j].center[0], visible[j].center[1]);
-      if (Math.hypot(x2-x1, y2-y1) < MW*0.35) {
-        ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
-      }
+      const [x1,y1] = projectPoint(visible[i].c[0], visible[i].c[1]);
+      const [x2,y2] = projectPoint(visible[j].c[0], visible[j].c[1]);
+      ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
     }
+  }
+
+  // ── Lakes (major bodies of water) ──
+  if (typeof LAKES_DATA !== 'undefined') {
+    LAKES_DATA.forEach(lake => {
+      lake.p.forEach(ring => {
+        // Check if any point falls within current view bounds
+        const b = viewBounds;
+        let inView = false;
+        for (const [lon, lat] of ring) {
+          if (lon >= b.lonMin && lon <= b.lonMax && lat >= b.latMin && lat <= b.latMax) {
+            inView = true; break;
+          }
+        }
+        if (!inView) return;
+
+        const pts = ring.map(([lon, lat]) => projectPoint(lon, lat));
+        if (pts.length < 3) return;
+
+        // Fill — dark water
+        ctx.beginPath();
+        ctx.moveTo(pts[0][0], pts[0][1]);
+        for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+        ctx.closePath();
+        ctx.fillStyle = 'rgba(0, 12, 30, 0.6)';
+        ctx.fill();
+
+        // Border — subtle cyan wireframe
+        ctx.beginPath();
+        ctx.moveTo(pts[0][0], pts[0][1]);
+        for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+        ctx.closePath();
+        ctx.strokeStyle = 'rgba(0, 229, 255, 0.12)';
+        ctx.lineWidth = 0.8;
+        ctx.stroke();
+      });
+    });
   }
 
   // ── Location Beacon ──
   const [lx,ly] = beaconXY();
   const pr = 10 + Math.sin(pulseT) * 5;
   const pa = 0.45 + Math.sin(pulseT) * 0.2;
-
-  // Outer rings
-  ctx.beginPath(); ctx.arc(lx,ly, pr*3, 0, Math.PI*2);
-  ctx.strokeStyle = `rgba(0,229,255,${pa*0.1})`; ctx.lineWidth=1; ctx.stroke();
-  ctx.beginPath(); ctx.arc(lx,ly, pr*2, 0, Math.PI*2);
-  ctx.strokeStyle = `rgba(0,229,255,${pa*0.2})`; ctx.lineWidth=1; ctx.stroke();
-  ctx.beginPath(); ctx.arc(lx,ly, pr*1.2, 0, Math.PI*2);
-  ctx.strokeStyle = `rgba(0,229,255,${pa*0.35})`; ctx.lineWidth=1.5; ctx.stroke();
-
-  // Glow
-  const lg = ctx.createRadialGradient(lx,ly, 0, lx,ly, pr);
-  lg.addColorStop(0, `rgba(0,229,255,${pa})`);
-  lg.addColorStop(0.5, `rgba(0,229,255,${pa*0.3})`);
-  lg.addColorStop(1, 'rgba(0,229,255,0)');
-  ctx.fillStyle = lg;
-  ctx.fillRect(lx-pr, ly-pr, pr*2, pr*2);
-
-  // Core
+  ctx.beginPath(); ctx.arc(lx,ly,pr*3,0,Math.PI*2);
+  ctx.strokeStyle=`rgba(0,229,255,${pa*0.1})`; ctx.lineWidth=1; ctx.stroke();
+  ctx.beginPath(); ctx.arc(lx,ly,pr*2,0,Math.PI*2);
+  ctx.strokeStyle=`rgba(0,229,255,${pa*0.2})`; ctx.lineWidth=1; ctx.stroke();
+  ctx.beginPath(); ctx.arc(lx,ly,pr*1.2,0,Math.PI*2);
+  ctx.strokeStyle=`rgba(0,229,255,${pa*0.35})`; ctx.lineWidth=1.5; ctx.stroke();
+  const lg=ctx.createRadialGradient(lx,ly,0,lx,ly,pr);
+  lg.addColorStop(0,`rgba(0,229,255,${pa})`);
+  lg.addColorStop(0.5,`rgba(0,229,255,${pa*0.3})`);
+  lg.addColorStop(1,'rgba(0,229,255,0)');
+  ctx.fillStyle=lg; ctx.fillRect(lx-pr,ly-pr,pr*2,pr*2);
   ctx.shadowColor='rgba(0,229,255,0.9)'; ctx.shadowBlur=16;
-  ctx.beginPath(); ctx.arc(lx,ly, 5, 0, Math.PI*2);
+  ctx.beginPath(); ctx.arc(lx,ly,5,0,Math.PI*2);
   ctx.fillStyle='#00e5ff'; ctx.fill();
   ctx.shadowColor='transparent'; ctx.shadowBlur=0;
 
@@ -654,18 +450,12 @@ function drawMap() {
   const callout = document.getElementById('callout');
   if (callout && callout.offsetWidth) {
     const cr = callout.getBoundingClientRect();
-    const mapRect = canvas.getBoundingClientRect();
-    const cx = cr.left - mapRect.left + cr.width + 6;
-    const cy = cr.top - mapRect.top + cr.height * 0.3;
-    ctx.beginPath();
-    ctx.moveTo(lx, ly);
-    ctx.lineTo(cx, cy);
-    ctx.strokeStyle = 'rgba(0, 229, 255, 0.2)';
-    ctx.lineWidth = 1;
-    ctx.setLineDash([5, 5]);
-    ctx.stroke();
-    ctx.setLineDash([]);
-    // Small circle at callout end
+    const mr = canvas.getBoundingClientRect();
+    const cx = cr.left - mr.left + cr.width + 6;
+    const cy = cr.top - mr.top + cr.height * 0.3;
+    ctx.beginPath(); ctx.moveTo(lx, ly); ctx.lineTo(cx, cy);
+    ctx.strokeStyle = 'rgba(0,229,255,0.2)'; ctx.lineWidth = 1;
+    ctx.setLineDash([5,5]); ctx.stroke(); ctx.setLineDash([]);
     ctx.beginPath(); ctx.arc(cx, cy, 3, 0, Math.PI*2);
     ctx.fillStyle = 'rgba(0,229,255,0.3)'; ctx.fill();
   }
@@ -673,29 +463,36 @@ function drawMap() {
   // Scan line
   const scanY = (animT * 30) % MH;
   const sg = ctx.createLinearGradient(0, scanY-25, 0, scanY+25);
-  sg.addColorStop(0, 'rgba(0,229,255,0)');
-  sg.addColorStop(0.5, 'rgba(0,229,255,0.025)');
-  sg.addColorStop(1, 'rgba(0,229,255,0)');
-  ctx.fillStyle = sg;
-  ctx.fillRect(0, scanY-25, MW, 50);
+  sg.addColorStop(0,'rgba(0,229,255,0)');
+  sg.addColorStop(0.5,'rgba(0,229,255,0.025)');
+  sg.addColorStop(1,'rgba(0,229,255,0)');
+  ctx.fillStyle = sg; ctx.fillRect(0, scanY-25, MW, 50);
 
   requestAnimationFrame(drawMap);
 }
 
 // ═══════════════════════════════════════════════════════════════
-//  THREE.JS GLOBE — Wireframe Earth
+//  THREE.JS GLOBE — Wireframe + Continent Outlines
 // ═══════════════════════════════════════════════════════════════
-
 let globe = {};
+
+function latLonToVec3(lat, lon, r) {
+  const phi = (90 - lat) * (Math.PI / 180);
+  const theta = (lon + 180) * (Math.PI / 180);
+  return new THREE.Vector3(
+    -r * Math.sin(phi) * Math.cos(theta),
+    r * Math.cos(phi),
+    r * Math.sin(phi) * Math.sin(theta)
+  );
+}
 
 function initGlobe() {
   const container = document.getElementById('globeContainer');
   const gc = document.getElementById('globeCanvas');
-  const gw = container.clientWidth;
-  const gh = container.clientHeight;
+  const gw = container.clientWidth, gh = container.clientHeight;
 
   const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(45, gw / gh, 0.1, 1000);
+  const camera = new THREE.PerspectiveCamera(45, gw/gh, 0.1, 1000);
   camera.position.z = 2.8;
 
   const renderer = new THREE.WebGLRenderer({ canvas: gc, alpha: true, antialias: true });
@@ -703,96 +500,65 @@ function initGlobe() {
   renderer.setPixelRatio(window.devicePixelRatio);
   renderer.setClearColor(0x000000, 0);
 
-  // Wireframe sphere
-  const geo = new THREE.SphereGeometry(1, 36, 24);
-  const mat = new THREE.MeshBasicMaterial({
-    color: 0x00e5ff,
-    wireframe: true,
-    transparent: true,
-    opacity: 0.08
-  });
-  const sphere = new THREE.Mesh(geo, mat);
-  scene.add(sphere);
+  // Group for all rotating elements
+  const globeGroup = new THREE.Group();
+  scene.add(globeGroup);
 
-  // Brighter equator + prime meridian rings
-  const ringGeo = new THREE.RingGeometry(1.002, 1.005, 64);
+  // Wireframe sphere (subtle)
+  const sphereGeo = new THREE.SphereGeometry(1, 36, 24);
+  const sphereMat = new THREE.MeshBasicMaterial({
+    color: 0x00e5ff, wireframe: true, transparent: true, opacity: 0.04
+  });
+  globeGroup.add(new THREE.Mesh(sphereGeo, sphereMat));
+
+  // Equator ring
+  const ringGeo = new THREE.RingGeometry(1.002, 1.004, 64);
   const ringMat = new THREE.MeshBasicMaterial({
-    color: 0x00e5ff, transparent: true, opacity: 0.15, side: THREE.DoubleSide
+    color: 0x00e5ff, transparent: true, opacity: 0.12, side: THREE.DoubleSide
   });
-  const equator = new THREE.Mesh(ringGeo, ringMat);
-  scene.add(equator);
+  globeGroup.add(new THREE.Mesh(ringGeo, ringMat));
 
-  const meridian = new THREE.Mesh(ringGeo.clone(), ringMat.clone());
-  meridian.rotation.y = Math.PI / 2;
-  scene.add(meridian);
-
-  // Outer glow sphere
-  const glowGeo = new THREE.SphereGeometry(1.08, 32, 20);
+  // Outer glow
+  const glowGeo = new THREE.SphereGeometry(1.06, 32, 20);
   const glowMat = new THREE.MeshBasicMaterial({
-    color: 0x00e5ff, transparent: true, opacity: 0.03, side: THREE.BackSide
+    color: 0x00e5ff, transparent: true, opacity: 0.025, side: THREE.BackSide
   });
-  const glowSphere = new THREE.Mesh(glowGeo, glowMat);
-  scene.add(glowSphere);
+  globeGroup.add(new THREE.Mesh(glowGeo, glowMat));
 
-  // Location dot on globe surface
+  // ── CONTINENT OUTLINES from LAND_DATA ──
+  const lineMat = new THREE.LineBasicMaterial({
+    color: 0x00e5ff, transparent: true, opacity: 0.25
+  });
+  LAND_DATA.forEach(ring => {
+    if (ring.length < 3) return;
+    const points = [];
+    ring.forEach(([lon, lat]) => {
+      points.push(latLonToVec3(lat, lon, 1.005));
+    });
+    const geom = new THREE.BufferGeometry().setFromPoints(points);
+    const line = new THREE.Line(geom, lineMat);
+    globeGroup.add(line);
+  });
+
+  // Location dot
   const locDotGeo = new THREE.SphereGeometry(0.03, 8, 8);
   const locDotMat = new THREE.MeshBasicMaterial({ color: 0x00e5ff });
   const locDot = new THREE.Mesh(locDotGeo, locDotMat);
-  scene.add(locDot);
-
-  // Convert lat/lon to 3D position on sphere
-  function latLonToVec3(lat, lon, r) {
-    const phi = (90 - lat) * (Math.PI / 180);
-    const theta = (lon + 180) * (Math.PI / 180);
-    return new THREE.Vector3(
-      -r * Math.sin(phi) * Math.cos(theta),
-      r * Math.cos(phi),
-      r * Math.sin(phi) * Math.sin(theta)
-    );
-  }
+  globeGroup.add(locDot);
 
   function updateLocDot() {
-    const pos = latLonToVec3(CFG.lat, CFG.lon, 1.02);
-    locDot.position.copy(pos);
+    locDot.position.copy(latLonToVec3(CFG.lat, CFG.lon, 1.02));
   }
   updateLocDot();
 
-  // Scatter dots for major cities (visual texture)
-  const cities = [
-    [40.7,-74],[51.5,-0.1],[35.7,139.7],[48.9,2.3],[-33.9,151.2],
-    [55.8,37.6],[39.9,116.4],[28.6,77.2],[-23.5,-46.6],[19.4,-99.1],
-    [34.1,-118.2],[41.9,-87.6],[29.8,-95.4],[33.4,-112.1],[37.8,-122.4],
-    [1.3,103.8],[22.3,114.2],[-1.3,36.8],[30,31.2],[6.5,3.4],
-  ];
-  cities.forEach(([lat, lon]) => {
-    const g = new THREE.SphereGeometry(0.012, 6, 6);
-    const m = new THREE.MeshBasicMaterial({ color: 0x00e5ff, transparent: true, opacity: 0.3 });
-    const dot = new THREE.Mesh(g, m);
-    dot.position.copy(latLonToVec3(lat, lon, 1.01));
-    scene.add(dot);
-  });
-
-  globe = { scene, camera, renderer, sphere, equator, meridian, locDot, updateLocDot };
+  globe = { scene, camera, renderer, globeGroup, locDot, updateLocDot };
 
   function animateGlobe() {
     requestAnimationFrame(animateGlobe);
-    sphere.rotation.y += 0.002;
-    equator.rotation.y += 0.002;
-    meridian.rotation.y += 0.002;
-    glowSphere.rotation.y += 0.002;
-
-    // Rotate all children (dots) with globe
-    scene.children.forEach(c => {
-      if (c !== camera && c !== sphere && c !== equator && c !== meridian && c !== glowSphere) {
-        // Rotate dots around Y axis to match globe spin
-      }
-    });
-
-    // Pulse location dot
+    globeGroup.rotation.y += 0.002;
     const s = 1 + Math.sin(Date.now() * 0.003) * 0.3;
     locDot.scale.set(s, s, s);
     locDot.material.opacity = 0.6 + Math.sin(Date.now() * 0.004) * 0.3;
-
     renderer.render(scene, camera);
   }
   animateGlobe();
@@ -800,16 +566,15 @@ function initGlobe() {
 
 function resizeGlobe() {
   if (!globe.renderer) return;
-  const container = document.getElementById('globeContainer');
-  const gw = container.clientWidth;
-  const gh = container.clientHeight;
+  const c = document.getElementById('globeContainer');
+  const gw = c.clientWidth, gh = c.clientHeight;
   globe.camera.aspect = gw / gh;
   globe.camera.updateProjectionMatrix();
   globe.renderer.setSize(gw, gh);
 }
 
 // ═══════════════════════════════════════════════════════════════
-//  HUD POSITIONING
+//  HUD POSITIONING + WEATHER DATA + CLOCK + SETTINGS + INIT
 // ═══════════════════════════════════════════════════════════════
 
 function positionHUD() {
@@ -817,29 +582,22 @@ function positionHUD() {
   const callout = document.getElementById('callout');
   const cw = callout.offsetWidth || 200;
   const ch = callout.offsetHeight || 220;
-
-  // Place callout to the left of beacon, clamped within map area
   let cx = bx - cw - 50;
   let cy = by - ch * 0.3;
-  const mapW = MW;
-  cx = Math.max(14, Math.min(cx, mapW - cw - 14));
+  cx = Math.max(14, Math.min(cx, MW - cw - 14));
   cy = Math.max(80, Math.min(cy, MH - ch - 60));
   callout.style.left = cx + 'px';
   callout.style.top = cy + 'px';
 }
 
 function resizeCanvas() {
-  const mapEl = document.getElementById('mapCanvas');
-  MW = mapEl.width = mapEl.clientWidth;
-  MH = mapEl.height = mapEl.clientHeight;
+  const el = document.getElementById('mapCanvas');
+  MW = el.width = el.clientWidth;
+  MH = el.height = el.clientHeight;
   viewBounds = getViewBounds();
   positionHUD();
   resizeGlobe();
 }
-
-// ═══════════════════════════════════════════════════════════════
-//  WEATHER DATA
-// ═══════════════════════════════════════════════════════════════
 
 async function fetchWeather() {
   const tu = CFG.units === 'celsius' ? 'celsius' : 'fahrenheit';
@@ -847,32 +605,25 @@ async function fetchWeather() {
   const url = `https://api.open-meteo.com/v1/forecast?latitude=${CFG.lat}&longitude=${CFG.lon}`
     + `&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,cloud_cover,surface_pressure,wind_speed_10m,wind_direction_10m,wind_gusts_10m,visibility`
     + `&daily=weather_code,temperature_2m_max,temperature_2m_min`
-    + `&temperature_unit=${tu}&wind_speed_unit=${wu}`
-    + `&timezone=auto&forecast_days=7`;
+    + `&temperature_unit=${tu}&wind_speed_unit=${wu}&timezone=auto&forecast_days=7`;
   try {
-    const resp = await fetch(url);
-    const data = await resp.json();
-    updateUI(data);
-  } catch (e) { console.error('[weather] Fetch failed:', e); }
+    const r = await fetch(url); const data = await r.json(); updateUI(data);
+  } catch(e) { console.error('[weather]', e); }
 }
 
 function updateUI(data) {
   const c = data.current;
   const us = CFG.units === 'celsius' ? '°C' : '°F';
   const ws = CFG.units === 'celsius' ? 'km/h' : 'mph';
-
   document.getElementById('locationName').textContent = CFG.name;
   document.getElementById('locationCoords').textContent =
     `${Math.abs(CFG.lat).toFixed(4)}° ${CFG.lat>=0?'N':'S'} / ${Math.abs(CFG.lon).toFixed(4)}° ${CFG.lon>=0?'E':'W'}`;
-
   document.getElementById('tempValue').innerHTML =
     `${Math.round(c.temperature_2m)}<span class="unit">${us}</span>`;
-
-  const wmo = WMO_CODES[c.weather_code] || {desc:'Unknown',icon:'❓'};
-  document.getElementById('conditionIcon').textContent = wmo.icon;
-  document.getElementById('conditionText').textContent = wmo.desc.toUpperCase();
+  const wmo = WMO_CODES[c.weather_code] || {d:'Unknown',i:'❓'};
+  document.getElementById('conditionIcon').textContent = wmo.i;
+  document.getElementById('conditionText').textContent = wmo.d.toUpperCase();
   document.getElementById('feelsLike').textContent = `Feels like ${Math.round(c.apparent_temperature)}${us}`;
-
   document.getElementById('windValue').textContent = `${Math.round(c.wind_speed_10m)} ${ws}`;
   document.getElementById('windDir').textContent = degToCompass(c.wind_direction_10m);
   document.getElementById('humidity').textContent = `${c.relative_humidity_2m}%`;
@@ -887,12 +638,11 @@ function updateUI(data) {
     for (let i = 0; i < d.time.length; i++) {
       const date = new Date(d.time[i] + 'T12:00:00');
       const dayName = i === 0 ? 'TODAY' : DAYS[date.getDay()];
-      const fwmo = WMO_CODES[d.weather_code[i]] || {icon:'❓'};
+      const fwmo = WMO_CODES[d.weather_code[i]] || {i:'❓'};
       const el = document.createElement('div');
       el.className = 'forecast-day';
-      el.innerHTML = `
-        <div class="forecast-day-name">${dayName}</div>
-        <div class="forecast-day-icon">${fwmo.icon}</div>
+      el.innerHTML = `<div class="forecast-day-name">${dayName}</div>
+        <div class="forecast-day-icon">${fwmo.i}</div>
         <div class="forecast-day-temp">${Math.round(d.temperature_2m_max[i])}°</div>
         <div class="forecast-day-lo">${Math.round(d.temperature_2m_min[i])}°</div>`;
       strip.appendChild(el);
@@ -902,18 +652,14 @@ function updateUI(data) {
 }
 
 function degToCompass(deg) {
-  const d = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
+  const d=['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
   return d[Math.round(deg/22.5)%16] + ` ${Math.round(deg)}°`;
 }
-
-// ═══════════════════════════════════════════════════════════════
-//  CLOCK + SETTINGS + INIT
-// ═══════════════════════════════════════════════════════════════
 
 function updateClock() {
   const now = new Date();
   document.getElementById('clock').textContent =
-    now.toLocaleTimeString('en-US', {hour12:false, hour:'2-digit', minute:'2-digit', second:'2-digit'});
+    now.toLocaleTimeString('en-US',{hour12:false,hour:'2-digit',minute:'2-digit',second:'2-digit'});
   document.getElementById('clockDate').textContent = now.toISOString().slice(0,10);
 }
 
@@ -927,14 +673,14 @@ function toggleSettings() {
 }
 
 function applySettings() {
-  const name = document.getElementById('setLocationName').value.trim();
+  const n = document.getElementById('setLocationName').value.trim();
   const lat = parseFloat(document.getElementById('setLat').value);
   const lon = parseFloat(document.getElementById('setLon').value);
-  const state = document.getElementById('setState').value.trim().toUpperCase();
-  if (name) CFG.name = name.toUpperCase();
+  const st = document.getElementById('setState').value.trim().toUpperCase();
+  if (n) CFG.name = n.toUpperCase();
   if (!isNaN(lat)) CFG.lat = lat;
   if (!isNaN(lon)) CFG.lon = lon;
-  if (state && state.length === 2) CFG.state = state;
+  if (st && st.length === 2) CFG.state = st;
   CFG.units = document.getElementById('setUnits').value;
   document.getElementById('settingsPanel').classList.remove('open');
   viewBounds = getViewBounds();
@@ -953,8 +699,7 @@ window.addEventListener('message', (event) => {
     if (msg.state) CFG.state = msg.state.toUpperCase();
     if (msg.units) CFG.units = msg.units;
     viewBounds = getViewBounds();
-    resizeCanvas();
-    fetchWeather();
+    resizeCanvas(); fetchWeather();
     if (globe.updateLocDot) globe.updateLocDot();
   }
 });
@@ -964,15 +709,12 @@ window.addEventListener('resize', resizeCanvas);
 resizeCanvas();
 requestAnimationFrame(drawMap);
 initGlobe();
-updateClock();
-setInterval(updateClock, 1000);
-fetchWeather();
-setInterval(fetchWeather, CFG.refreshInterval);
+updateClock(); setInterval(updateClock, 1000);
+fetchWeather(); setInterval(fetchWeather, CFG.refreshInterval);
 
 document.addEventListener('keydown', (e) => {
-  if (['ArrowLeft','ArrowRight'].includes(e.key)) {
+  if (['ArrowLeft','ArrowRight'].includes(e.key))
     window.parent.postMessage({type:'keydown', key:e.key}, '*');
-  }
 });
 window.parent.postMessage({type:'pageReady', page:'weather'}, '*');
 </script>
