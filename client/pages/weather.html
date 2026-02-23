@@ -576,6 +576,11 @@ function initGlobe() {
   const globeGroup = new THREE.Group();
   scene.add(globeGroup);
 
+  // Opaque inner sphere — occludes far-side geometry
+  const solidGeo = new THREE.SphereGeometry(0.995, 36, 24);
+  const solidMat = new THREE.MeshBasicMaterial({ color: 0x010408 });
+  globeGroup.add(new THREE.Mesh(solidGeo, solidMat));
+
   // Wireframe sphere (subtle)
   const sphereGeo = new THREE.SphereGeometry(1, 36, 24);
   const sphereMat = new THREE.MeshBasicMaterial({
