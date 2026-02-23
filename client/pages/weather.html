@@ -312,12 +312,12 @@ function getViewBounds() {
       const kmPerDeg = currentBody === 'luna' ? 30.3 : 59.2;
       const radiusDeg = (f.diameter / 2) / kmPerDeg;
       // Target span similar to US state view (~8-12°), scale up for large features
-      const span = Math.max(radiusDeg * 3, 8);
-      const cosLat = Math.cos(f.lat * Math.PI / 180);
-      const lonSpan = span / Math.max(cosLat, 0.2);
+      const latSpan = Math.max(radiusDeg * 3, 8);
+      // Clamp lon span to same as lat span (don't blow up near poles)
+      const lonSpan = latSpan;
       return {
         lonMin: flon - lonSpan, lonMax: flon + lonSpan,
-        latMin: Math.max(-90, f.lat - span), latMax: Math.min(90, f.lat + span)
+        latMin: Math.max(-90, f.lat - latSpan), latMax: Math.min(90, f.lat + latSpan)
       };
     }
     return { lonMin: -180, lonMax: 180, latMin: -90, latMax: 90 };
@@ -380,7 +380,7 @@ function drawCelestialMap() {
   const accent = `rgba(${accentR},${accentG},${accentB}`;
 
   // Grid lines
-  ctx.strokeStyle = `${accent},0.03)`; ctx.lineWidth = 0.5;
+  ctx.strokeStyle = `${accent},0.08)`; ctx.lineWidth = 0.5;
   for (let lat = -80; lat <= 80; lat += 20) {
     const [x1,y1] = projectPoint(-180, lat);
     const [x2,y2] = projectPoint(180, lat);
@@ -394,8 +394,8 @@ function drawCelestialMap() {
 
   // Draw region boundaries
   if (currentBody === 'luna' && typeof LUNA_MARE_BOUNDARIES !== 'undefined') {
-    // Mare boundaries as primary outlines
-    ctx.strokeStyle = 'rgba(128,144,160,0.25)'; ctx.lineWidth = 1;
+    // Mare boundaries — bright like Earth continent outlines
+    ctx.strokeStyle = 'rgba(128,144,160,0.6)'; ctx.lineWidth = 1.2;
     LUNA_MARE_BOUNDARIES.forEach(mare => {
       mare.polys.forEach(ring => {
         if (ring.length < 3) return;
@@ -404,7 +404,7 @@ function drawCelestialMap() {
         ctx.moveTo(pts[0][0], pts[0][1]);
         for (let i=1; i<pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
         ctx.closePath();
-        ctx.fillStyle = 'rgba(40,60,80,0.08)';
+        ctx.fillStyle = 'rgba(40,60,80,0.12)';
         ctx.fill(); ctx.stroke();
       });
     });
@@ -418,20 +418,24 @@ function drawCelestialMap() {
         ctx.moveTo(pts[0][0], pts[0][1]);
         for (let i=1; i<pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
         ctx.closePath();
-        ctx.fillStyle = `rgba(${accentR},${accentG},${accentB},0.04)`;
-        ctx.strokeStyle = `${accent},0.15)`;
-        ctx.lineWidth = 0.8;
+        ctx.fillStyle = `rgba(${accentR},${accentG},${accentB},0.06)`;
+        ctx.strokeStyle = `${accent},0.5)`;
+        ctx.lineWidth = 1.2;
         ctx.fill(); ctx.stroke();
       });
     });
   }
 
-  // Draw features as beacons
+  // Draw features as beacons — only render those within view bounds
+  const b = viewBounds;
+  const inView = (lon, lat) => lon >= b.lonMin && lon <= b.lonMax && lat >= b.latMin && lat <= b.latMax;
   const selectedRegions = regions;
   const selIdx = selectedFeatureIdx % Math.max(selectedRegions.length, 1);
 
   regions.forEach((f, i) => {
-    const [x, y] = projectPoint(normLon(f.lon), f.lat);
+    const flon = normLon(f.lon);
+    if (!inView(flon, f.lat) && i !== selIdx) return;
+    const [x, y] = projectPoint(flon, f.lat);
     const isSel = (i === selIdx);
     const r = isSel ? 6 : 3;
     const a = isSel ? 0.8 : 0.25;
@@ -441,40 +445,36 @@ function drawCelestialMap() {
     if (isSel) {
       ctx.beginPath(); ctx.arc(x, y, 12 + Math.sin(pulseT) * 4, 0, Math.PI*2);
       ctx.strokeStyle = `${accent},0.4)`; ctx.lineWidth = 1; ctx.stroke();
-      // Label
       ctx.font = '600 9px Orbitron, sans-serif';
       ctx.fillStyle = `${accent},0.9)`;
       ctx.fillText(f.name.toUpperCase(), x + 14, y + 3);
     }
   });
 
-  // Landmarks as small dots with labels for visible ones
-  landmarks.forEach(f => {
+  // Landmarks — only those in view, limit to ~30 max
+  const viewLandmarks = landmarks.filter(f => inView(normLon(f.lon), f.lat)).slice(0, 30);
+  viewLandmarks.forEach(f => {
     const [x, y] = projectPoint(normLon(f.lon), f.lat);
-    if (x < -20 || x > MW+20 || y < -20 || y > MH+20) return;
     ctx.beginPath(); ctx.arc(x, y, 2, 0, Math.PI*2);
     ctx.fillStyle = `${accent},0.35)`;
     ctx.fill();
-    // Show name for landmarks in view
     ctx.font = '500 7px "Share Tech Mono", monospace';
     ctx.fillStyle = `${accent},0.25)`;
     ctx.fillText(f.name, x + 5, y + 2);
   });
 
-  // Major craters as rings with proportional size
-  craters.forEach(f => {
+  // Craters — only in view, proportional rings
+  const viewCraters = craters.filter(f => inView(normLon(f.lon), f.lat)).slice(0, 40);
+  const pixPerDeg = MW / (b.lonMax - b.lonMin);
+  viewCraters.forEach(f => {
     const [x, y] = projectPoint(normLon(f.lon), f.lat);
-    if (x < -50 || x > MW+50 || y < -50 || y > MH+50) return;
-    // Scale crater ring by diameter relative to view
     const kmPerDeg = currentBody === 'luna' ? 30.3 : 59.2;
     const craterDegRadius = (f.diameter / 2) / kmPerDeg;
-    const b = viewBounds;
-    const pixPerDeg = MW / (b.lonMax - b.lonMin);
     const craterPx = Math.max(craterDegRadius * pixPerDeg, 2);
     ctx.beginPath(); ctx.arc(x, y, craterPx, 0, Math.PI*2);
     ctx.strokeStyle = `${accent},0.15)`;
     ctx.lineWidth = 0.8; ctx.stroke();
-    if (craterPx > 8) {
+    if (craterPx > 12) {
       ctx.font = '500 7px "Share Tech Mono", monospace';
       ctx.fillStyle = `${accent},0.2)`;
       ctx.fillText(f.name, x + craterPx + 3, y + 2);
