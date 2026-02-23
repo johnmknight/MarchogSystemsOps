@@ -1,0 +1,13 @@
+{
+  "name": "earth-locations",
+  "version": "1.0.0",
+  "description": "Earth location microservice for MarchogSystemsOps (Open-Meteo geocoding)",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5"
+  }
+}

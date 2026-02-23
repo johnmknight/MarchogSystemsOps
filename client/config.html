@@ -1201,7 +1201,7 @@
                 ${(z.screens || []).map(sc => {
                   const online = connectedIds.has(sc.screen_id);
                   const pg = pageMap[sc.static_page];
-                  const hasParams = pg && (pg.file === 'selfdestruct.html' || pg.file === 'video.html');
+                  const hasParams = pg && (pg.file === 'selfdestruct.html' || pg.file === 'video.html' || pg.file === 'weather.html');
                   const overrideInfo = sc.params_override ? JSON.stringify(sc.params_override) : '';
                   const pageOptions = pages.map(p =>
                     `<option value="${p.id}" ${p.id === sc.static_page ? 'selected' : ''}>${p.icon} ${p.name}</option>`
@@ -1734,6 +1734,32 @@
             </div>
           </div>
         `;
+      } else if (pg.file === 'weather.html') {
+        const curBody = merged.body || 'earth';
+        const curFeature = merged.feature || '';
+        const curRotate = merged.rotate === '1' || merged.rotate === true;
+        paramsHtml = `
+          <div style="border:1px solid var(--border);border-radius:6px;padding:12px;background:rgba(0,229,255,0.03)">
+            <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--accent);margin-bottom:10px"><i class="ti ti-planet"></i> Weather Override</div>
+            <div class="form-group">
+              <label>Celestial Body</label>
+              <select id="scrParamBody" onchange="updateWeatherFeatureList()">
+                <option value="earth" ${curBody==='earth'?'selected':''}>🌍 Earth</option>
+                <option value="luna" ${curBody==='luna'?'selected':''}>🌙 Luna</option>
+                <option value="mars" ${curBody==='mars'?'selected':''}>🔴 Mars</option>
+              </select>
+            </div>
+            <div class="form-group" id="weatherFeatureGroup" style="${curBody==='earth'?'display:none':''}">
+              <label>Region / Feature</label>
+              <select id="scrParamFeature"><option value="">Default (first region)</option></select>
+              <div id="weatherFeatureNote" style="font-size:10px;color:var(--text-dim);margin-top:4px">Loading features...</div>
+            </div>
+            <div class="form-group">
+              <label><input type="checkbox" id="scrParamRotate" ${curRotate?'checked':''}> Enable globe rotation</label>
+            </div>
+          </div>
+        `;
+        setTimeout(() => updateWeatherFeatureList('${curFeature}'), 50);
       }
 
       openModal(`
@@ -1769,6 +1795,24 @@
         const border = document.getElementById('scrParamBorder')?.value;
         if (videoUrl) paramsOverride.video = videoUrl;
         if (border) paramsOverride.border = border;
+      } else if (pg.file === 'weather.html') {
+        const body = document.getElementById('scrParamBody')?.value || 'earth';
+        const feature = document.getElementById('scrParamFeature')?.value || '';
+        const rotate = document.getElementById('scrParamRotate')?.checked;
+        paramsOverride.body = body;
+        if (feature) paramsOverride.feature = feature;
+        if (rotate) paramsOverride.rotate = '1';
+        // For Earth, store lat/lon/name from the selected result
+        const sel = document.getElementById('scrParamFeature');
+        if (body === 'earth' && sel && sel.selectedOptions[0]) {
+          const opt = sel.selectedOptions[0];
+          if (opt.dataset.lat) {
+            paramsOverride.lat = opt.dataset.lat;
+            paramsOverride.lon = opt.dataset.lon;
+            paramsOverride.name = opt.dataset.display || feature;
+            if (opt.dataset.admin1) paramsOverride.state = opt.dataset.admin1;
+          }
+        }
       }
 
       // Find existing label and device type
@@ -1805,6 +1849,136 @@
       } catch(e) {}
       closeModal();
       await loadAll();
+    }
+
+    // ── Weather Location Typeahead ──────────────────────────
+    const LOCATION_PORTS = { earth: 8090, luna: 8091, mars: 8092 };
+    let _weatherSearchTimer = null;
+
+    async function updateWeatherFeatureList(preselect) {
+      const body = document.getElementById('scrParamBody')?.value || 'earth';
+      const group = document.getElementById('weatherFeatureGroup');
+      const sel = document.getElementById('scrParamFeature');
+      const note = document.getElementById('weatherFeatureNote');
+      if (!group || !sel) return;
+
+      // Show/hide feature group
+      group.style.display = body === 'earth' ? '' : '';  // show for all bodies now
+
+      // Clear existing options
+      sel.innerHTML = '<option value="">Loading...</option>';
+      if (note) note.textContent = 'Fetching locations...';
+
+      const port = LOCATION_PORTS[body];
+      try {
+        if (body === 'earth') {
+          // For Earth, start with empty — user types to search
+          sel.innerHTML = '<option value="">Type to search cities/ZIP codes...</option>';
+          if (note) note.textContent = 'Type in the search box below to find a location';
+          // Add search input for Earth
+          setupWeatherSearch(port, preselect);
+        } else {
+          // Luna/Mars: load region features
+          const resp = await fetch(`http://localhost:${port}/api/features?category=region`);
+          const features = await resp.json();
+          sel.innerHTML = '<option value="">Default (first region)</option>';
+          features.forEach(f => {
+            const opt = document.createElement('option');
+            opt.value = f.name;
+            opt.textContent = `${f.name} (${f.type}, ${f.diameter?.toFixed(0) || '?'}km)`;
+            if (preselect && f.name === preselect) opt.selected = true;
+            sel.appendChild(opt);
+          });
+          if (note) note.textContent = `${features.length} regions loaded · Use search for landmarks`;
+          setupWeatherSearch(port, preselect);
+        }
+      } catch (e) {
+        sel.innerHTML = '<option value="">Service unavailable</option>';
+        if (note) note.textContent = `Cannot reach location service on :${port}`;
+      }
+    }
+
+    function setupWeatherSearch(port, preselect) {
+      const group = document.getElementById('weatherFeatureGroup');
+      // Remove old search input if present
+      const old = document.getElementById('weatherSearchInput');
+      if (old) old.remove();
+      const oldResults = document.getElementById('weatherSearchResults');
+      if (oldResults) oldResults.remove();
+
+      // Create search input
+      const input = document.createElement('input');
+      input.id = 'weatherSearchInput';
+      input.placeholder = 'Search locations...';
+      input.style.cssText = 'margin-top:8px;width:100%';
+      input.autocomplete = 'off';
+
+      // Results dropdown
+      const results = document.createElement('div');
+      results.id = 'weatherSearchResults';
+      results.style.cssText = 'max-height:180px;overflow-y:auto;border:1px solid var(--border);border-radius:4px;background:var(--bg);display:none;margin-top:4px';
+
+      group.appendChild(input);
+      group.appendChild(results);
+
+      input.addEventListener('input', () => {
+        clearTimeout(_weatherSearchTimer);
+        const q = input.value.trim();
+        if (q.length < 2) { results.style.display = 'none'; return; }
+        _weatherSearchTimer = setTimeout(() => weatherTypeahead(port, q, results), 250);
+      });
+    }
+
+    async function weatherTypeahead(port, query, container) {
+      try {
+        const resp = await fetch(`http://localhost:${port}/api/search?q=${encodeURIComponent(query)}`);
+        const items = await resp.json();
+        if (!items.length) {
+          container.innerHTML = '<div style="padding:8px;color:var(--text-dim);font-size:11px">No results</div>';
+          container.style.display = 'block';
+          return;
+        }
+        container.innerHTML = items.map((item, i) => {
+          const label = item.display || `${item.name} (${item.type || ''})`;
+          const sub = item.admin1 ? `${item.admin1}, ${item.country}` : (item.category || '');
+          return `<div class="weather-search-item" data-idx="${i}" style="padding:6px 8px;cursor:pointer;border-bottom:1px solid var(--border);font-size:12px" 
+            onmouseenter="this.style.background='var(--accent-dim)'" onmouseleave="this.style.background=''"
+            onclick="selectWeatherResult(${JSON.stringify(item).replace(/"/g, '&quot;')})">
+            <div style="color:var(--text-bright)">${item.name}</div>
+            ${sub ? `<div style="font-size:10px;color:var(--text-dim)">${sub}</div>` : ''}
+          </div>`;
+        }).join('');
+        container.style.display = 'block';
+      } catch (e) {
+        container.innerHTML = '<div style="padding:8px;color:#c83c28;font-size:11px">Search failed</div>';
+        container.style.display = 'block';
+      }
+    }
+
+    function selectWeatherResult(item) {
+      const sel = document.getElementById('scrParamFeature');
+      const input = document.getElementById('weatherSearchInput');
+      const results = document.getElementById('weatherSearchResults');
+
+      if (sel) {
+        // Add or update the selected option
+        const opt = document.createElement('option');
+        opt.value = item.name;
+        opt.textContent = item.display || item.name;
+        opt.selected = true;
+        if (item.lat !== undefined) opt.dataset.lat = item.lat;
+        if (item.lon !== undefined) opt.dataset.lon = item.lon;
+        if (item.display) opt.dataset.display = item.display;
+        if (item.admin1) opt.dataset.admin1 = item.admin1;
+        // Check if already in select
+        let found = false;
+        for (const existing of sel.options) {
+          if (existing.value === item.name) { existing.selected = true; found = true; break; }
+        }
+        if (!found) { sel.appendChild(opt); opt.selected = true; }
+      }
+      if (input) input.value = item.name;
+      if (results) results.style.display = 'none';
     }
 
     async function clearScreenParams(zoneId, screenId, pageId) {

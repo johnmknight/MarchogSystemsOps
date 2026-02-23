@@ -1,0 +1,13 @@
+{
+  "name": "luna-locations",
+  "version": "1.0.0",
+  "description": "Luna location microservice for MarchogSystemsOps",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5"
+  }
+}
