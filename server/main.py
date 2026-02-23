@@ -2,7 +2,7 @@
 MarchogSystemsOps Server - Star Wars Inspired Multi-Screen Controller
 FastAPI backend with WebSocket screen management and scenes system
 """
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -701,6 +701,10 @@ async def api_mqtt_reconnect():
     }
 
 
+# ── Agent Telemetry Store (must be before health endpoint) ───
+
+_agent_telemetry: dict = {}
+
 # ── API: Device Health ───────────────────────────────────────
 
 @app.get("/api/health/screens")
@@ -743,6 +747,7 @@ async def api_screen_health():
             "room_id": meta.get("room_id"),
             "metrics": screen_data.get("metrics"),
             "metrics_at": screen_data.get("metrics_at"),
+            "agent": _agent_telemetry.get(screen_id),
         })
     return {
         "total_connected": len(app_state["screens"]),
@@ -943,6 +948,65 @@ async def list_media_videos():
                 "url": f"/media/videos/{f.name}",
             })
     return sorted(videos, key=lambda v: v["filename"])
+
+
+@app.get("/api/media/manifest")
+async def media_manifest():
+    """Return asset manifest with checksums for agent sync.
+    Agents compare this against local files to determine what to download."""
+    import hashlib
+    video_dir = MEDIA_DIR / "videos"
+    assets = []
+    for f in video_dir.iterdir():
+        if f.is_file() and f.suffix.lower() in MEDIA_EXTENSIONS:
+            stat = f.stat()
+            # SHA-256 checksum (read in chunks for large files)
+            h = hashlib.sha256()
+            with open(f, "rb") as fh:
+                while True:
+                    chunk = fh.read(65536)
+                    if not chunk:
+                        break
+                    h.update(chunk)
+            assets.append({
+                "asset_id": f.name,
+                "size": stat.st_size,
+                "checksum": f"sha256:{h.hexdigest()}",
+                "url": f"/media/videos/{f.name}",
+            })
+    return {"assets": sorted(assets, key=lambda a: a["asset_id"])}
+
+
+# ── Agent Telemetry & Sync ───────────────────────────────────
+
+@app.post("/api/agent/{screen_id}/telemetry")
+async def receive_agent_telemetry(screen_id: str, request: Request):
+    """Receive telemetry from a kiosk agent."""
+    data = await request.json()
+    data["received_at"] = datetime.now(timezone.utc).isoformat()
+    data["screen_id"] = screen_id
+    _agent_telemetry[screen_id] = data
+    return {"status": "ok"}
+
+
+@app.post("/api/agent/{screen_id}/media-status")
+async def receive_agent_media_status(screen_id: str, request: Request):
+    """Receive media sync status from a kiosk agent."""
+    data = await request.json()
+    # Merge into telemetry store
+    if screen_id not in _agent_telemetry:
+        _agent_telemetry[screen_id] = {}
+    _agent_telemetry[screen_id]["media_status"] = data
+    _agent_telemetry[screen_id]["media_status_at"] = datetime.now(timezone.utc).isoformat()
+    return {"status": "ok"}
+
+
+@app.get("/api/agent/{screen_id}/telemetry")
+async def get_agent_telemetry(screen_id: str):
+    """Get latest telemetry for a specific agent."""
+    if screen_id in _agent_telemetry:
+        return _agent_telemetry[screen_id]
+    return {"error": "No telemetry for this screen", "screen_id": screen_id}
 
 
 # ── Static Files ─────────────────────────────────────────────
