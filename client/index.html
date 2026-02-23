@@ -258,6 +258,9 @@
       currentPageIndex: 0,
       screenParamsOverride: null,  // per-screen params override from navigate command
 
+      // Local agent
+      agentUrl: null,             // e.g. 'http://localhost:9090' if agent detected
+
       // Playlist state
       playlistMode: false,
       playlist: [],           // [{page_id, duration, transition}]
@@ -291,6 +294,8 @@
         this.connectWebSocket();
         // Start FPS counter for health metrics
         this.startFpsCounter();
+        // Discover local agent for media resolution
+        this.discoverAgent();
 
         console.log(`%c✅ Screen '${this.screenId}' ready`, 'color: #2ecc71');
       },
@@ -567,6 +572,70 @@
         } catch(e) { /* ignore */ }
       },
 
+      // ── Local Agent Discovery & Media Resolution ──
+      // Probes for a kiosk agent on localhost. If found, media asset IDs
+      // resolve to local URLs. Otherwise, falls back to central server.
+      async discoverAgent() {
+        const ports = [9090]; // future: configurable or multi-port scan
+        for (const port of ports) {
+          try {
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 2000);
+            const r = await fetch(`http://localhost:${port}/status`, { signal: controller.signal });
+            clearTimeout(timeout);
+            if (r.ok) {
+              const data = await r.json();
+              if (data.agent === 'marchog-kiosk-agent') {
+                this.agentUrl = `http://localhost:${port}`;
+                console.log(`%c[agent] Local agent detected at ${this.agentUrl} (v${data.version})`, 'color: #10b981');
+                return;
+              }
+            }
+          } catch { /* not available on this port */ }
+        }
+        this.agentUrl = null;
+        console.log('[agent] No local agent found, media will stream from server');
+      },
+
+      resolveMediaUrl(assetId) {
+        // Resolve an asset ID to a playable URL.
+        // If local agent is available, use it. Otherwise, use central server.
+        if (!assetId) return assetId;
+        // Already a full URL — don't rewrite
+        if (assetId.startsWith('http://') || assetId.startsWith('https://')) return assetId;
+        // YouTube IDs — don't rewrite
+        if (/^[a-zA-Z0-9_-]{11}$/.test(assetId)) return assetId;
+        // Server-relative URL like /media/videos/foo.mp4
+        if (assetId.startsWith('/media/')) {
+          if (this.agentUrl) return this.agentUrl + assetId;
+          return assetId; // server-relative, browser resolves against origin
+        }
+        // Bare filename like engine-room.mp4
+        const url = `/media/videos/${assetId}`;
+        if (this.agentUrl) return this.agentUrl + url;
+        return url;
+      },
+
+      resolveMediaParams(params) {
+        // Rewrite media asset references in params before sending to pages.
+        if (!params) return params;
+        const resolved = { ...params };
+        // 'asset' field -> resolve and set as 'video' for the video page
+        if (resolved.asset) {
+          resolved.video = this.resolveMediaUrl(resolved.asset);
+          console.log(`[agent] Resolved asset "${resolved.asset}" -> "${resolved.video}"`);
+        }
+        // 'video' field that looks like a bare filename or server path
+        if (resolved.video && !resolved.video.startsWith('http') && !resolved.asset) {
+          resolved.video = this.resolveMediaUrl(resolved.video);
+        }
+        // 'image' field (future use)
+        if (resolved.image) {
+          resolved.image = this.resolveMediaUrl(resolved.image);
+        }
+        return resolved;
+      },
+
       // ── Heartbeat (detect half-open connections) ──
       // Uses numbered pings to eliminate caching/buffering false positives.
       // Client sends "ping:N", server must reply {"type":"pong","seq":N}.
@@ -671,7 +740,7 @@
               if (frame && frame.contentWindow) {
                 const page = this.pages.find(p => p.id === msg.page);
                 const defaultParams = (page && page.params) ? { ...page.params } : {};
-                const merged = { ...defaultParams, ...msg.params };
+                const merged = this.resolveMediaParams({ ...defaultParams, ...msg.params });
                 frame.contentWindow.postMessage({ type: 'configure', ...merged }, '*');
                 console.log(`[navigate] Sent configure to ${msg.page}:`, merged);
               }
@@ -747,7 +816,7 @@
           const page = this.pages.find(p => p.id === pageId);
           const defaultParams = (page && page.params) ? { ...page.params } : {};
           const override = this.screenParamsOverride || {};
-          const merged = { ...defaultParams, ...override };
+          const merged = this.resolveMediaParams({ ...defaultParams, ...override });
           if (Object.keys(merged).length > 0) {
             const frame = this.loadedFrames[pageId];
             if (frame && frame.contentWindow) {
