@@ -15,6 +15,7 @@
   <!-- Mars data -->
   <script src="data/mars/mars_data.js"></script>
   <script src="data/mars/mars_regions.js"></script>
+  <script src="data/mars/mars_geology.js"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&family=Share+Tech+Mono&display=swap');
 
@@ -409,18 +410,22 @@ function drawCelestialMap() {
       });
     });
   }
-  if (currentBody === 'mars' && typeof MARS_REGIONS !== 'undefined') {
-    MARS_REGIONS.forEach(r => {
-      r.polys.forEach(ring => {
+  if (currentBody === 'mars' && typeof MARS_GEOLOGY !== 'undefined') {
+    MARS_GEOLOGY.forEach(u => {
+      u.polys.forEach(ring => {
         if (ring.length < 3) return;
         const pts = ring.map(([lon,lat]) => projectPoint(lon, lat));
+        // Skip polys entirely outside canvas
+        const xmin = Math.min(...pts.map(p=>p[0])), xmax = Math.max(...pts.map(p=>p[0]));
+        const ymin = Math.min(...pts.map(p=>p[1])), ymax = Math.max(...pts.map(p=>p[1]));
+        if (xmax < -50 || xmin > MW+50 || ymax < -50 || ymin > MH+50) return;
         ctx.beginPath();
         ctx.moveTo(pts[0][0], pts[0][1]);
         for (let i=1; i<pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
         ctx.closePath();
-        ctx.fillStyle = `rgba(${accentR},${accentG},${accentB},0.06)`;
+        ctx.fillStyle = `rgba(${accentR},${accentG},${accentB},0.04)`;
         ctx.strokeStyle = `${accent},0.5)`;
-        ctx.lineWidth = 1.2;
+        ctx.lineWidth = 0.8;
         ctx.fill(); ctx.stroke();
       });
     });
@@ -1028,11 +1033,11 @@ function rebuildGlobe() {
     }
 
   } else if (currentBody === 'mars') {
-    // Mars region outlines
-    if (typeof MARS_REGIONS !== 'undefined') {
-      const rMat = new THREE.LineBasicMaterial({ color: 0xff6030, transparent: true, opacity: 0.4 });
-      MARS_REGIONS.forEach(region => {
-        region.polys.forEach(ring => {
+    // Mars USGS geologic unit boundaries (SIM 3292)
+    if (typeof MARS_GEOLOGY !== 'undefined') {
+      const rMat = new THREE.LineBasicMaterial({ color: 0xff6030, transparent: true, opacity: 0.35 });
+      MARS_GEOLOGY.forEach(unit => {
+        unit.polys.forEach(ring => {
           if (ring.length < 3) return;
           const points = ring.map(([lon, lat]) => latLonToVec3(lat, lon, 1.005));
           g.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), rMat));
