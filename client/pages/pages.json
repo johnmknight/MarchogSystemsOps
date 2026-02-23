@@ -54,6 +54,20 @@
     "params": {}
   },
   {
+    "id": "weather",
+    "name": "Weather",
+    "description": "Sci-fi weather readout with vector map and live data from Open-Meteo",
+    "file": "weather.html",
+    "icon": "ti-cloud",
+    "category": "data",
+    "params": {
+      "lat": 27.5222,
+      "lon": -82.5276,
+      "name": "Ellenton, FL",
+      "units": "fahrenheit"
+    }
+  },
+  {
     "id": "selfdestruct",
     "name": "Self Destruct",
     "description": "Self destruct countdown with optional abort/all-clear",
@@ -63,6 +77,20 @@
     "params": {
       "countdown": 60,
       "abort_at": 10
+    }
+  },
+  {
+    "id": "weather",
+    "name": "Weather",
+    "description": "Live atmospheric conditions and forecast in a sci-fi readout",
+    "file": "weather.html",
+    "icon": "ti-cloud",
+    "category": "data",
+    "params": {
+      "lat": 27.5225,
+      "lon": -82.5276,
+      "location": "Ellenton, FL",
+      "units": "imperial"
     }
   }
 ]

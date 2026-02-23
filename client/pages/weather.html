@@ -1,0 +1,846 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Marchog Systems — Weather</title>
+  <style>
+    @font-face { font-family: 'Aurebesh'; src: url('../fonts/Aurebesh.otf') format('opentype'); }
+    @font-face { font-family: 'Aurebesh'; src: url('../fonts/Aurebesh Bold.otf') format('opentype'); font-weight: bold; }
+    @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&family=Share+Tech+Mono&display=swap');
+
+    :root {
+      --cyan: #00e5ff;
+      --cyan-bright: #40efff;
+      --cyan-dim: rgba(0, 229, 255, 0.35);
+      --cyan-faint: rgba(0, 229, 255, 0.08);
+      --teal: #00bfa5;
+      --orange: #ff9100;
+      --red: #ff3d00;
+      --white: #e8f0ff;
+      --white-bright: #ffffff;
+      --text-primary: #e8f0ff;
+      --text-secondary: #a0c0e0;
+      --bg-dark: #020a14;
+      --bg-panel: rgba(4, 16, 32, 0.8);
+      --border-glow: rgba(0, 229, 255, 0.18);
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      width: 100%; height: 100%; overflow: hidden;
+      background: var(--bg-dark);
+      font-family: 'Share Tech Mono', monospace;
+      color: var(--text-primary);
+    }
+
+    #mapCanvas { position: absolute; inset: 0; z-index: 1; }
+
+    /* ── HUD Layer (all overlays) ── */
+    #hud { position: absolute; inset: 0; z-index: 10; pointer-events: none; }
+
+    /* ── Top Left: System ID ── */
+    .hud-system {
+      position: absolute; top: 10px; left: 14px;
+      font-family: 'Orbitron', sans-serif;
+      font-size: 0.5em; font-weight: 500;
+      letter-spacing: 0.2em; color: var(--cyan); opacity: 0.5;
+      text-transform: uppercase;
+    }
+
+    /* ── Top Right: Clock ── */
+    .hud-clock {
+      position: absolute; top: 10px; right: 14px;
+      text-align: right;
+    }
+    .hud-clock-time {
+      font-family: 'Orbitron', sans-serif;
+      font-size: clamp(1em, 2vw, 1.6em);
+      font-weight: 700; color: var(--white-bright);
+      letter-spacing: 0.06em;
+      text-shadow: 0 0 10px rgba(0, 229, 255, 0.25);
+    }
+    .hud-clock-date {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 0.65em; color: var(--cyan-bright);
+      letter-spacing: 0.06em;
+    }
+
+    /* ── Location Callout (anchored near beacon) ── */
+    .hud-callout {
+      position: absolute;
+      pointer-events: auto;
+    }
+    .callout-inner {
+      background: var(--bg-panel);
+      border: 1px solid var(--border-glow);
+      border-radius: 4px;
+      padding: 10px 14px;
+      backdrop-filter: blur(8px);
+      position: relative;
+      min-width: 180px;
+    }
+    .callout-inner::before {
+      content: '';
+      position: absolute; top: 0; left: 0; right: 0; height: 1px;
+      background: linear-gradient(90deg, transparent, var(--cyan), transparent);
+      opacity: 0.5;
+    }
+    .callout-location {
+      font-family: 'Orbitron', sans-serif;
+      font-size: clamp(1.4em, 3.5vw, 2.8em);
+      font-weight: 800; letter-spacing: 0.04em;
+      color: var(--white-bright);
+      text-shadow: 0 0 20px rgba(0, 229, 255, 0.4), 0 0 40px rgba(0, 229, 255, 0.15);
+      line-height: 1.1;
+    }
+    .callout-coords {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 0.72em; color: var(--cyan-bright);
+      letter-spacing: 0.06em; margin-top: 2px;
+    }
+    .callout-divider {
+      height: 1px; margin: 8px 0;
+      background: linear-gradient(90deg, var(--cyan-dim), transparent);
+    }
+    .callout-temp-row {
+      display: flex; align-items: baseline; gap: 12px;
+    }
+    .callout-temp {
+      font-family: 'Orbitron', sans-serif;
+      font-size: clamp(2.2em, 5vw, 3.8em);
+      font-weight: 900; color: var(--white-bright);
+      line-height: 1;
+      text-shadow: 0 0 14px rgba(0, 229, 255, 0.2);
+    }
+    .callout-temp .unit {
+      font-size: 0.35em; font-weight: 500;
+      color: var(--cyan-bright); vertical-align: super;
+    }
+    .callout-condition {
+      display: flex; flex-direction: column; gap: 1px;
+    }
+    .callout-condition-icon { font-size: 1.6em; }
+    .callout-condition-text {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 0.55em; font-weight: 600;
+      color: var(--white); letter-spacing: 0.08em;
+    }
+    .callout-feels {
+      font-size: 0.7em; color: var(--text-secondary);
+      margin-top: 4px; letter-spacing: 0.03em;
+    }
+    /* Leader line drawn on canvas */
+
+    /* ── Corner Readouts ── */
+    .hud-readout {
+      position: absolute;
+      pointer-events: auto;
+    }
+    .readout-block {
+      background: var(--bg-panel);
+      border: 1px solid var(--border-glow);
+      border-radius: 3px;
+      padding: 8px 12px;
+      backdrop-filter: blur(6px);
+      min-width: 130px;
+    }
+    .readout-title {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 0.45em; font-weight: 600;
+      letter-spacing: 0.15em; color: var(--cyan);
+      text-transform: uppercase; margin-bottom: 6px;
+    }
+    .readout-row {
+      display: flex; justify-content: space-between;
+      align-items: baseline; margin-top: 3px;
+    }
+    .readout-label {
+      font-size: 0.65em; color: var(--text-secondary);
+      letter-spacing: 0.03em;
+    }
+    .readout-value {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 0.75em; font-weight: 600;
+      color: var(--white-bright);
+    }
+
+    /* ── Wind Readout (top-right area) ── */
+    .hud-wind {
+      position: absolute;
+      pointer-events: auto;
+    }
+    .wind-block {
+      background: var(--bg-panel);
+      border: 1px solid var(--border-glow);
+      border-radius: 3px;
+      padding: 8px 12px;
+      backdrop-filter: blur(6px);
+      text-align: center;
+      min-width: 110px;
+    }
+    .wind-title {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 0.45em; font-weight: 600;
+      letter-spacing: 0.15em; color: var(--cyan);
+      text-transform: uppercase; margin-bottom: 4px;
+    }
+    .wind-speed {
+      font-family: 'Orbitron', sans-serif;
+      font-size: clamp(1.2em, 2vw, 1.8em);
+      font-weight: 800; color: var(--white-bright);
+      line-height: 1;
+    }
+    .wind-speed .unit {
+      font-size: 0.4em; font-weight: 500;
+      color: var(--cyan-bright); margin-left: 2px;
+    }
+    .wind-dir {
+      font-size: 0.7em; color: var(--text-secondary);
+      margin-top: 3px;
+    }
+    .wind-gust {
+      font-size: 0.6em; color: var(--text-secondary);
+      margin-top: 2px;
+    }
+
+    /* ── Bottom Forecast Strip ── */
+    .hud-forecast {
+      position: absolute; bottom: 10px;
+      left: 50%; transform: translateX(-50%);
+      pointer-events: auto;
+    }
+    .forecast-strip {
+      display: flex; gap: 3px;
+      background: var(--bg-panel);
+      border: 1px solid var(--border-glow);
+      border-radius: 4px;
+      padding: 6px 10px;
+      backdrop-filter: blur(8px);
+    }
+    .forecast-day {
+      text-align: center; padding: 3px 8px;
+      min-width: 52px;
+      border-right: 1px solid rgba(0, 229, 255, 0.06);
+    }
+    .forecast-day:last-child { border-right: none; }
+    .forecast-day-name {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 0.45em; font-weight: 600;
+      color: var(--cyan); letter-spacing: 0.1em;
+    }
+    .forecast-day-icon { font-size: 1.1em; margin: 1px 0; }
+    .forecast-day-temp {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 0.72em; color: var(--white-bright);
+    }
+    .forecast-day-lo {
+      font-size: 0.58em; color: var(--text-secondary);
+    }
+
+    /* ── Settings ── */
+    #settingsToggle {
+      position: absolute; top: 10px; right: 120px; z-index: 100;
+      width: 28px; height: 28px;
+      background: rgba(4, 16, 32, 0.5);
+      border: 1px solid var(--border-glow); border-radius: 3px;
+      color: var(--text-secondary); font-size: 14px;
+      cursor: pointer; display: flex; align-items: center; justify-content: center;
+      transition: all 0.2s; opacity: 0; pointer-events: auto;
+    }
+    body:hover #settingsToggle { opacity: 1; }
+    #settingsToggle:hover { color: var(--cyan); border-color: var(--cyan); }
+
+    #settingsPanel {
+      position: absolute; top: 44px; right: 14px; z-index: 100;
+      width: 280px; background: var(--bg-panel);
+      border: 1px solid var(--border-glow); border-radius: 6px;
+      padding: 14px; display: none;
+      backdrop-filter: blur(12px); pointer-events: auto;
+    }
+    #settingsPanel.open { display: block; }
+    .settings-title {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 0.6em; font-weight: 600;
+      letter-spacing: 0.12em; color: var(--cyan);
+      margin-bottom: 10px; text-transform: uppercase;
+    }
+    .setting-group { margin-bottom: 10px; }
+    .setting-group label {
+      display: block; font-size: 0.65em;
+      color: var(--text-secondary); margin-bottom: 3px;
+    }
+    .setting-group input, .setting-group select {
+      width: 100%; background: rgba(4, 16, 32, 0.9);
+      border: 1px solid rgba(0, 229, 255, 0.15);
+      color: var(--text-primary); font-family: 'Share Tech Mono', monospace;
+      font-size: 0.75em; padding: 5px 8px; border-radius: 3px;
+    }
+    .setting-group input:focus, .setting-group select:focus {
+      outline: none; border-color: var(--cyan);
+    }
+    .btn-apply {
+      width: 100%; background: rgba(0, 229, 255, 0.1);
+      border: 1px solid rgba(0, 229, 255, 0.3);
+      color: var(--cyan); font-family: 'Orbitron', sans-serif;
+      font-size: 0.55em; font-weight: 500;
+      letter-spacing: 0.1em; padding: 7px; border-radius: 3px;
+      cursor: pointer;
+    }
+    .btn-apply:hover { background: rgba(0, 229, 255, 0.2); }
+
+    .loading {
+      color: var(--text-secondary); font-size: 0.8em;
+      animation: pulse 1.5s ease-in-out infinite;
+    }
+    @keyframes pulse { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }
+  </style>
+</head>
+<body>
+  <canvas id="mapCanvas"></canvas>
+
+  <div id="hud">
+    <!-- Top Left: System ID -->
+    <div class="hud-system">Marchog Planetary Surface Monitor</div>
+
+    <!-- Top Right: Clock -->
+    <div class="hud-clock">
+      <div class="hud-clock-time" id="clock">--:--:--</div>
+      <div class="hud-clock-date" id="clockDate">----.--.--</div>
+    </div>
+
+    <!-- Location Callout (positioned by JS near beacon) -->
+    <div class="hud-callout" id="callout">
+      <div class="callout-inner">
+        <div class="callout-location" id="locationName">LOADING...</div>
+        <div class="callout-coords" id="locationCoords">---.---- N / ---.---- W</div>
+        <div class="callout-divider"></div>
+        <div class="callout-temp-row">
+          <div class="callout-temp" id="tempValue"><span class="loading">--</span></div>
+          <div class="callout-condition">
+            <span class="callout-condition-icon" id="conditionIcon"></span>
+            <span class="callout-condition-text" id="conditionText">---</span>
+          </div>
+        </div>
+        <div class="callout-feels" id="feelsLike"></div>
+      </div>
+    </div>
+
+    <!-- Wind (positioned top-right of map area) -->
+    <div class="hud-wind" id="windBlock">
+      <div class="wind-block">
+        <div class="wind-title">Wind</div>
+        <div class="wind-speed" id="windValue">--<span class="unit">mph</span></div>
+        <div class="wind-dir" id="windDir">---</div>
+        <div class="wind-gust" id="windGust"></div>
+      </div>
+    </div>
+
+    <!-- Atmosphere (bottom-left corner) -->
+    <div class="hud-readout" id="atmoBlock">
+      <div class="readout-block">
+        <div class="readout-title">Atmosphere</div>
+        <div class="readout-row">
+          <span class="readout-label">Humidity</span>
+          <span class="readout-value" id="humidity">---</span>
+        </div>
+        <div class="readout-row">
+          <span class="readout-label">Pressure</span>
+          <span class="readout-value" id="pressure">---</span>
+        </div>
+        <div class="readout-row">
+          <span class="readout-label">Visibility</span>
+          <span class="readout-value" id="visibility">---</span>
+        </div>
+        <div class="readout-row">
+          <span class="readout-label">Cloud Cover</span>
+          <span class="readout-value" id="cloudCover">---</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Forecast Strip (bottom center) -->
+    <div class="hud-forecast">
+      <div class="forecast-strip" id="forecastStrip">
+        <div class="loading" style="padding:8px 20px;">Loading forecast...</div>
+      </div>
+    </div>
+  </div>
+
+  <button id="settingsToggle" onclick="toggleSettings()">&#9881;</button>
+  <div id="settingsPanel">
+    <div class="settings-title">Weather Settings</div>
+    <div class="setting-group">
+      <label>Location Name</label>
+      <input id="setLocationName" type="text" placeholder="e.g. Ellenton, FL">
+    </div>
+    <div class="setting-group">
+      <label>Latitude</label>
+      <input id="setLat" type="number" step="0.0001" placeholder="27.5222">
+    </div>
+    <div class="setting-group">
+      <label>Longitude</label>
+      <input id="setLon" type="number" step="0.0001" placeholder="-82.5276">
+    </div>
+    <div class="setting-group">
+      <label>Units</label>
+      <select id="setUnits">
+        <option value="fahrenheit">Fahrenheit</option>
+        <option value="celsius">Celsius</option>
+      </select>
+    </div>
+    <button class="btn-apply" onclick="applySettings()">APPLY</button>
+  </div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+//  MARCHOG WEATHER — Tactical HUD with Vector Map
+// ═══════════════════════════════════════════════════════════════
+
+let CFG = {
+  lat: 27.5222, lon: -82.5276,
+  name: 'ELLENTON, FL',
+  units: 'fahrenheit',
+  refreshInterval: 300000,
+};
+
+const params = new URLSearchParams(window.location.search);
+if (params.get('lat')) CFG.lat = parseFloat(params.get('lat'));
+if (params.get('lon')) CFG.lon = parseFloat(params.get('lon'));
+if (params.get('name')) CFG.name = decodeURIComponent(params.get('name')).toUpperCase();
+if (params.get('units')) CFG.units = params.get('units');
+
+const WMO_CODES = {
+  0:{desc:'Clear Sky',icon:'☀️'},1:{desc:'Mainly Clear',icon:'🌤️'},
+  2:{desc:'Partly Cloudy',icon:'⛅'},3:{desc:'Overcast',icon:'☁️'},
+  45:{desc:'Fog',icon:'🌫️'},48:{desc:'Rime Fog',icon:'🌫️'},
+  51:{desc:'Light Drizzle',icon:'🌧️'},53:{desc:'Mod. Drizzle',icon:'🌧️'},
+  55:{desc:'Dense Drizzle',icon:'🌧️'},61:{desc:'Slight Rain',icon:'🌧️'},
+  63:{desc:'Mod. Rain',icon:'🌧️'},65:{desc:'Heavy Rain',icon:'🌧️'},
+  71:{desc:'Slight Snow',icon:'🌨️'},73:{desc:'Mod. Snow',icon:'🌨️'},
+  75:{desc:'Heavy Snow',icon:'🌨️'},80:{desc:'Rain Showers',icon:'🌦️'},
+  81:{desc:'Mod. Showers',icon:'🌦️'},82:{desc:'Heavy Showers',icon:'⛈️'},
+  95:{desc:'Thunderstorm',icon:'⛈️'},96:{desc:'T-Storm+Hail',icon:'⛈️'},
+  99:{desc:'Heavy T-Storm',icon:'⛈️'},
+};
+const DAYS = ['SUN','MON','TUE','WED','THU','FRI','SAT'];
+
+// ═══════════════════════════════════════════════════════════════
+//  VECTOR MAP
+// ═══════════════════════════════════════════════════════════════
+const canvas = document.getElementById('mapCanvas');
+const ctx = canvas.getContext('2d');
+let W, H;
+
+function projectPoint(lon, lat) {
+  const lonMin = -130, lonMax = -63, latMin = 22, latMax = 52;
+  const mapW = W * 0.82, mapH = H * 0.72;
+  const mapX = (W - mapW) / 2;
+  const mapY = (H - mapH) / 2;
+  return [
+    mapX + ((lon - lonMin) / (lonMax - lonMin)) * mapW,
+    mapY + ((latMax - lat) / (latMax - latMin)) * mapH
+  ];
+}
+
+// Returns screen coords of the configured location
+function beaconXY() { return projectPoint(CFG.lon, CFG.lat); }
+
+const STATES = [
+  {abbr:'WA',center:[-120.5,47.4],paths:[[[-117,49],[-124.7,48.4],[-124.7,46.3],[-123.2,46.2],[-117,46],[-117,49]]]},
+  {abbr:'OR',center:[-120.5,44],paths:[[[-124.6,46.3],[-124.6,42],[-117,42],[-117,46],[-123.2,46.2],[-124.6,46.3]]]},
+  {abbr:'CA',center:[-119.5,37],paths:[[[-124.4,42],[-124.4,40],[-122.4,37.8],[-121.8,36.6],[-120.6,35],[-118.5,34],[-117.2,32.5],[-114.6,32.7],[-114.6,35],[-120,39],[-120,42],[-124.4,42]]]},
+  {abbr:'NV',center:[-116.8,39],paths:[[[-120,42],[-114.6,35],[-114.6,37],[-114,37],[-114,42],[-120,42]]]},
+  {abbr:'ID',center:[-114.5,44.5],paths:[[[-117,49],[-117,46],[-117,42],[-114,42],[-111.1,44.5],[-111.1,45],[-112.5,44.5],[-114.5,46],[-116.1,46],[-117,46.4],[-117,49]]]},
+  {abbr:'UT',center:[-111.5,39.3],paths:[[[-114,42],[-114,37],[-109,37],[-109,41],[-111.1,41],[-111.1,42],[-114,42]]]},
+  {abbr:'AZ',center:[-111.5,34.2],paths:[[[-114.6,37],[-114.6,32.7],[-111.1,31.3],[-109,31.3],[-109,37],[-114.6,37]]]},
+  {abbr:'MT',center:[-109.5,47],paths:[[[-116.1,49],[-104,49],[-104,45],[-111.1,45],[-111.1,44.5],[-112.5,44.5],[-114.5,46],[-116.1,46],[-116.1,49]]]},
+  {abbr:'WY',center:[-107.5,43],paths:[[[-111.1,45],[-104,45],[-104,41],[-111.1,41],[-111.1,45]]]},
+  {abbr:'CO',center:[-105.5,39],paths:[[[-109,41],[-102,41],[-102,37],[-109,37],[-109,41]]]},
+  {abbr:'NM',center:[-106,34.5],paths:[[[-109,37],[-103,37],[-103,32],[-106.6,32],[-106.6,31.8],[-108.2,31.8],[-109,31.3],[-109,37]]]},
+  {abbr:'ND',center:[-100.5,47.5],paths:[[[-104,49],[-97,49],[-97,46],[-104,46],[-104,49]]]},
+  {abbr:'SD',center:[-100,44.5],paths:[[[-104,46],[-96.5,46],[-96.5,43],[-96.4,42.5],[-104,43],[-104,46]]]},
+  {abbr:'NE',center:[-100,41.5],paths:[[[-104,43],[-96.4,42.5],[-95.3,40],[-102,40],[-104,41],[-104,43]]]},
+  {abbr:'KS',center:[-98.5,38.5],paths:[[[-102,40],[-94.6,40],[-94.6,37],[-102,37],[-102,40]]]},
+  {abbr:'OK',center:[-97.5,35.5],paths:[[[-103,37],[-94.4,37],[-94.4,36.5],[-94.8,33.8],[-100,34],[-100,36.5],[-103,36.5],[-103,37]]]},
+  {abbr:'TX',center:[-99,31],paths:[[[-106.6,32],[-103,32],[-103,36.5],[-100,36.5],[-100,34],[-94.8,33.8],[-93.5,31],[-94,30],[-94,29.7],[-96.4,28.5],[-97.1,26],[-97.8,26.5],[-99.2,26.5],[-100.5,28.5],[-103,29],[-104.7,29.6],[-106.4,31.7],[-106.6,32]]]},
+  {abbr:'MN',center:[-94.5,46],paths:[[[-97,49],[-89.5,48],[-89.7,47.3],[-92.3,46.7],[-92.5,45.6],[-92.7,45],[-92.8,44.5],[-91.2,43.5],[-96.5,43.5],[-96.5,46],[-97,46],[-97,49]]]},
+  {abbr:'IA',center:[-93.5,42],paths:[[[-96.5,43.5],[-91.2,43.5],[-90.2,42.5],[-90.2,41.5],[-91,40.6],[-95.3,40.6],[-96.4,42.5],[-96.5,43.5]]]},
+  {abbr:'MO',center:[-92.5,38.5],paths:[[[-95.3,40.6],[-91,40.6],[-91.4,39.8],[-90.3,38.2],[-89.1,36.5],[-90.2,36.5],[-90.3,36],[-94.6,36],[-94.6,37],[-94.6,40],[-95.3,40.6]]]},
+  {abbr:'AR',center:[-92.4,34.8],paths:[[[-94.4,36.5],[-90,36],[-90,35.5],[-91,33],[-94.5,33],[-94.4,36.5]]]},
+  {abbr:'LA',center:[-92,30.8],paths:[[[-94.5,33],[-91,33],[-91,31],[-89.8,30.2],[-89,29.5],[-90.2,29],[-92,29.5],[-93.5,29.8],[-94,30],[-94.5,33]]]},
+  {abbr:'WI',center:[-89.5,44.5],paths:[[[-92.8,46.8],[-87,45],[-87,43],[-87.8,42.5],[-90.6,42.5],[-91.2,43.5],[-92.8,44.5],[-92.3,46.7],[-92.8,46.8]]]},
+  {abbr:'IL',center:[-89.5,40],paths:[[[-90.6,42.5],[-87.5,42],[-87.5,39],[-88.1,37.5],[-89.1,36.5],[-90.3,38.2],[-91.4,39.8],[-91,40.6],[-90.2,41.5],[-90.2,42.5],[-90.6,42.5]]]},
+  {abbr:'MS',center:[-89.6,32.5],paths:[[[-91,33],[-89,32.5],[-88.5,31],[-88.5,30.2],[-89,29.5],[-89.8,30.2],[-91,31],[-91,33]]]},
+  {abbr:'MI',center:[-84.7,44.3],paths:[[[-87,45],[-84.8,46],[-83.4,45.1],[-82.4,43],[-83.5,42],[-84.8,41.7],[-87,42.5],[-87,45]]]},
+  {abbr:'IN',center:[-86.3,39.7],paths:[[[-87.5,42],[-84.8,41.7],[-84.8,39],[-88,37.8],[-87.5,39],[-87.5,42]]]},
+  {abbr:'OH',center:[-82.7,40.2],paths:[[[-84.8,41.7],[-80.5,42],[-80.5,40],[-81.8,39.1],[-84.3,38.5],[-84.8,39],[-84.8,41.7]]]},
+  {abbr:'KY',center:[-85.3,37.8],paths:[[[-89.1,36.5],[-82,36.5],[-81.9,37.3],[-82.6,38.1],[-84.3,38.5],[-84.8,39],[-88,37.8],[-88.1,37.5],[-89.1,36.5]]]},
+  {abbr:'TN',center:[-86,35.7],paths:[[[-90,36],[-81.7,36.5],[-82,36.5],[-82,35],[-84.3,35],[-90,35],[-90,36]]]},
+  {abbr:'AL',center:[-86.8,32.8],paths:[[[-88.5,35],[-85,35],[-85,32],[-85,31],[-87.5,30.2],[-88.5,30.2],[-88.5,31],[-88.5,35]]]},
+  {abbr:'GA',center:[-83.5,32.7],paths:[[[-85,35],[-81.2,35],[-81,32],[-81.1,31],[-82,30.5],[-84,30.5],[-85,31],[-85,32],[-85,35]]]},
+  {abbr:'FL',center:[-81.5,28.5],paths:[[[-87.5,31],[-85,31],[-84,30.5],[-82,30.5],[-81.1,31],[-81,29],[-80.5,28],[-80.2,26],[-80.4,25.2],[-81.8,25],[-82.6,27.5],[-82.8,29.5],[-84.9,30],[-87.5,30.2],[-87.5,31]]]},
+  {abbr:'SC',center:[-80.9,33.8],paths:[[[-83.1,35],[-81.2,35],[-81,34],[-79,33.2],[-78.5,33.8],[-80.8,32],[-83.1,35]]]},
+  {abbr:'NC',center:[-79.8,35.5],paths:[[[-84.3,35],[-75.5,36.5],[-75.5,35],[-77,34],[-78.5,33.8],[-79,33.2],[-81,34],[-81.2,35],[-83.1,35],[-84.3,35]]]},
+  {abbr:'VA',center:[-79.3,37.5],paths:[[[-83.7,36.5],[-75.5,37],[-75.5,38.5],[-77,38.5],[-77.2,38],[-79.5,39.5],[-80.5,40],[-81.8,39.1],[-82,37.3],[-81.9,37.3],[-82,36.5],[-83.7,36.5]]]},
+  {abbr:'WV',center:[-80.5,38.6],paths:[[[-82.6,38.1],[-81.8,39.1],[-80.5,40],[-79.5,39.5],[-77.8,39.5],[-78.4,39.2],[-79.5,38.5],[-80.5,37.5],[-82,36.5],[-82,37.3],[-82.6,38.1]]]},
+  {abbr:'MD',center:[-76.7,39],paths:[[[-79.5,39.5],[-77.2,38],[-76,38],[-75.2,38.5],[-75.5,38.5],[-75.5,39.7],[-79.5,39.7],[-79.5,39.5]]]},
+  {abbr:'DE',center:[-75.5,39],paths:[[[-75.8,39.7],[-75.1,39.5],[-75.5,38.5],[-75.8,39.7]]]},
+  {abbr:'NJ',center:[-74.5,40.1],paths:[[[-75.5,39.7],[-75.5,41.4],[-74,41],[-73.9,40.4],[-74.3,39.5],[-75.5,39.7]]]},
+  {abbr:'PA',center:[-77.5,41],paths:[[[-80.5,42],[-80.5,40],[-79.5,39.7],[-75.5,39.7],[-75.5,41.4],[-80,42],[-80.5,42]]]},
+  {abbr:'NY',center:[-75.5,42.5],paths:[[[-79.8,42.5],[-73.8,42],[-73.7,41],[-74,41],[-75.5,41.4],[-80,42],[-79.8,42.5]]]},
+  {abbr:'CT',center:[-72.7,41.6],paths:[[[-73.7,42.1],[-71.8,42.1],[-71.8,41],[-73.7,41],[-73.7,42.1]]]},
+  {abbr:'RI',center:[-71.5,41.7],paths:[[[-71.8,42.1],[-71.1,42.1],[-71.1,41.2],[-71.8,41.2],[-71.8,42.1]]]},
+  {abbr:'MA',center:[-71.8,42.3],paths:[[[-73.5,42.8],[-69.9,41.7],[-71.1,41.2],[-71.1,42.1],[-71.8,42.1],[-73.5,42.1],[-73.5,42.8]]]},
+  {abbr:'VT',center:[-72.6,44],paths:[[[-73.4,45],[-71.5,45],[-71.5,42.7],[-73.3,42.7],[-73.4,44],[-73.4,45]]]},
+  {abbr:'NH',center:[-71.5,43.7],paths:[[[-72.6,45.3],[-71,45.3],[-71,43],[-71.5,42.7],[-71.5,45],[-72.6,45.3]]]},
+  {abbr:'ME',center:[-69,45.2],paths:[[[-71,45.3],[-67,47.3],[-67,44.5],[-68,44],[-69.5,43.5],[-71,43],[-71,45.3]]]},
+];
+
+// ── Map Rendering ──
+let animT = 0, pulseT = 0;
+
+function drawMap() {
+  ctx.clearRect(0, 0, W, H);
+
+  // Background
+  const bg = ctx.createRadialGradient(W*0.4, H*0.45, 0, W*0.4, H*0.45, W*0.8);
+  bg.addColorStop(0, '#061020');
+  bg.addColorStop(0.5, '#030a16');
+  bg.addColorStop(1, '#010408');
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+
+  animT += 0.016;
+  pulseT += 0.04;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  // Grid lines (faint lat/lon)
+  ctx.strokeStyle = 'rgba(0, 229, 255, 0.02)';
+  ctx.lineWidth = 0.5;
+  for (let lat = 25; lat <= 50; lat += 5) {
+    const [x1,y1] = projectPoint(-130,lat);
+    const [x2,y2] = projectPoint(-63,lat);
+    ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+  }
+  for (let lon = -125; lon <= -65; lon += 5) {
+    const [x1,y1] = projectPoint(lon,22);
+    const [x2,y2] = projectPoint(lon,52);
+    ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+  }
+
+  // State fills
+  STATES.forEach(s => {
+    s.paths.forEach(path => {
+      if (path.length < 3) return;
+      ctx.beginPath();
+      const [sx,sy] = projectPoint(path[0][0], path[0][1]);
+      ctx.moveTo(sx,sy);
+      for (let i=1; i<path.length; i++) {
+        const [px,py] = projectPoint(path[i][0], path[i][1]);
+        ctx.lineTo(px,py);
+      }
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(0, 229, 255, 0.018)';
+      ctx.fill();
+    });
+  });
+
+  // State borders — glow layer
+  ctx.shadowColor = 'rgba(0, 229, 255, 0.5)';
+  ctx.shadowBlur = 8;
+  drawStateStrokes('rgba(0, 229, 255, 0.14)', 1.5);
+  ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0;
+
+  // State borders — crisp layer
+  drawStateStrokes('rgba(0, 229, 255, 0.3)', 0.8);
+
+  // Vertex nodes
+  STATES.forEach(s => {
+    s.paths.forEach(path => {
+      path.forEach(([lon, lat]) => {
+        const [x,y] = projectPoint(lon, lat);
+        ctx.beginPath(); ctx.arc(x,y, 1.8, 0, Math.PI*2);
+        ctx.fillStyle = 'rgba(0, 229, 255, 0.4)';
+        ctx.fill();
+      });
+    });
+  });
+
+  // Network connections between nearby state centers
+  ctx.strokeStyle = 'rgba(0, 229, 255, 0.05)';
+  ctx.lineWidth = 0.5;
+  for (let i=0; i<STATES.length; i++) {
+    for (let j=i+1; j<STATES.length; j++) {
+      const [x1,y1] = projectPoint(STATES[i].center[0], STATES[i].center[1]);
+      const [x2,y2] = projectPoint(STATES[j].center[0], STATES[j].center[1]);
+      if (Math.hypot(x2-x1, y2-y1) < W*0.12) {
+        ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+      }
+    }
+  }
+
+  // State center dots
+  STATES.forEach(s => {
+    const [cx,cy] = projectPoint(s.center[0], s.center[1]);
+    ctx.beginPath(); ctx.arc(cx,cy, 2.2, 0, Math.PI*2);
+    ctx.fillStyle = 'rgba(0, 229, 255, 0.2)'; ctx.fill();
+  });
+
+  // ── Location Beacon ──
+  const [lx,ly] = beaconXY();
+  const pr = 8 + Math.sin(pulseT) * 4;
+  const pa = 0.4 + Math.sin(pulseT) * 0.2;
+
+  ctx.beginPath(); ctx.arc(lx,ly, pr*2.5, 0, Math.PI*2);
+  ctx.strokeStyle = `rgba(0,229,255,${pa*0.15})`; ctx.lineWidth=1; ctx.stroke();
+
+  ctx.beginPath(); ctx.arc(lx,ly, pr*1.5, 0, Math.PI*2);
+  ctx.strokeStyle = `rgba(0,229,255,${pa*0.3})`; ctx.lineWidth=1.5; ctx.stroke();
+
+  const lg = ctx.createRadialGradient(lx,ly, 0, lx,ly, pr);
+  lg.addColorStop(0, `rgba(0,229,255,${pa})`);
+  lg.addColorStop(0.5, `rgba(0,229,255,${pa*0.3})`);
+  lg.addColorStop(1, 'rgba(0,229,255,0)');
+  ctx.fillStyle = lg;
+  ctx.fillRect(lx-pr, ly-pr, pr*2, pr*2);
+
+  ctx.shadowColor='rgba(0,229,255,0.8)'; ctx.shadowBlur=12;
+  ctx.beginPath(); ctx.arc(lx,ly, 4, 0, Math.PI*2);
+  ctx.fillStyle='#00e5ff'; ctx.fill();
+  ctx.shadowColor='transparent'; ctx.shadowBlur=0;
+
+  // ── Leader line from beacon to callout ──
+  const callout = document.getElementById('callout');
+  if (callout) {
+    const cr = callout.getBoundingClientRect();
+    // Anchor point: right edge center of callout
+    const ax = cr.right + 4;
+    const ay = cr.top + cr.height * 0.5;
+    ctx.beginPath();
+    ctx.moveTo(lx, ly);
+    // Elbow line
+    const midX = (ax + lx) / 2;
+    ctx.lineTo(midX, ly);
+    ctx.lineTo(midX, ay);
+    ctx.lineTo(ax, ay);
+    ctx.strokeStyle = 'rgba(0, 229, 255, 0.25)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 4]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    // Small dot at elbow origin
+    ctx.beginPath(); ctx.arc(lx, ly, 6, 0, Math.PI*2);
+    ctx.strokeStyle = 'rgba(0,229,255,0.15)'; ctx.lineWidth=1; ctx.stroke();
+  }
+
+  // Scan line
+  const scanY = (animT * 35) % H;
+  const sg = ctx.createLinearGradient(0, scanY-20, 0, scanY+20);
+  sg.addColorStop(0, 'rgba(0,229,255,0)');
+  sg.addColorStop(0.5, 'rgba(0,229,255,0.03)');
+  sg.addColorStop(1, 'rgba(0,229,255,0)');
+  ctx.fillStyle = sg;
+  ctx.fillRect(0, scanY-20, W, 40);
+
+  requestAnimationFrame(drawMap);
+}
+
+function drawStateStrokes(color, width) {
+  STATES.forEach(s => {
+    s.paths.forEach(path => {
+      if (path.length < 3) return;
+      ctx.beginPath();
+      const [sx,sy] = projectPoint(path[0][0], path[0][1]);
+      ctx.moveTo(sx,sy);
+      for (let i=1; i<path.length; i++) {
+        const [px,py] = projectPoint(path[i][0], path[i][1]);
+        ctx.lineTo(px,py);
+      }
+      ctx.closePath();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = width;
+      ctx.stroke();
+    });
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  HUD POSITIONING — place overlays relative to map/beacon
+// ═══════════════════════════════════════════════════════════════
+
+function positionHUD() {
+  const [bx, by] = beaconXY();
+
+  // Callout: left of beacon, vertically centered on it
+  const callout = document.getElementById('callout');
+  const calloutW = callout.offsetWidth || 260;
+  const calloutH = callout.offsetHeight || 160;
+  // Place to the left with offset, clamped to viewport
+  let cx = bx - calloutW - 80;
+  let cy = by - calloutH / 2;
+  cx = Math.max(14, Math.min(cx, W - calloutW - 14));
+  cy = Math.max(40, Math.min(cy, H - calloutH - 80));
+  callout.style.left = cx + 'px';
+  callout.style.top = cy + 'px';
+
+  // Wind block: top-right quadrant of the map
+  const wind = document.getElementById('windBlock');
+  wind.style.right = '14px';
+  wind.style.top = (H * 0.12) + 'px';
+
+  // Atmosphere: bottom-left
+  const atmo = document.getElementById('atmoBlock');
+  atmo.style.left = '14px';
+  atmo.style.bottom = '56px';
+}
+
+function resizeCanvas() {
+  W = canvas.width = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+  positionHUD();
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  WEATHER DATA (Open-Meteo — free, no API key)
+// ═══════════════════════════════════════════════════════════════
+
+async function fetchWeather() {
+  const tu = CFG.units === 'celsius' ? 'celsius' : 'fahrenheit';
+  const wu = CFG.units === 'celsius' ? 'kmh' : 'mph';
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${CFG.lat}&longitude=${CFG.lon}`
+    + `&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,cloud_cover,surface_pressure,wind_speed_10m,wind_direction_10m,wind_gusts_10m,visibility`
+    + `&daily=weather_code,temperature_2m_max,temperature_2m_min`
+    + `&temperature_unit=${tu}&wind_speed_unit=${wu}`
+    + `&timezone=auto&forecast_days=7`;
+  try {
+    const resp = await fetch(url);
+    const data = await resp.json();
+    updateUI(data);
+  } catch (e) { console.error('[weather] Fetch failed:', e); }
+}
+
+function updateUI(data) {
+  const c = data.current;
+  const us = CFG.units === 'celsius' ? '°C' : '°F';
+  const ws = CFG.units === 'celsius' ? 'km/h' : 'mph';
+
+  document.getElementById('locationName').textContent = CFG.name;
+  document.getElementById('locationCoords').textContent =
+    `${Math.abs(CFG.lat).toFixed(4)}° ${CFG.lat>=0?'N':'S'} / ${Math.abs(CFG.lon).toFixed(4)}° ${CFG.lon>=0?'E':'W'}`;
+
+  document.getElementById('tempValue').innerHTML =
+    `${Math.round(c.temperature_2m)}<span class="unit">${us}</span>`;
+
+  const wmo = WMO_CODES[c.weather_code] || {desc:'Unknown',icon:'❓'};
+  document.getElementById('conditionIcon').textContent = wmo.icon;
+  document.getElementById('conditionText').textContent = wmo.desc.toUpperCase();
+
+  document.getElementById('feelsLike').textContent =
+    `Feels like ${Math.round(c.apparent_temperature)}${us}`;
+
+  document.getElementById('windValue').innerHTML =
+    `${Math.round(c.wind_speed_10m)}<span class="unit">${ws}</span>`;
+  document.getElementById('windDir').textContent = degToCompass(c.wind_direction_10m);
+  document.getElementById('windGust').textContent =
+    c.wind_gusts_10m ? `Gusts ${Math.round(c.wind_gusts_10m)} ${ws}` : '';
+
+  document.getElementById('humidity').textContent = `${c.relative_humidity_2m}%`;
+  document.getElementById('pressure').textContent = `${Math.round(c.surface_pressure)} hPa`;
+  document.getElementById('visibility').textContent =
+    c.visibility ? `${(c.visibility/1000).toFixed(1)} km` : '---';
+  document.getElementById('cloudCover').textContent = `${c.cloud_cover}%`;
+
+  // Forecast
+  if (data.daily) {
+    const strip = document.getElementById('forecastStrip');
+    strip.innerHTML = '';
+    const d = data.daily;
+    for (let i = 0; i < d.time.length; i++) {
+      const date = new Date(d.time[i] + 'T12:00:00');
+      const dayName = i === 0 ? 'TODAY' : DAYS[date.getDay()];
+      const fwmo = WMO_CODES[d.weather_code[i]] || {icon:'❓'};
+      const el = document.createElement('div');
+      el.className = 'forecast-day';
+      el.innerHTML = `
+        <div class="forecast-day-name">${dayName}</div>
+        <div class="forecast-day-icon">${fwmo.icon}</div>
+        <div class="forecast-day-temp">${Math.round(d.temperature_2m_max[i])}°</div>
+        <div class="forecast-day-lo">${Math.round(d.temperature_2m_min[i])}°</div>`;
+      strip.appendChild(el);
+    }
+  }
+
+  // Reposition callout after content changes size
+  setTimeout(positionHUD, 50);
+}
+
+function degToCompass(deg) {
+  const d = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
+  return d[Math.round(deg/22.5)%16] + ` ${Math.round(deg)}°`;
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  CLOCK + SETTINGS + INIT
+// ═══════════════════════════════════════════════════════════════
+
+function updateClock() {
+  const now = new Date();
+  document.getElementById('clock').textContent =
+    now.toLocaleTimeString('en-US', {hour12:false, hour:'2-digit', minute:'2-digit', second:'2-digit'});
+  document.getElementById('clockDate').textContent = now.toISOString().slice(0,10);
+}
+
+function toggleSettings() {
+  document.getElementById('settingsPanel').classList.toggle('open');
+  document.getElementById('setLocationName').value = CFG.name;
+  document.getElementById('setLat').value = CFG.lat;
+  document.getElementById('setLon').value = CFG.lon;
+  document.getElementById('setUnits').value = CFG.units;
+}
+
+function applySettings() {
+  const name = document.getElementById('setLocationName').value.trim();
+  const lat = parseFloat(document.getElementById('setLat').value);
+  const lon = parseFloat(document.getElementById('setLon').value);
+  if (name) CFG.name = name.toUpperCase();
+  if (!isNaN(lat)) CFG.lat = lat;
+  if (!isNaN(lon)) CFG.lon = lon;
+  CFG.units = document.getElementById('setUnits').value;
+  document.getElementById('settingsPanel').classList.remove('open');
+  resizeCanvas();
+  fetchWeather();
+}
+
+window.addEventListener('message', (event) => {
+  const msg = event.data;
+  if (!msg || typeof msg !== 'object') return;
+  if (msg.type === 'weatherConfig' || msg.type === 'configure') {
+    if (msg.lat) CFG.lat = parseFloat(msg.lat);
+    if (msg.lon) CFG.lon = parseFloat(msg.lon);
+    if (msg.name) CFG.name = msg.name.toUpperCase();
+    if (msg.units) CFG.units = msg.units;
+    resizeCanvas();
+    fetchWeather();
+  }
+});
+
+// ── INIT ──
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+requestAnimationFrame(drawMap);
+updateClock();
+setInterval(updateClock, 1000);
+fetchWeather();
+setInterval(fetchWeather, CFG.refreshInterval);
+
+document.addEventListener('keydown', (e) => {
+  if (['ArrowLeft','ArrowRight'].includes(e.key)) {
+    window.parent.postMessage({type:'keydown', key:e.key}, '*');
+  }
+});
+window.parent.postMessage({type:'pageReady', page:'weather'}, '*');
+</script>
+</body>
+</html>
