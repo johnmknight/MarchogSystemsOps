@@ -1049,7 +1049,7 @@ function showCelestialWeather() {
   document.getElementById('locationName').textContent = feat.name.toUpperCase();
   const flon = normLon(feat.lon);
   document.getElementById('locationCoords').textContent =
-    `${Math.abs(feat.lat).toFixed(2)}° ${feat.lat>=0?'N':'S'} / ${Math.abs(flon).toFixed(2)}° ${flon>=0?'E':'W'}  ·  ${feat.type}`;
+    `${bodyLabel}: ${Math.abs(feat.lat).toFixed(2)}° ${feat.lat>=0?'N':'S'} / ${Math.abs(flon).toFixed(2)}° ${flon>=0?'E':'W'}  ·  ${feat.type}`;
 
   if (currentBody === 'luna') {
     // Luna weather display
@@ -1374,7 +1374,7 @@ function updateUI(data) {
   document.getElementById('bodyLabel').textContent = 'EARTH';
   document.getElementById('locationName').textContent = CFG.name;
   document.getElementById('locationCoords').textContent =
-    `${Math.abs(CFG.lat).toFixed(4)}° ${CFG.lat>=0?'N':'S'} / ${Math.abs(CFG.lon).toFixed(4)}° ${CFG.lon>=0?'E':'W'}`;
+    `EARTH: ${Math.abs(CFG.lat).toFixed(4)}° ${CFG.lat>=0?'N':'S'} / ${Math.abs(CFG.lon).toFixed(4)}° ${CFG.lon>=0?'E':'W'}`;
   document.getElementById('tempValue').innerHTML =
     `${Math.round(c.temperature_2m)}<span class="unit">${us}</span>`;
   const wmo = WMO_CODES[c.weather_code] || {d:'Unknown',i:'❓'};
