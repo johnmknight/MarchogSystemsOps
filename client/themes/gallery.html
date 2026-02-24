@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MarchogSystemsOps — Theme Gallery</title>
+  <script src="theme-engine.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #080a10;
+      color: #c0c8d0;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      padding: 24px;
+    }
+    h1 {
+      font-size: 18px; letter-spacing: 0.3em; text-transform: uppercase;
+      color: #00e5ff; margin-bottom: 8px;
+    }
+    .subtitle { color: #5a7a9a; font-size: 13px; margin-bottom: 32px; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+      gap: 20px;
+    }
+    .card {
+      border-radius: 4px; overflow: hidden;
+      cursor: pointer; transition: transform 0.15s;
+    }
+    .card:hover { transform: scale(1.02); }
+    .card-inner {
+      padding: 20px;
+      min-height: 220px;
+      display: flex; flex-direction: column; gap: 10px;
+    }
+    .card-header {
+      display: flex; justify-content: space-between; align-items: flex-start;
+    }
+    .card-name { font-size: 16px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; }
+    .card-group {
+      font-size: 10px; letter-spacing: 0.15em; text-transform: uppercase;
+      padding: 2px 8px; border-radius: 2px; white-space: nowrap;
+    }
+    .card-desc { font-size: 12px; opacity: 0.7; line-height: 1.4; }
+    .card-fonts { font-size: 11px; opacity: 0.5; }
+    .swatch-row { display: flex; gap: 4px; margin-top: auto; }
+    .swatch {
+      width: 24px; height: 24px; border-radius: 2px;
+      border: 1px solid rgba(255,255,255,0.1);
+    }
+    .card-border-label {
+      font-size: 10px; opacity: 0.4; text-transform: uppercase; letter-spacing: 0.1em;
+    }
+    .card-fx { display: flex; gap: 8px; flex-wrap: wrap; }
+    .fx-tag {
+      font-size: 9px; padding: 1px 6px; border-radius: 2px;
+      text-transform: uppercase; letter-spacing: 0.1em;
+    }
+    /* Full preview overlay */
+    .preview-overlay {
+      position: fixed; inset: 0; z-index: 100; display: none;
+      background: rgba(0,0,0,0.9);
+    }
+    .preview-content {
+      position: absolute; inset: 40px;
+      overflow: auto;
+    }
+    .preview-close {
+      position: absolute; top: 10px; right: 20px;
+      color: #fff; font-size: 24px; cursor: pointer; z-index: 101;
+      background: none; border: none;
+    }
+    /* Sample content in preview */
+    .sample-menu { padding: 40px; }
+    .sample-menu h2 { margin-bottom: 16px; font-size: 28px; }
+    .sample-menu h3 { margin: 20px 0 8px; font-size: 18px; }
+    .sample-menu .item {
+      display: flex; justify-content: space-between;
+      padding: 6px 0;
+    }
+    .sample-menu .item-name { font-size: 14px; }
+    .sample-menu .item-price { font-size: 14px; }
+    .sample-menu .item-desc { font-size: 11px; opacity: 0.6; }
+  </style>
+</head>
+<body>
+  <h1>MARCHOG SYSTEMS — THEME GALLERY</h1>
+  <p class="subtitle">22 themes across 8 groups · Click any card to preview as a sample bar menu</p>
+  <div class="grid" id="grid"></div>
+  <div class="preview-overlay" id="preview">
+    <button class="preview-close" onclick="closePreview()">✕</button>
+    <div class="preview-content" id="previewContent"></div>
+  </div>
+  <script>
+    async function loadGallery() {
+      const themes = await MarchogTheme.getThemes();
+      const grid = document.getElementById('grid');
+
+      themes.forEach(t => {
+        const c = t.colors;
+        const card = document.createElement('div');
+        card.className = 'card';
+        card.onclick = () => showPreview(t);
+        card.innerHTML = `
+          <div class="card-inner" style="background:${c.bg}; border: 1px solid ${c.border};">
+            <div class="card-header">
+              <span class="card-name" style="color:${c.primary}; font-family:'${t.fonts.heading}',monospace">${t.name}</span>
+              <span class="card-group" style="color:${c.secondary}; border:1px solid ${c.border}">${t.group}</span>
+            </div>
+            <div class="card-desc" style="color:${c.text}">${t.description}</div>
+            <div class="card-fonts" style="color:${c.text_dim}">
+              Heading: ${t.fonts.heading} · Body: ${t.fonts.body}
+            </div>
+            <div class="swatch-row">
+              <div class="swatch" style="background:${c.primary}" title="primary"></div>
+              <div class="swatch" style="background:${c.secondary}" title="secondary"></div>
+              <div class="swatch" style="background:${c.accent}" title="accent"></div>
+              <div class="swatch" style="background:${c.danger}" title="danger"></div>
+              <div class="swatch" style="background:${c.warning}" title="warning"></div>
+              <div class="swatch" style="background:${c.success}" title="success"></div>
+              <div class="swatch" style="background:${c.text}" title="text"></div>
+              <div class="swatch" style="background:${c.text_dim}" title="dim"></div>
+            </div>
+            <div class="card-border-label" style="color:${c.text_dim}">Border: ${t.border_style}</div>
+            <div class="card-fx">
+              ${t.scanlines ? `<span class="fx-tag" style="background:${c.primary_dim};color:${c.primary}">scanlines</span>` : ''}
+              ${t.vignette ? `<span class="fx-tag" style="background:${c.primary_dim};color:${c.primary}">vignette</span>` : ''}
+              ${t.crt_glow ? `<span class="fx-tag" style="background:${c.primary_dim};color:${c.primary}">crt glow</span>` : ''}
+            </div>
+          </div>
+        `;
+        grid.appendChild(card);
+      });
+
+      // Load Google Fonts for all themes
+      const allImports = new Set();
+      themes.forEach(t => {
+        if (t.fonts.google_import) {
+          t.fonts.google_import.split('|').forEach(f => allImports.add(f));
+        }
+      });
+      const link = document.createElement('link');
+      link.rel = 'stylesheet';
+      link.href = `https://fonts.googleapis.com/css2?${[...allImports].map(f => `family=${f}`).join('&')}&display=swap`;
+      document.head.appendChild(link);
+    }
+
+    function showPreview(t) {
+      const overlay = document.getElementById('preview');
+      const content = document.getElementById('previewContent');
+      const c = t.colors;
+      overlay.style.display = 'block';
+
+      content.innerHTML = `
+        <div class="sample-menu" style="background:${c.bg}; color:${c.text}; font-family:'${t.fonts.body}',monospace; min-height:100%; border:1px solid ${c.border}; position:relative;
+          ${t.scanlines ? "background-image: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.04) 2px, rgba(0,0,0,0.04) 4px);" : ""}">
+
+          <div style="text-align:center; padding-bottom:16px; border-bottom:1px solid ${c.border}; margin-bottom:20px;">
+            <div style="font-family:'${t.fonts.accent}',monospace; font-size:11px; letter-spacing:0.2em; color:${c.text_dim}; text-transform:uppercase; margin-bottom:4px;">
+              ${t.group} · Theme Preview
+            </div>
+            <h2 style="font-family:'${t.fonts.heading}',monospace; color:${c.primary}; letter-spacing:0.15em; text-transform:uppercase; font-size:28px;">
+              CANTINA BAR MENU
+            </h2>
+            <div style="color:${c.secondary}; font-size:12px; letter-spacing:0.1em;">DOCKING BAY 94 · LEVEL 3</div>
+          </div>
+
+          <h3 style="font-family:'${t.fonts.heading}',monospace; color:${c.accent}; letter-spacing:0.12em; text-transform:uppercase; border-bottom:1px solid ${c.border}; padding-bottom:6px;">
+            SIGNATURE COCKTAILS
+          </h3>
+          <div class="item"><span class="item-name" style="color:${c.text}">Bantha Milk Punch</span><span class="item-price" style="color:${c.primary}">12</span></div>
+          <div class="item-desc" style="color:${c.text_dim}; padding:0 0 8px; font-size:11px;">Blue milk, spiced rum, vanilla, nutmeg · Shaken cold</div>
+          <div class="item"><span class="item-name" style="color:${c.text}">Jawa Juice</span><span class="item-price" style="color:${c.primary}">10</span></div>
+          <div class="item-desc" style="color:${c.text_dim}; padding:0 0 8px; font-size:11px;">Espresso, amaro, orange peel, brown sugar</div>
+          <div class="item"><span class="item-name" style="color:${c.text}">Sarlacc Sour</span><span class="item-price" style="color:${c.primary}">14</span></div>
+          <div class="item-desc" style="color:${c.text_dim}; padding:0 0 8px; font-size:11px;">Mezcal, lime, agave, activated charcoal · Smoky</div>
+          <div class="item"><span class="item-name" style="color:${c.text}">Dagobah Swamp Water</span><span class="item-price" style="color:${c.primary}">11</span></div>
+          <div class="item-desc" style="color:${c.text_dim}; padding:0 0 16px; font-size:11px;">Midori, vodka, lime, soda · Suspiciously green</div>
+
+          <h3 style="font-family:'${t.fonts.heading}',monospace; color:${c.accent}; letter-spacing:0.12em; text-transform:uppercase; border-bottom:1px solid ${c.border}; padding-bottom:6px;">
+            ON TAP
+          </h3>
+          <div class="item"><span class="item-name" style="color:${c.text}">Corellian Pale Ale</span><span class="item-price" style="color:${c.primary}">7</span></div>
+          <div class="item"><span class="item-name" style="color:${c.text}">Bespin Cloud Stout</span><span class="item-price" style="color:${c.primary}">8</span></div>
+          <div class="item"><span class="item-name" style="color:${c.text}">Mandalorian Lager</span><span class="item-price" style="color:${c.primary}">7</span></div>
+
+          <div style="margin-top:24px; padding-top:12px; border-top:1px solid ${c.border}; text-align:center;">
+            <div style="font-family:'${t.fonts.accent}',monospace; font-size:10px; color:${c.text_dim}; letter-spacing:0.15em; text-transform:uppercase;">
+              Theme: ${t.name} · Border: ${t.border_style}
+              ${t.scanlines ? ' · Scanlines' : ''}${t.vignette ? ' · Vignette' : ''}${t.crt_glow ? ' · CRT Glow' : ''}
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function closePreview() {
+      document.getElementById('preview').style.display = 'none';
+    }
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') closePreview(); });
+
+    loadGallery();
+  </script>
+</body>
+</html>

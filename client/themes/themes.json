@@ -1,0 +1,742 @@
+[
+  {
+    "id": "marchog",
+    "name": "Marchog Systems",
+    "group": "Original",
+    "description": "The default Marchog Systems aesthetic — cyan-on-dark tactical readout",
+    "fonts": {
+      "heading": "Orbitron",
+      "body": "Share Tech Mono",
+      "accent": "Orbitron",
+      "google_import": "Orbitron:wght@400;600;700|Share+Tech+Mono"
+    },
+    "colors": {
+      "bg": "#020a14",
+      "bg_panel": "rgba(4, 16, 32, 0.82)",
+      "primary": "#00e5ff",
+      "primary_dim": "rgba(0, 229, 255, 0.35)",
+      "secondary": "#4a9eff",
+      "accent": "#36d6e7",
+      "danger": "#ff4444",
+      "warning": "#ffaa00",
+      "success": "#00ff88",
+      "text": "#e8f0ff",
+      "text_dim": "#5a7a9a",
+      "border": "rgba(0, 229, 255, 0.18)"
+    },
+    "border_style": "marchog",
+    "scanlines": true,
+    "vignette": true,
+    "crt_glow": false
+  },
+  {
+    "id": "imperial",
+    "name": "Imperial Navy",
+    "group": "Star Wars",
+    "description": "Death Star command aesthetic — cool blue-grey with Aurebesh accents",
+    "fonts": {
+      "heading": "Aurebesh",
+      "body": "Share Tech Mono",
+      "accent": "Aurebesh Condensed",
+      "local_faces": [
+        { "family": "Aurebesh", "src": "../fonts/Aurebesh.otf" },
+        { "family": "Aurebesh", "src": "../fonts/Aurebesh Bold.otf", "weight": "bold" },
+        { "family": "Aurebesh Condensed", "src": "../fonts/Aurebesh Condensed.otf" }
+      ],
+      "google_import": "Share+Tech+Mono"
+    },
+    "colors": {
+      "bg": "#0a0c10",
+      "bg_panel": "rgba(16, 20, 28, 0.85)",
+      "primary": "#7a9cbc",
+      "primary_dim": "rgba(122, 156, 188, 0.3)",
+      "secondary": "#4a6a8c",
+      "accent": "#c0d0e0",
+      "danger": "#cc3333",
+      "warning": "#cc9933",
+      "success": "#33aa66",
+      "text": "#c8d4e0",
+      "text_dim": "#4a5a6a",
+      "border": "rgba(122, 156, 188, 0.2)"
+    },
+    "border_style": "angular",
+    "scanlines": true,
+    "vignette": true,
+    "crt_glow": false
+  },
+  {
+    "id": "rebel",
+    "name": "Rebel Alliance",
+    "group": "Star Wars",
+    "description": "Yavin war room — warm orange-amber with tactical urgency",
+    "fonts": {
+      "heading": "Aurebesh",
+      "body": "Share Tech Mono",
+      "accent": "Aurebesh Condensed",
+      "local_faces": [
+        { "family": "Aurebesh", "src": "../fonts/Aurebesh.otf" },
+        { "family": "Aurebesh", "src": "../fonts/Aurebesh Bold.otf", "weight": "bold" },
+        { "family": "Aurebesh Condensed", "src": "../fonts/Aurebesh Condensed.otf" }
+      ],
+      "google_import": "Share+Tech+Mono"
+    },
+    "colors": {
+      "bg": "#0c0804",
+      "bg_panel": "rgba(24, 16, 8, 0.82)",
+      "primary": "#ff8800",
+      "primary_dim": "rgba(255, 136, 0, 0.3)",
+      "secondary": "#cc6600",
+      "accent": "#ffcc44",
+      "danger": "#ff3333",
+      "warning": "#ffaa00",
+      "success": "#44cc44",
+      "text": "#f0e0c8",
+      "text_dim": "#7a6a4a",
+      "border": "rgba(255, 136, 0, 0.2)"
+    },
+    "border_style": "angular",
+    "scanlines": true,
+    "vignette": true,
+    "crt_glow": false
+  },
+  {
+    "id": "mandalorian",
+    "name": "Mandalorian",
+    "group": "Star Wars",
+    "description": "Beskar-forged minimalism — weathered steel and amber highlights",
+    "fonts": {
+      "heading": "Aurebesh",
+      "body": "Share Tech Mono",
+      "accent": "Aurebesh Condensed",
+      "local_faces": [
+        { "family": "Aurebesh", "src": "../fonts/Aurebesh.otf" },
+        { "family": "Aurebesh", "src": "../fonts/Aurebesh Bold.otf", "weight": "bold" },
+        { "family": "Aurebesh Condensed", "src": "../fonts/Aurebesh Condensed.otf" }
+      ],
+      "google_import": "Share+Tech+Mono"
+    },
+    "colors": {
+      "bg": "#0e0c08",
+      "bg_panel": "rgba(28, 24, 16, 0.8)",
+      "primary": "#c8a050",
+      "primary_dim": "rgba(200, 160, 80, 0.25)",
+      "secondary": "#8a7040",
+      "accent": "#e0c878",
+      "danger": "#cc4422",
+      "warning": "#cc8833",
+      "success": "#558844",
+      "text": "#d8ccb0",
+      "text_dim": "#6a5a3a",
+      "border": "rgba(200, 160, 80, 0.2)"
+    },
+    "border_style": "angular",
+    "scanlines": false,
+    "vignette": true,
+    "crt_glow": false
+  },
+  {
+    "id": "sith",
+    "name": "Sith Holocron",
+    "group": "Star Wars",
+    "description": "Dark side energy — deep crimson glow from obsidian darkness",
+    "fonts": {
+      "heading": "Aurebesh",
+      "body": "Share Tech Mono",
+      "accent": "Aurebesh Condensed",
+      "local_faces": [
+        { "family": "Aurebesh", "src": "../fonts/Aurebesh.otf" },
+        { "family": "Aurebesh", "src": "../fonts/Aurebesh Bold.otf", "weight": "bold" },
+        { "family": "Aurebesh Condensed", "src": "../fonts/Aurebesh Condensed.otf" }
+      ],
+      "google_import": "Share+Tech+Mono"
+    },
+    "colors": {
+      "bg": "#0a0204",
+      "bg_panel": "rgba(20, 4, 8, 0.85)",
+      "primary": "#cc0022",
+      "primary_dim": "rgba(204, 0, 34, 0.3)",
+      "secondary": "#880018",
+      "accent": "#ff2244",
+      "danger": "#ff0033",
+      "warning": "#cc4400",
+      "success": "#884422",
+      "text": "#e0c0c0",
+      "text_dim": "#5a3030",
+      "border": "rgba(204, 0, 34, 0.2)"
+    },
+    "border_style": "angular",
+    "scanlines": true,
+    "vignette": true,
+    "crt_glow": true
+  },
+  {
+    "id": "lcars",
+    "name": "LCARS",
+    "group": "Star Trek",
+    "description": "Federation LCARS — rounded panels, warm palette, Okuda-inspired layout",
+    "fonts": {
+      "heading": "Antonio",
+      "body": "Ubuntu Condensed",
+      "accent": "Antonio",
+      "google_import": "Antonio:wght@400;600;700|Ubuntu+Condensed"
+    },
+    "colors": {
+      "bg": "#000000",
+      "bg_panel": "rgba(0, 0, 0, 0.9)",
+      "primary": "#ff9900",
+      "primary_dim": "rgba(255, 153, 0, 0.3)",
+      "secondary": "#cc6699",
+      "accent": "#9999ff",
+      "danger": "#cc3333",
+      "warning": "#ffcc00",
+      "success": "#66cccc",
+      "text": "#ff9900",
+      "text_dim": "#996633",
+      "border": "rgba(255, 153, 0, 0.4)"
+    },
+    "border_style": "lcars",
+    "scanlines": false,
+    "vignette": false,
+    "crt_glow": false
+  },
+  {
+    "id": "lcars_tmp",
+    "name": "LCARS: The Motion Picture",
+    "group": "Star Trek",
+    "description": "Early Federation — cooler, bluer LCARS inspired by TMP-era displays",
+    "fonts": {
+      "heading": "Antonio",
+      "body": "Ubuntu Condensed",
+      "accent": "Antonio",
+      "google_import": "Antonio:wght@400;600;700|Ubuntu+Condensed"
+    },
+    "colors": {
+      "bg": "#000408",
+      "bg_panel": "rgba(0, 4, 12, 0.9)",
+      "primary": "#44aaff",
+      "primary_dim": "rgba(68, 170, 255, 0.25)",
+      "secondary": "#88ccee",
+      "accent": "#ffffff",
+      "danger": "#ff4444",
+      "warning": "#ffcc66",
+      "success": "#44ddaa",
+      "text": "#b0d8ff",
+      "text_dim": "#3a5a7a",
+      "border": "rgba(68, 170, 255, 0.3)"
+    },
+    "border_style": "lcars",
+    "scanlines": false,
+    "vignette": false,
+    "crt_glow": false
+  },
+  {
+    "id": "lcars_ds9",
+    "name": "LCARS: Deep Space",
+    "group": "Star Trek",
+    "description": "DS9/Defiant era — darker, more tactical, purple-pink accents",
+    "fonts": {
+      "heading": "Antonio",
+      "body": "Ubuntu Condensed",
+      "accent": "Antonio",
+      "google_import": "Antonio:wght@400;600;700|Ubuntu+Condensed"
+    },
+    "colors": {
+      "bg": "#020008",
+      "bg_panel": "rgba(4, 0, 16, 0.9)",
+      "primary": "#cc77cc",
+      "primary_dim": "rgba(204, 119, 204, 0.25)",
+      "secondary": "#8866aa",
+      "accent": "#ffcc88",
+      "danger": "#dd3344",
+      "warning": "#ddaa44",
+      "success": "#44bb88",
+      "text": "#ddc0e0",
+      "text_dim": "#5a3a5a",
+      "border": "rgba(204, 119, 204, 0.25)"
+    },
+    "border_style": "lcars",
+    "scanlines": false,
+    "vignette": true,
+    "crt_glow": false
+  },
+  {
+    "id": "nostromo",
+    "name": "Nostromo MU/TH/UR",
+    "group": "Alien",
+    "description": "Weyland-Yutani CRT terminal — green phosphor on black, pure retro",
+    "fonts": {
+      "heading": "VT323",
+      "body": "VT323",
+      "accent": "VT323",
+      "google_import": "VT323"
+    },
+    "colors": {
+      "bg": "#000800",
+      "bg_panel": "rgba(0, 12, 0, 0.85)",
+      "primary": "#33ff33",
+      "primary_dim": "rgba(51, 255, 51, 0.2)",
+      "secondary": "#22aa22",
+      "accent": "#66ff66",
+      "danger": "#ff3333",
+      "warning": "#ffaa00",
+      "success": "#33ff33",
+      "text": "#33ff33",
+      "text_dim": "#116611",
+      "border": "rgba(51, 255, 51, 0.15)"
+    },
+    "border_style": "none",
+    "scanlines": true,
+    "vignette": true,
+    "crt_glow": true
+  },
+  {
+    "id": "weyland",
+    "name": "Weyland-Yutani Corp",
+    "group": "Alien",
+    "description": "Corporate Weyland-Yutani — amber CRT with clinical precision",
+    "fonts": {
+      "heading": "VT323",
+      "body": "VT323",
+      "accent": "Space Mono",
+      "google_import": "VT323|Space+Mono"
+    },
+    "colors": {
+      "bg": "#080400",
+      "bg_panel": "rgba(12, 8, 0, 0.85)",
+      "primary": "#ffaa00",
+      "primary_dim": "rgba(255, 170, 0, 0.2)",
+      "secondary": "#cc8800",
+      "accent": "#ffcc44",
+      "danger": "#ff3333",
+      "warning": "#ffaa00",
+      "success": "#44aa44",
+      "text": "#ffaa00",
+      "text_dim": "#664400",
+      "border": "rgba(255, 170, 0, 0.15)"
+    },
+    "border_style": "none",
+    "scanlines": true,
+    "vignette": true,
+    "crt_glow": true
+  },
+  {
+    "id": "prometheus",
+    "name": "Prometheus",
+    "group": "Alien",
+    "description": "Weyland Prometheus mission — sleek blue holographic, modern sci-fi",
+    "fonts": {
+      "heading": "Rajdhani",
+      "body": "Share Tech Mono",
+      "accent": "Rajdhani",
+      "google_import": "Rajdhani:wght@400;600;700|Share+Tech+Mono"
+    },
+    "colors": {
+      "bg": "#020610",
+      "bg_panel": "rgba(4, 8, 20, 0.8)",
+      "primary": "#4488ff",
+      "primary_dim": "rgba(68, 136, 255, 0.2)",
+      "secondary": "#2266cc",
+      "accent": "#88bbff",
+      "danger": "#ff4455",
+      "warning": "#ffbb33",
+      "success": "#44ddaa",
+      "text": "#c0d8f0",
+      "text_dim": "#3a5070",
+      "border": "rgba(68, 136, 255, 0.2)"
+    },
+    "border_style": "thin",
+    "scanlines": false,
+    "vignette": true,
+    "crt_glow": false
+  },
+  {
+    "id": "blade_runner",
+    "name": "Blade Runner",
+    "group": "Cyberpunk",
+    "description": "Rain-soaked neon noir — magenta and teal bleeding through darkness",
+    "fonts": {
+      "heading": "Orbitron",
+      "body": "Share Tech Mono",
+      "accent": "Orbitron",
+      "google_import": "Orbitron:wght@400;600;700|Share+Tech+Mono"
+    },
+    "colors": {
+      "bg": "#06020c",
+      "bg_panel": "rgba(12, 4, 20, 0.82)",
+      "primary": "#ff2288",
+      "primary_dim": "rgba(255, 34, 136, 0.25)",
+      "secondary": "#00cccc",
+      "accent": "#ff66aa",
+      "danger": "#ff2244",
+      "warning": "#ffaa44",
+      "success": "#00ddaa",
+      "text": "#e0d0e8",
+      "text_dim": "#5a3a6a",
+      "border": "rgba(255, 34, 136, 0.2)"
+    },
+    "border_style": "thin",
+    "scanlines": true,
+    "vignette": true,
+    "crt_glow": true
+  },
+  {
+    "id": "tron",
+    "name": "TRON Grid",
+    "group": "Cyberpunk",
+    "description": "The Grid — electric blue circuits on absolute black",
+    "fonts": {
+      "heading": "Orbitron",
+      "body": "Share Tech Mono",
+      "accent": "Orbitron",
+      "google_import": "Orbitron:wght@400;600;700|Share+Tech+Mono"
+    },
+    "colors": {
+      "bg": "#000000",
+      "bg_panel": "rgba(0, 4, 12, 0.85)",
+      "primary": "#00d4ff",
+      "primary_dim": "rgba(0, 212, 255, 0.2)",
+      "secondary": "#0088cc",
+      "accent": "#66eeff",
+      "danger": "#ff6600",
+      "warning": "#ff8800",
+      "success": "#00ff88",
+      "text": "#d0f0ff",
+      "text_dim": "#204060",
+      "border": "rgba(0, 212, 255, 0.25)"
+    },
+    "border_style": "thin",
+    "scanlines": false,
+    "vignette": true,
+    "crt_glow": true
+  },
+  {
+    "id": "matrix",
+    "name": "Matrix",
+    "group": "Cyberpunk",
+    "description": "Digital rain — green code on black, hacker terminal aesthetic",
+    "fonts": {
+      "heading": "Share Tech Mono",
+      "body": "Share Tech Mono",
+      "accent": "Share Tech Mono",
+      "google_import": "Share+Tech+Mono"
+    },
+    "colors": {
+      "bg": "#000400",
+      "bg_panel": "rgba(0, 8, 0, 0.82)",
+      "primary": "#00cc33",
+      "primary_dim": "rgba(0, 204, 51, 0.2)",
+      "secondary": "#008822",
+      "accent": "#00ff44",
+      "danger": "#cc0000",
+      "warning": "#aaaa00",
+      "success": "#00cc33",
+      "text": "#00cc33",
+      "text_dim": "#004410",
+      "border": "rgba(0, 204, 51, 0.15)"
+    },
+    "border_style": "none",
+    "scanlines": true,
+    "vignette": true,
+    "crt_glow": true
+  },
+  {
+    "id": "hal9000",
+    "name": "HAL 9000",
+    "group": "Classic Sci-Fi",
+    "description": "2001: A Space Odyssey — clinical white with the red eye watching",
+    "fonts": {
+      "heading": "Space Grotesk",
+      "body": "IBM Plex Mono",
+      "accent": "Space Grotesk",
+      "google_import": "Space+Grotesk:wght@400;600;700|IBM+Plex+Mono"
+    },
+    "colors": {
+      "bg": "#0c0c0c",
+      "bg_panel": "rgba(16, 16, 16, 0.9)",
+      "primary": "#ff0000",
+      "primary_dim": "rgba(255, 0, 0, 0.15)",
+      "secondary": "#cc0000",
+      "accent": "#ffffff",
+      "danger": "#ff0000",
+      "warning": "#ff8800",
+      "success": "#44cc44",
+      "text": "#d0d0d0",
+      "text_dim": "#444444",
+      "border": "rgba(255, 0, 0, 0.15)"
+    },
+    "border_style": "thin",
+    "scanlines": false,
+    "vignette": true,
+    "crt_glow": false
+  },
+  {
+    "id": "expanse",
+    "name": "The Expanse",
+    "group": "Classic Sci-Fi",
+    "description": "Rocinante ops — utilitarian, warm amber on industrial dark grey",
+    "fonts": {
+      "heading": "Rajdhani",
+      "body": "Source Code Pro",
+      "accent": "Rajdhani",
+      "google_import": "Rajdhani:wght@400;600;700|Source+Code+Pro"
+    },
+    "colors": {
+      "bg": "#0a0a08",
+      "bg_panel": "rgba(16, 16, 12, 0.82)",
+      "primary": "#dd8833",
+      "primary_dim": "rgba(221, 136, 51, 0.25)",
+      "secondary": "#aa6622",
+      "accent": "#ffbb55",
+      "danger": "#dd3333",
+      "warning": "#ddaa33",
+      "success": "#44aa55",
+      "text": "#d0c8b8",
+      "text_dim": "#5a5440",
+      "border": "rgba(221, 136, 51, 0.2)"
+    },
+    "border_style": "thick",
+    "scanlines": false,
+    "vignette": true,
+    "crt_glow": false
+  },
+  {
+    "id": "stargate",
+    "name": "Stargate SGC",
+    "group": "Classic Sci-Fi",
+    "description": "Cheyenne Mountain — military green on dark with Ancient glyph energy",
+    "fonts": {
+      "heading": "Chakra Petch",
+      "body": "Share Tech Mono",
+      "accent": "Chakra Petch",
+      "google_import": "Chakra+Petch:wght@400;600;700|Share+Tech+Mono"
+    },
+    "colors": {
+      "bg": "#040804",
+      "bg_panel": "rgba(8, 16, 8, 0.82)",
+      "primary": "#44aa66",
+      "primary_dim": "rgba(68, 170, 102, 0.2)",
+      "secondary": "#337744",
+      "accent": "#88ddaa",
+      "danger": "#cc3333",
+      "warning": "#ccaa33",
+      "success": "#44cc66",
+      "text": "#c0d8c8",
+      "text_dim": "#3a5a42",
+      "border": "rgba(68, 170, 102, 0.2)"
+    },
+    "border_style": "thick",
+    "scanlines": false,
+    "vignette": true,
+    "crt_glow": false
+  },
+  {
+    "id": "dune",
+    "name": "Dune Arrakis",
+    "group": "Classic Sci-Fi",
+    "description": "Fremen stillsuit HUD — desert gold on deep sienna, spice-tinted",
+    "fonts": {
+      "heading": "Cinzel",
+      "body": "Source Code Pro",
+      "accent": "Cinzel",
+      "google_import": "Cinzel:wght@400;600;700|Source+Code+Pro"
+    },
+    "colors": {
+      "bg": "#0c0804",
+      "bg_panel": "rgba(20, 14, 6, 0.82)",
+      "primary": "#d4a030",
+      "primary_dim": "rgba(212, 160, 48, 0.2)",
+      "secondary": "#a07820",
+      "accent": "#f0c850",
+      "danger": "#cc3322",
+      "warning": "#d4a030",
+      "success": "#669944",
+      "text": "#e0d4b8",
+      "text_dim": "#6a5a38",
+      "border": "rgba(212, 160, 48, 0.18)"
+    },
+    "border_style": "thin",
+    "scanlines": false,
+    "vignette": true,
+    "crt_glow": false
+  },
+  {
+    "id": "fallout",
+    "name": "Fallout Pip-Boy",
+    "group": "Retro-Future",
+    "description": "Vault-Tec terminal — green phosphor with that retro-50s atomic age vibe",
+    "fonts": {
+      "heading": "VT323",
+      "body": "VT323",
+      "accent": "VT323",
+      "google_import": "VT323"
+    },
+    "colors": {
+      "bg": "#001a00",
+      "bg_panel": "rgba(0, 20, 0, 0.8)",
+      "primary": "#14fe17",
+      "primary_dim": "rgba(20, 254, 23, 0.15)",
+      "secondary": "#0eb010",
+      "accent": "#6fff6f",
+      "danger": "#ff3333",
+      "warning": "#e8d44d",
+      "success": "#14fe17",
+      "text": "#14fe17",
+      "text_dim": "#0a6e0b",
+      "border": "rgba(20, 254, 23, 0.2)"
+    },
+    "border_style": "thick",
+    "scanlines": true,
+    "vignette": true,
+    "crt_glow": true
+  },
+  {
+    "id": "retro_amber",
+    "name": "Retro Amber Terminal",
+    "group": "Retro-Future",
+    "description": "Classic amber CRT — the warm glow of vintage computing",
+    "fonts": {
+      "heading": "VT323",
+      "body": "VT323",
+      "accent": "Space Mono",
+      "google_import": "VT323|Space+Mono"
+    },
+    "colors": {
+      "bg": "#0a0600",
+      "bg_panel": "rgba(14, 10, 0, 0.85)",
+      "primary": "#ffb000",
+      "primary_dim": "rgba(255, 176, 0, 0.15)",
+      "secondary": "#cc8800",
+      "accent": "#ffd044",
+      "danger": "#ff4444",
+      "warning": "#ffb000",
+      "success": "#88aa22",
+      "text": "#ffb000",
+      "text_dim": "#664400",
+      "border": "rgba(255, 176, 0, 0.15)"
+    },
+    "border_style": "none",
+    "scanlines": true,
+    "vignette": true,
+    "crt_glow": true
+  },
+  {
+    "id": "battlestar",
+    "name": "Battlestar Galactica",
+    "group": "Classic Sci-Fi",
+    "description": "CIC tactical — military blue-grey with urgent red accents, no-frills",
+    "fonts": {
+      "heading": "Chakra Petch",
+      "body": "Source Code Pro",
+      "accent": "Chakra Petch",
+      "google_import": "Chakra+Petch:wght@400;600;700|Source+Code+Pro"
+    },
+    "colors": {
+      "bg": "#080a0c",
+      "bg_panel": "rgba(12, 16, 20, 0.85)",
+      "primary": "#6688aa",
+      "primary_dim": "rgba(102, 136, 170, 0.2)",
+      "secondary": "#445566",
+      "accent": "#aaccdd",
+      "danger": "#cc2222",
+      "warning": "#ccaa22",
+      "success": "#448844",
+      "text": "#b0c0d0",
+      "text_dim": "#3a4a5a",
+      "border": "rgba(102, 136, 170, 0.2)"
+    },
+    "border_style": "thick",
+    "scanlines": false,
+    "vignette": true,
+    "crt_glow": false
+  },
+  {
+    "id": "cyberpunk_2077",
+    "name": "Cyberpunk 2077",
+    "group": "Cyberpunk",
+    "description": "Night City interface — hot yellow glitch on dark with magenta interference",
+    "fonts": {
+      "heading": "Rajdhani",
+      "body": "Share Tech Mono",
+      "accent": "Rajdhani",
+      "google_import": "Rajdhani:wght@400;600;700|Share+Tech+Mono"
+    },
+    "colors": {
+      "bg": "#08040c",
+      "bg_panel": "rgba(14, 8, 18, 0.82)",
+      "primary": "#fcee09",
+      "primary_dim": "rgba(252, 238, 9, 0.15)",
+      "secondary": "#d000d0",
+      "accent": "#00ffff",
+      "danger": "#ff0044",
+      "warning": "#fcee09",
+      "success": "#00ff66",
+      "text": "#e8e0f0",
+      "text_dim": "#4a3a5a",
+      "border": "rgba(252, 238, 9, 0.15)"
+    },
+    "border_style": "thin",
+    "scanlines": true,
+    "vignette": true,
+    "crt_glow": true
+  },
+  {
+    "id": "halo",
+    "name": "Halo UNSC",
+    "group": "Gaming",
+    "description": "UNSC Cortana interface — cool blue holographic with military precision",
+    "fonts": {
+      "heading": "Chakra Petch",
+      "body": "Share Tech Mono",
+      "accent": "Chakra Petch",
+      "google_import": "Chakra+Petch:wght@400;600;700|Share+Tech+Mono"
+    },
+    "colors": {
+      "bg": "#020408",
+      "bg_panel": "rgba(4, 8, 16, 0.82)",
+      "primary": "#3399ff",
+      "primary_dim": "rgba(51, 153, 255, 0.2)",
+      "secondary": "#1166cc",
+      "accent": "#66ccff",
+      "danger": "#ff3344",
+      "warning": "#ffaa33",
+      "success": "#33dd77",
+      "text": "#c0d8f0",
+      "text_dim": "#2a4a6a",
+      "border": "rgba(51, 153, 255, 0.2)"
+    },
+    "border_style": "angular",
+    "scanlines": false,
+    "vignette": true,
+    "crt_glow": false
+  },
+  {
+    "id": "mass_effect",
+    "name": "Mass Effect Omni",
+    "group": "Gaming",
+    "description": "Omni-tool holographic — warm orange-gold on deep space black",
+    "fonts": {
+      "heading": "Rajdhani",
+      "body": "Share Tech Mono",
+      "accent": "Rajdhani",
+      "google_import": "Rajdhani:wght@400;600;700|Share+Tech+Mono"
+    },
+    "colors": {
+      "bg": "#080404",
+      "bg_panel": "rgba(16, 8, 4, 0.82)",
+      "primary": "#ff6600",
+      "primary_dim": "rgba(255, 102, 0, 0.2)",
+      "secondary": "#cc4400",
+      "accent": "#ff9944",
+      "danger": "#ff2233",
+      "warning": "#ffaa22",
+      "success": "#44bb66",
+      "text": "#e8d8c0",
+      "text_dim": "#6a4a2a",
+      "border": "rgba(255, 102, 0, 0.18)"
+    },
+    "border_style": "angular",
+    "scanlines": false,
+    "vignette": true,
+    "crt_glow": true
+  }
+]
