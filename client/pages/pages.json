@@ -92,5 +92,14 @@
       "location": "Ellenton, FL",
       "units": "imperial"
     }
+  },
+  {
+    "id": "clock",
+    "name": "Clock",
+    "description": "Auto-discovered: clock.html",
+    "file": "clock.html",
+    "icon": "ti-file",
+    "category": "general",
+    "params": {}
   }
 ]

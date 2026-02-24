@@ -1009,6 +1009,43 @@ async def get_agent_telemetry(screen_id: str):
     return {"error": "No telemetry for this screen", "screen_id": screen_id}
 
 
+# ── iCal Proxy ───────────────────────────────────────────────
+
+import urllib.request
+import urllib.error
+
+# Simple in-memory cache: url -> (text, timestamp)
+_ical_cache: dict[str, tuple[str, float]] = {}
+ICAL_CACHE_TTL = 600  # 10 minutes
+
+@app.get("/api/ical-proxy")
+async def ical_proxy(url: str):
+    """Proxy iCal feeds to avoid CORS. Caches for 10min."""
+    import time
+    # Basic validation
+    if not url.startswith(("http://", "https://", "webcal://")):
+        raise HTTPException(400, "Invalid URL scheme")
+    # Normalize webcal to https
+    fetch_url = url.replace("webcal://", "https://")
+    # Check cache
+    now = time.time()
+    if fetch_url in _ical_cache:
+        text, ts = _ical_cache[fetch_url]
+        if now - ts < ICAL_CACHE_TTL:
+            return {"ok": True, "data": text, "cached": True}
+    # Fetch
+    try:
+        req = urllib.request.Request(fetch_url, headers={
+            "User-Agent": "MarchogSystems/1.0 iCal-Proxy"
+        })
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            text = resp.read().decode("utf-8", errors="replace")
+            _ical_cache[fetch_url] = (text, now)
+            return {"ok": True, "data": text, "cached": False}
+    except Exception as e:
+        raise HTTPException(502, f"Feed fetch failed: {str(e)}")
+
+
 # ── Static Files ─────────────────────────────────────────────
 
 # Serve media files (must be before catch-all client mount)

@@ -55,6 +55,18 @@
   <!-- Secondary clocks grid -->
   <div id="zone-grid"></div>
 
+  <!-- Calendar feed -->
+  <div id="cal-section">
+    <div class="cal-header">
+      <span class="cal-title">UPCOMING EVENTS</span>
+      <span class="cal-feed-count" id="cal-feed-count"></span>
+    </div>
+    <div id="cal-list"></div>
+    <div id="cal-empty" style="display:none">
+      <span class="cal-empty-msg">No feeds configured · Add iCal URLs via page params</span>
+    </div>
+  </div>
+
   <!-- Sun bar -->
   <div id="sun-bar">
     <div class="sun-label">DAYLIGHT STATUS</div>
@@ -66,7 +78,7 @@
   #clock-app {
     width: 100%; height: 100%;
     display: grid;
-    grid-template-rows: auto 1fr auto;
+    grid-template-rows: auto 1fr auto auto;
     grid-template-columns: 38% 1fr;
     gap: 0;
     padding: 12px 16px;
@@ -178,6 +190,101 @@
   }
   .zc-day-indicator.day { background: var(--warning); box-shadow: 0 0 4px var(--warning); }
   .zc-day-indicator.night { background: var(--secondary); box-shadow: 0 0 4px var(--secondary); }
+
+  /* ── Calendar section — full width below clocks ── */
+  #cal-section {
+    grid-column: 1 / -1;
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border-glow);
+    min-height: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  .cal-header {
+    display: flex; align-items: baseline; gap: 10px;
+    margin-bottom: 6px;
+  }
+  .cal-title {
+    font-family: var(--theme-font-heading, 'Orbitron'), sans-serif;
+    font-size: 0.6em; text-transform: uppercase; letter-spacing: 0.2em;
+    color: var(--text-secondary); opacity: 0.6;
+  }
+  .cal-feed-count {
+    font-size: 0.55em; color: var(--cyan-dim); letter-spacing: 0.1em;
+  }
+  #cal-list {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-content: start;
+  }
+  #cal-list::-webkit-scrollbar { width: 3px; }
+  #cal-list::-webkit-scrollbar-thumb { background: var(--border-glow); border-radius: 2px; }
+
+  .cal-event {
+    background: var(--bg-panel);
+    border: 1px solid var(--border-glow);
+    padding: 6px 12px;
+    display: flex; align-items: center; gap: 12px;
+    flex: 1 1 calc(50% - 6px);
+    min-width: 280px;
+    position: relative;
+    overflow: hidden;
+  }
+  .cal-event::before {
+    content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+    background: var(--cyan);
+    opacity: 0.6;
+  }
+  .cal-event.is-today::before {
+    background: var(--warning);
+    opacity: 1;
+  }
+  .cal-event.is-past {
+    opacity: 0.4;
+  }
+  .cal-date-block {
+    text-align: center; min-width: 44px; flex-shrink: 0;
+  }
+  .cal-month {
+    font-family: var(--theme-font-heading, 'Orbitron'), sans-serif;
+    font-size: 0.5em; text-transform: uppercase; letter-spacing: 0.15em;
+    color: var(--text-secondary);
+  }
+  .cal-day {
+    font-family: var(--theme-font-heading, 'Orbitron'), sans-serif;
+    font-size: 1.4em; font-weight: 700;
+    color: var(--cyan); line-height: 1.1;
+  }
+  .cal-dow {
+    font-size: 0.45em; text-transform: uppercase; letter-spacing: 0.1em;
+    color: var(--cyan-dim);
+  }
+  .cal-event.is-today .cal-day { color: var(--warning); }
+  .cal-details { flex: 1; min-width: 0; }
+  .cal-summary {
+    font-size: 0.8em; color: var(--text-primary);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .cal-meta {
+    font-size: 0.6em; color: var(--text-secondary); margin-top: 1px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .cal-feed-tag {
+    font-size: 0.5em; text-transform: uppercase; letter-spacing: 0.1em;
+    padding: 1px 6px;
+    border: 1px solid var(--border-glow);
+    color: var(--cyan-dim);
+    flex-shrink: 0;
+  }
+  .cal-empty-msg {
+    font-size: 0.65em; color: var(--text-secondary); opacity: 0.4;
+    font-style: italic;
+  }
 
   /* ── Sun bar — bottom ── */
   #sun-bar {
@@ -375,9 +482,160 @@
     buildSunStrip(now);
   }
 
+  // ── Calendar feeds ──
+  const CAL_FEEDS = (() => {
+    const params = new URLSearchParams(window.location.search);
+    const feeds = [];
+    // Support: ?feed=url&feed=url or ?feed1=url&feed2=url or ?feeds=url1,url2
+    params.getAll('feed').forEach(u => feeds.push({ url: u }));
+    for (let i = 1; i <= 10; i++) {
+      const u = params.get(`feed${i}`);
+      if (u) feeds.push({ url: u });
+    }
+    const csv = params.get('feeds');
+    if (csv) csv.split(',').map(s => s.trim()).filter(Boolean).forEach(u => feeds.push({ url: u }));
+    return feeds;
+  })();
+
+  // Minimal iCal parser
+  function parseICS(text, feedUrl) {
+    const events = [];
+    const blocks = text.split('BEGIN:VEVENT');
+    const feedName = feedUrl.split('/').pop().replace(/\.ics.*$/, '').substring(0, 20) || 'Feed';
+    for (let i = 1; i < blocks.length; i++) {
+      const b = blocks[i].split('END:VEVENT')[0];
+      const get = (key) => {
+        // Handle folded lines (RFC 5545: continuation lines start with space/tab)
+        const unfolded = b.replace(/\r?\n[ \t]/g, '');
+        const m = unfolded.match(new RegExp(`^${key}[;:](.*)$`, 'm'));
+        return m ? m[1].replace(/^.*:/, '') : '';
+      };
+      const summary = get('SUMMARY') || 'Untitled';
+      const location = get('LOCATION') || '';
+      const dtStr = get('DTSTART');
+      if (!dtStr) continue;
+      // Parse date: YYYYMMDD or YYYYMMDDTHHmmssZ or YYYYMMDDTHHmmss
+      const dt = parseICalDate(dtStr);
+      if (!dt) continue;
+      const dtEnd = parseICalDate(get('DTEND')) || dt;
+      const allDay = dtStr.length === 8;
+      events.push({ summary, location, dt, dtEnd, allDay, feed: feedName });
+    }
+    return events;
+  }
+
+  function parseICalDate(s) {
+    if (!s || s.length < 8) return null;
+    const y = +s.substring(0, 4), mo = +s.substring(4, 6) - 1, d = +s.substring(6, 8);
+    if (s.length >= 15) {
+      const h = +s.substring(9, 11), mi = +s.substring(11, 13), sc = +s.substring(13, 15);
+      if (s.endsWith('Z')) return new Date(Date.UTC(y, mo, d, h, mi, sc));
+      return new Date(y, mo, d, h, mi, sc);
+    }
+    return new Date(y, mo, d);
+  }
+
+  let calEvents = [];
+
+  async function loadCalFeeds() {
+    if (CAL_FEEDS.length === 0) {
+      document.getElementById('cal-empty').style.display = 'block';
+      document.getElementById('cal-feed-count').textContent = '';
+      return;
+    }
+    const allEvents = [];
+    let loaded = 0;
+    for (const f of CAL_FEEDS) {
+      try {
+        let text = null;
+        // Try direct fetch (works for local/same-origin files)
+        try {
+          const resp = await fetch(f.url);
+          if (resp.ok) {
+            const t = await resp.text();
+            if (t.includes('BEGIN:VCALENDAR')) text = t;
+          }
+        } catch { /* CORS — try proxy */ }
+        // Fall back to server proxy for external URLs
+        if (!text) {
+          try {
+            const resp = await fetch(`/api/ical-proxy?url=${encodeURIComponent(f.url)}`);
+            if (resp.ok) {
+              const t = await resp.text();
+              if (t.includes('BEGIN:VCALENDAR')) text = t;
+            }
+          } catch { /* proxy not available */ }
+        }
+        if (text) {
+          allEvents.push(...parseICS(text, f.url));
+          loaded++;
+        }
+      } catch (e) {
+        console.warn('Calendar feed failed:', f.url, e);
+      }
+    }
+    calEvents = allEvents.sort((a, b) => a.dt - b.dt);
+    document.getElementById('cal-feed-count').textContent =
+      `${loaded}/${CAL_FEEDS.length} feeds · ${calEvents.length} events`;
+    renderCalendar();
+  }
+
+  function renderCalendar() {
+    const list = document.getElementById('cal-list');
+    const empty = document.getElementById('cal-empty');
+    list.innerHTML = '';
+
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const maxDate = new Date(today);
+    maxDate.setDate(maxDate.getDate() + 90); // Show 90 days ahead
+
+    // Filter: show upcoming + today, plus a few past for context
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const visible = calEvents.filter(e => e.dt >= yesterday && e.dt <= maxDate);
+
+    if (visible.length === 0 && calEvents.length === 0) {
+      empty.style.display = 'block';
+      return;
+    }
+    empty.style.display = 'none';
+
+    const months = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+    const days = ['SUN','MON','TUE','WED','THU','FRI','SAT'];
+
+    visible.forEach(ev => {
+      const d = ev.dt;
+      const isToday = d >= today && d < new Date(today.getTime() + 86400000);
+      const isPast = d < today;
+
+      const timeStr = ev.allDay ? 'ALL DAY' :
+        d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }).toUpperCase();
+      const meta = [timeStr, ev.location].filter(Boolean).join(' · ');
+
+      const el = document.createElement('div');
+      el.className = `cal-event${isToday ? ' is-today' : ''}${isPast ? ' is-past' : ''}`;
+      el.innerHTML = `
+        <div class="cal-date-block">
+          <div class="cal-month">${months[d.getMonth()]}</div>
+          <div class="cal-day">${d.getDate()}</div>
+          <div class="cal-dow">${days[d.getDay()]}</div>
+        </div>
+        <div class="cal-details">
+          <div class="cal-summary">${ev.summary}</div>
+          <div class="cal-meta">${meta}</div>
+        </div>
+        ${CAL_FEEDS.length > 1 ? `<span class="cal-feed-tag">${ev.feed}</span>` : ''}
+      `;
+      list.appendChild(el);
+    });
+  }
+
   // Start
   tick();
   setInterval(tick, 1000);
+  loadCalFeeds();
+  setInterval(loadCalFeeds, 5 * 60 * 1000); // Refresh feeds every 5 min
 </script>
 </body>
 </html>
