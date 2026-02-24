@@ -90,11 +90,18 @@ and USB-mounted media. See Production Queue Phase 5.
 *Source: Product Review gap analysis.*
 
 ### No live data integration pages exist
-**Severity:** High (pitch-product gap)
+**Severity:** High (pitch-product gap) — PARTIALLY ADDRESSED
 The pitch lists 11 types of live data (weather, news, ISS, stocks, etc.) but
-zero data integration pages have been built. The "stream real-time data" promise
-is entirely undelivered.
-**Fix:** Build 2-3 showcase data pages (weather, clock, news ticker).
+only weather and clock pages have been built so far.
+- Weather page: ✅ Complete with theme support
+- Clock page: ✅ World clock with calendar feed integration
+  - iCal proxy API at `/api/ical-proxy` (urllib, 10min cache)
+  - Supports local `.ics` files and external feeds (space launches, etc.)
+  - **Known issue:** Clock digits wiggle — need fixed-width character cells
+    (each digit in its own `<span>` with `display:inline-block; text-align:center; width:Xch`)
+  - **Needs testing:** External feed rendering with multiple feeds + feed tags
+- News ticker: Not started
+**Fix:** Build 1-2 more showcase data pages (news ticker, ISS tracker).
 See Production Queue Phase 5.
 *Source: Product Review gap analysis.*
 
