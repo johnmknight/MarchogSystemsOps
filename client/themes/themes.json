@@ -31,9 +31,9 @@
   },
   {
     "id": "imperial",
-    "name": "Imperial Navy",
-    "group": "Star Wars",
-    "description": "Death Star command aesthetic — cool blue-grey with Aurebesh accents",
+    "name": "Iron Citadel",
+    "group": "Galactic",
+    "description": "Cold military command deck — blue-grey steel with alien script accents",
     "fonts": {
       "heading": "Aurebesh",
       "body": "Share Tech Mono",
@@ -66,9 +66,9 @@
   },
   {
     "id": "rebel",
-    "name": "Rebel Alliance",
-    "group": "Star Wars",
-    "description": "Yavin war room — warm orange-amber with tactical urgency",
+    "name": "Outpost Ember",
+    "group": "Galactic",
+    "description": "Warm war-room amber with tactical urgency and alien script overlays",
     "fonts": {
       "heading": "Aurebesh",
       "body": "Share Tech Mono",
@@ -101,9 +101,9 @@
   },
   {
     "id": "mandalorian",
-    "name": "Mandalorian",
-    "group": "Star Wars",
-    "description": "Beskar-forged minimalism — weathered steel and amber highlights",
+    "name": "Forged Steel",
+    "group": "Galactic",
+    "description": "Weathered metal minimalism — steel and amber highlights, battle-worn",
     "fonts": {
       "heading": "Aurebesh",
       "body": "Share Tech Mono",
@@ -136,9 +136,9 @@
   },
   {
     "id": "sith",
-    "name": "Sith Holocron",
-    "group": "Star Wars",
-    "description": "Dark side energy — deep crimson glow from obsidian darkness",
+    "name": "Crimson Archive",
+    "group": "Galactic",
+    "description": "Deep crimson glow from obsidian darkness — forbidden knowledge aesthetic",
     "fonts": {
       "heading": "Aurebesh",
       "body": "Share Tech Mono",
@@ -171,9 +171,9 @@
   },
   {
     "id": "lcars",
-    "name": "LCARS",
-    "group": "Star Trek",
-    "description": "Federation LCARS — rounded panels, warm palette, Okuda-inspired layout",
+    "name": "Conn Panel",
+    "group": "Federation",
+    "description": "Rounded panels, warm palette — bridge operations aesthetic",
     "fonts": {
       "heading": "Antonio",
       "body": "Ubuntu Condensed",
@@ -201,9 +201,9 @@
   },
   {
     "id": "lcars_tmp",
-    "name": "LCARS: The Motion Picture",
-    "group": "Star Trek",
-    "description": "Early Federation — cooler, bluer LCARS inspired by TMP-era displays",
+    "name": "Conn Panel: First Light",
+    "group": "Federation",
+    "description": "Cooler, bluer variant — early-era bridge display aesthetic",
     "fonts": {
       "heading": "Antonio",
       "body": "Ubuntu Condensed",
@@ -231,9 +231,9 @@
   },
   {
     "id": "lcars_ds9",
-    "name": "LCARS: Deep Space",
-    "group": "Star Trek",
-    "description": "DS9/Defiant era — darker, more tactical, purple-pink accents",
+    "name": "Conn Panel: Outpost",
+    "group": "Federation",
+    "description": "Darker, more tactical — purple-pink accents for frontier stations",
     "fonts": {
       "heading": "Antonio",
       "body": "Ubuntu Condensed",
@@ -261,9 +261,9 @@
   },
   {
     "id": "nostromo",
-    "name": "Nostromo MU/TH/UR",
-    "group": "Alien",
-    "description": "Weyland-Yutani CRT terminal — green phosphor on black, pure retro",
+    "name": "Freight Terminal",
+    "group": "Industrial",
+    "description": "Green phosphor CRT on black — deep-space hauler terminal, pure retro",
     "fonts": {
       "heading": "VT323",
       "body": "VT323",
@@ -291,9 +291,9 @@
   },
   {
     "id": "weyland",
-    "name": "Weyland-Yutani Corp",
-    "group": "Alien",
-    "description": "Corporate Weyland-Yutani — amber CRT with clinical precision",
+    "name": "Corporate Directive",
+    "group": "Industrial",
+    "description": "Amber CRT with clinical corporate precision — boardroom meets airlock",
     "fonts": {
       "heading": "VT323",
       "body": "VT323",
@@ -321,9 +321,9 @@
   },
   {
     "id": "prometheus",
-    "name": "Prometheus",
-    "group": "Alien",
-    "description": "Weyland Prometheus mission — sleek blue holographic, modern sci-fi",
+    "name": "Pathfinder Holo",
+    "group": "Industrial",
+    "description": "Sleek blue holographic — modern exploration vessel interface",
     "fonts": {
       "heading": "Rajdhani",
       "body": "Share Tech Mono",
@@ -351,9 +351,9 @@
   },
   {
     "id": "blade_runner",
-    "name": "Blade Runner",
+    "name": "Neon Noir",
     "group": "Cyberpunk",
-    "description": "Rain-soaked neon noir — magenta and teal bleeding through darkness",
+    "description": "Rain-soaked neon — magenta and teal bleeding through darkness",
     "fonts": {
       "heading": "Orbitron",
       "body": "Share Tech Mono",
@@ -381,9 +381,9 @@
   },
   {
     "id": "tron",
-    "name": "TRON Grid",
+    "name": "Circuit Grid",
     "group": "Cyberpunk",
-    "description": "The Grid — electric blue circuits on absolute black",
+    "description": "Electric blue circuits on absolute black — the grid awaits",
     "fonts": {
       "heading": "Orbitron",
       "body": "Share Tech Mono",
@@ -411,9 +411,9 @@
   },
   {
     "id": "matrix",
-    "name": "Matrix",
+    "name": "Digital Rain",
     "group": "Cyberpunk",
-    "description": "Digital rain — green code on black, hacker terminal aesthetic",
+    "description": "Green code cascade on black — hacker terminal aesthetic",
     "fonts": {
       "heading": "Share Tech Mono",
       "body": "Share Tech Mono",
@@ -441,9 +441,9 @@
   },
   {
     "id": "hal9000",
-    "name": "HAL 9000",
+    "name": "Red Eye",
     "group": "Classic Sci-Fi",
-    "description": "2001: A Space Odyssey — clinical white with the red eye watching",
+    "description": "Clinical white with an unblinking red focal point — cold intelligence",
     "fonts": {
       "heading": "Space Grotesk",
       "body": "IBM Plex Mono",
@@ -471,9 +471,9 @@
   },
   {
     "id": "expanse",
-    "name": "The Expanse",
+    "name": "Belt Runner",
     "group": "Classic Sci-Fi",
-    "description": "Rocinante ops — utilitarian, warm amber on industrial dark grey",
+    "description": "Utilitarian amber on industrial dark grey — working ship, no frills",
     "fonts": {
       "heading": "Rajdhani",
       "body": "Source Code Pro",
@@ -501,9 +501,9 @@
   },
   {
     "id": "stargate",
-    "name": "Stargate SGC",
+    "name": "Deep Mountain",
     "group": "Classic Sci-Fi",
-    "description": "Cheyenne Mountain — military green on dark with Ancient glyph energy",
+    "description": "Military green on dark — subterranean command center with ancient energy",
     "fonts": {
       "heading": "Chakra Petch",
       "body": "Share Tech Mono",
@@ -531,9 +531,9 @@
   },
   {
     "id": "dune",
-    "name": "Dune Arrakis",
+    "name": "Desert Spire",
     "group": "Classic Sci-Fi",
-    "description": "Fremen stillsuit HUD — desert gold on deep sienna, spice-tinted",
+    "description": "Desert gold on deep sienna — arid survival aesthetic, spice-tinted",
     "fonts": {
       "heading": "Cinzel",
       "body": "Source Code Pro",
@@ -561,9 +561,9 @@
   },
   {
     "id": "fallout",
-    "name": "Fallout Pip-Boy",
+    "name": "Bunker Terminal",
     "group": "Retro-Future",
-    "description": "Vault-Tec terminal — green phosphor with that retro-50s atomic age vibe",
+    "description": "Atomic-age green phosphor — retro-50s radiation glow from underground",
     "fonts": {
       "heading": "VT323",
       "body": "VT323",
@@ -591,7 +591,7 @@
   },
   {
     "id": "retro_amber",
-    "name": "Retro Amber Terminal",
+    "name": "Amber Glow",
     "group": "Retro-Future",
     "description": "Classic amber CRT — the warm glow of vintage computing",
     "fonts": {
@@ -621,9 +621,9 @@
   },
   {
     "id": "battlestar",
-    "name": "Battlestar Galactica",
+    "name": "Fleet CIC",
     "group": "Classic Sci-Fi",
-    "description": "CIC tactical — military blue-grey with urgent red accents, no-frills",
+    "description": "Military blue-grey with urgent red accents — no-frills tactical",
     "fonts": {
       "heading": "Chakra Petch",
       "body": "Source Code Pro",
@@ -651,9 +651,9 @@
   },
   {
     "id": "cyberpunk_2077",
-    "name": "Cyberpunk 2077",
+    "name": "Neon District",
     "group": "Cyberpunk",
-    "description": "Night City interface — hot yellow glitch on dark with magenta interference",
+    "description": "Hot yellow glitch on dark with magenta interference — night city vibes",
     "fonts": {
       "heading": "Rajdhani",
       "body": "Share Tech Mono",
@@ -681,9 +681,9 @@
   },
   {
     "id": "halo",
-    "name": "Halo UNSC",
+    "name": "Blue Visor",
     "group": "Gaming",
-    "description": "UNSC Cortana interface — cool blue holographic with military precision",
+    "description": "Cool blue holographic with military precision — combat HUD aesthetic",
     "fonts": {
       "heading": "Chakra Petch",
       "body": "Share Tech Mono",
@@ -711,9 +711,9 @@
   },
   {
     "id": "mass_effect",
-    "name": "Mass Effect Omni",
+    "name": "Solar Flare",
     "group": "Gaming",
-    "description": "Omni-tool holographic — warm orange-gold on deep space black",
+    "description": "Warm orange-gold holographic on deep space black — gauntlet interface",
     "fonts": {
       "heading": "Rajdhani",
       "body": "Share Tech Mono",
