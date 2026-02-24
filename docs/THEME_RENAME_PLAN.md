@@ -46,3 +46,49 @@ Fan recognition comes from the visual aesthetic + clever naming, not direct refe
 1. Are the Star Wars themes special since Marchog uses Aurebesh? Does that create a different relationship?
 2. Should we keep the IDs unchanged (they're internal) or rename those too?
 3. Any themes where the current name is fine as-is?
+
+---
+
+## Font License Audit (Feb 24, 2026)
+
+### Kept: Pixel Sagas Aurebesh
+- **Files:** Aurebesh.otf, Aurebesh Bold.otf, Aurebesh Bold Italic.otf,
+  Aurebesh Italic.otf, Aurebesh Condensed.otf, Aurebesh Condensed Bold.otf,
+  Aurebesh Condensed Bold Italic.otf, Aurebesh Condensed Italic.otf
+- **Creator:** Neale Davidson / Pixel Sagas
+- **License:** Free for personal, non-commercial use. Commercial use requires
+  contacting the designer (pixelsagas.com).
+- **Status:** Kept in project. If Marchog is distributed commercially,
+  a commercial license must be obtained from Pixel Sagas, or the font
+  must be swapped for FT Aurebesh (SIL OFL, by Rodrigo Fuenzalida),
+  which is a libre alternative that allows commercial bundling.
+
+### Removed: Domabesh Console beta
+- **File:** Domabesh_Console_beta-2.otf
+- **Origin:** Fan recreation of Domabesh, a Star Wars production font
+  created by Dominic Sikking for Rogue One (2016). The glyph designs
+  are Lucasfilm IP. The "beta" fan font has no clear license.
+- **Status:** Removed.
+
+### Removed: Docking Bay 94
+- **File:** docking-bay-94.ttf
+- **Origin:** FontStruct creation by "endersmith." Based on Star Wars
+  Mos Eisley spaceport numerals. FontStruct license terms unclear;
+  name itself is a direct Star Wars reference.
+- **Status:** Removed.
+
+### Removed: Aurebesh Sheev beta
+- **File:** Aurebesh_Sheev_beta.otf
+- **Origin:** Fan-created variant. No license found. "Sheev" is a
+  Star Wars character name (Sheev Palpatine).
+- **Status:** Removed.
+
+### IP note on Aurebesh glyph designs
+The Aurebesh writing system (letter shapes) was created for Star Wars
+by Joe Johnston and later formalized by Stephen Crane for West End Games
+with Lucasfilm permission. Even with a properly licensed font *file*,
+the glyph designs themselves may be considered Lucasfilm IP. Fan projects
+generally get a pass; commercial distribution is a gray area. Options:
+1. Ship Aurebesh as-is (current approach, acceptable for open-source/free)
+2. Offer as "bring your own font" — user installs their own Aurebesh
+3. Swap to FT Aurebesh (SIL OFL) which is an independent recreation
