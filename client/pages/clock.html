@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Marchog Systems — World Clock</title>
+  <script src="../themes/theme-engine.js"></script>
+  <style>
+    :root {
+      --cyan: var(--theme-primary, #00e5ff);
+      --cyan-bright: var(--theme-accent, #40efff);
+      --cyan-dim: var(--theme-primary-dim, rgba(0, 229, 255, 0.35));
+      --white: var(--theme-text, #e8f0ff);
+      --text-primary: var(--theme-text, #e8f0ff);
+      --text-secondary: var(--theme-text-dim, #a0c0e0);
+      --bg-dark: var(--theme-bg, #020a14);
+      --bg-panel: var(--theme-bg-panel, rgba(4, 16, 32, 0.82));
+      --border-glow: var(--theme-border, rgba(0, 229, 255, 0.18));
+      --danger: var(--theme-danger, #ff4444);
+      --warning: var(--theme-warning, #ffaa00);
+      --success: var(--theme-success, #00ff88);
+      --secondary: var(--theme-secondary, #4a9eff);
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      width: 100%; height: 100%; overflow: hidden;
+      background: var(--bg-dark);
+      font-family: var(--theme-font-body, 'Share Tech Mono'), monospace;
+      color: var(--text-primary);
+    }
+</style>
+</head>
+<body>
+<div id="clock-app">
+  <!-- Header -->
+  <div id="header">
+    <div id="header-left">
+      <div class="sys-label">Marchog Chronometric Array</div>
+      <div id="utc-line">UTC <span id="utc-time">--:--:--</span> · <span id="utc-date">----</span></div>
+    </div>
+    <div id="header-right">
+      <div id="local-time-big">--:--:--</div>
+      <div id="local-date">----</div>
+    </div>
+  </div>
+
+  <!-- Primary clock — large -->
+  <div id="primary-zone">
+    <div class="zone-label" id="primary-label">LOCAL</div>
+    <div class="big-clock" id="primary-clock">--:--:--</div>
+    <div class="big-date" id="primary-date">----</div>
+    <div class="zone-offset" id="primary-offset">UTC--</div>
+  </div>
+
+  <!-- Secondary clocks grid -->
+  <div id="zone-grid"></div>
+
+  <!-- Sun bar -->
+  <div id="sun-bar">
+    <div class="sun-label">DAYLIGHT STATUS</div>
+    <div id="sun-strip"></div>
+  </div>
+</div>
+
+<style>
+  #clock-app {
+    width: 100%; height: 100%;
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+    grid-template-columns: 38% 1fr;
+    gap: 0;
+    padding: 12px 16px;
+  }
+
+  /* ── Header ── */
+  #header {
+    grid-column: 1 / -1;
+    display: flex; justify-content: space-between; align-items: flex-start;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border-glow);
+    margin-bottom: 10px;
+  }
+  .sys-label {
+    font-family: var(--theme-font-heading, 'Orbitron'), sans-serif;
+    font-size: 0.7em; text-transform: uppercase; letter-spacing: 0.2em;
+    color: var(--text-secondary); opacity: 0.6;
+  }
+  #utc-line {
+    font-size: 0.85em; color: var(--text-secondary); margin-top: 2px;
+  }
+  #utc-line span { color: var(--cyan); }
+  #header-right { text-align: right; }
+  #local-time-big {
+    font-family: var(--theme-font-heading, 'Orbitron'), sans-serif;
+    font-size: 1.8em; font-weight: 700;
+    color: var(--cyan); letter-spacing: 0.05em;
+  }
+  #local-date { font-size: 0.75em; color: var(--text-secondary); }
+
+  /* ── Primary zone — left column ── */
+  #primary-zone {
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    padding: 10px;
+    position: relative;
+  }
+  .zone-label {
+    font-family: var(--theme-font-heading, 'Orbitron'), sans-serif;
+    font-size: 0.75em; text-transform: uppercase; letter-spacing: 0.25em;
+    color: var(--text-secondary); margin-bottom: 4px;
+  }
+  .big-clock {
+    font-family: var(--theme-font-heading, 'Orbitron'), sans-serif;
+    font-size: clamp(3em, 6vw, 5.5em); font-weight: 900;
+    color: var(--cyan); letter-spacing: 0.04em;
+    line-height: 1;
+  }
+  .big-date {
+    font-size: 0.9em; color: var(--text-secondary); margin-top: 2px;
+  }
+  .zone-offset {
+    font-size: 0.7em; color: var(--cyan-dim); margin-top: 4px;
+    letter-spacing: 0.15em;
+  }
+
+  /* ── Zone grid — right column ── */
+  #zone-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    grid-auto-rows: min-content;
+    gap: 8px;
+    padding: 0 4px;
+    align-content: start;
+    overflow-y: auto;
+  }
+  .zone-card {
+    background: var(--bg-panel);
+    border: 1px solid var(--border-glow);
+    padding: 10px 14px;
+    position: relative;
+    overflow: hidden;
+    transition: border-color 0.3s;
+  }
+  .zone-card::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px;
+    background: linear-gradient(90deg, var(--cyan), transparent);
+    opacity: 0.4;
+  }
+  .zone-card.is-night {
+    border-color: var(--theme-border, rgba(0, 229, 255, 0.08));
+  }
+  .zone-card.is-night .zc-time { opacity: 0.7; }
+  .zc-city {
+    font-family: var(--theme-font-heading, 'Orbitron'), sans-serif;
+    font-size: 0.7em; text-transform: uppercase; letter-spacing: 0.18em;
+    color: var(--text-secondary);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .zc-time {
+    font-family: var(--theme-font-heading, 'Orbitron'), sans-serif;
+    font-size: 1.7em; font-weight: 700;
+    color: var(--cyan); line-height: 1.1;
+    margin: 2px 0;
+  }
+  .zc-seconds {
+    font-size: 0.45em; font-weight: 400;
+    color: var(--text-secondary); vertical-align: super;
+  }
+  .zc-bottom {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 0.65em; color: var(--text-secondary);
+  }
+  .zc-date { opacity: 0.7; }
+  .zc-offset { color: var(--cyan-dim); letter-spacing: 0.1em; }
+  .zc-day-indicator {
+    width: 6px; height: 6px; border-radius: 50%;
+    display: inline-block; margin-right: 6px; vertical-align: middle;
+  }
+  .zc-day-indicator.day { background: var(--warning); box-shadow: 0 0 4px var(--warning); }
+  .zc-day-indicator.night { background: var(--secondary); box-shadow: 0 0 4px var(--secondary); }
+
+  /* ── Sun bar — bottom ── */
+  #sun-bar {
+    grid-column: 1 / -1;
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border-glow);
+  }
+  .sun-label {
+    font-family: var(--theme-font-heading, 'Orbitron'), sans-serif;
+    font-size: 0.55em; text-transform: uppercase; letter-spacing: 0.2em;
+    color: var(--text-secondary); opacity: 0.5; margin-bottom: 4px;
+  }
+  #sun-strip {
+    display: flex; height: 18px; border-radius: 2px; overflow: hidden;
+    border: 1px solid var(--border-glow);
+  }
+  .sun-seg {
+    flex: 1; display: flex; align-items: center; justify-content: center;
+    font-size: 0.5em; letter-spacing: 0.1em; text-transform: uppercase;
+    position: relative;
+  }
+  .sun-seg.day { background: rgba(255, 170, 0, 0.12); color: var(--warning); }
+  .sun-seg.night { background: rgba(74, 158, 255, 0.06); color: var(--secondary); opacity: 0.6; }
+  .sun-seg .seg-city { opacity: 0.8; }
+  .sun-seg .seg-marker {
+    position: absolute; top: -2px; bottom: -2px; width: 2px;
+    background: var(--cyan); left: 50%;
+    display: none;
+  }
+</style>
+
+<script>
+  // ═══════════════════════════════════════════════════════
+  //  Theme engine init
+  // ═══════════════════════════════════════════════════════
+  MarchogTheme.init();
+
+  // ═══════════════════════════════════════════════════════
+  //  MARCHOG WORLD CLOCK — Chronometric Array
+  // ═══════════════════════════════════════════════════════
+
+  // Default zones — configurable via URL params
+  const DEFAULT_ZONES = [
+    { city: 'London',     tz: 'Europe/London'        },
+    { city: 'Paris',      tz: 'Europe/Paris'          },
+    { city: 'Moscow',     tz: 'Europe/Moscow'         },
+    { city: 'Dubai',      tz: 'Asia/Dubai'            },
+    { city: 'Mumbai',     tz: 'Asia/Kolkata'          },
+    { city: 'Tokyo',      tz: 'Asia/Tokyo'            },
+    { city: 'Sydney',     tz: 'Australia/Sydney'      },
+    { city: 'Los Angeles',tz: 'America/Los_Angeles'   },
+    { city: 'New York',   tz: 'America/New_York'      },
+    { city: 'Chicago',    tz: 'America/Chicago'       },
+    { city: 'Honolulu',   tz: 'Pacific/Honolulu'      },
+    { city: 'São Paulo',  tz: 'America/Sao_Paulo'     },
+  ];
+
+  // Parse URL params for custom zones
+  function getZones() {
+    const params = new URLSearchParams(window.location.search);
+    const zonesParam = params.get('zones');
+    if (zonesParam) {
+      try {
+        return JSON.parse(decodeURIComponent(zonesParam));
+      } catch(e) { console.warn('Invalid zones param, using defaults'); }
+    }
+    return DEFAULT_ZONES;
+  }
+
+  // Parse primary zone from URL or use local
+  function getPrimaryTz() {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('primary') || null; // null = local
+  }
+
+  const ZONES = getZones();
+  const PRIMARY_TZ = getPrimaryTz();
+
+  // ── Time helpers ──
+  function fmtTime(date, tz, sec = true) {
+    const opts = { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: tz };
+    if (sec) opts.second = '2-digit';
+    return date.toLocaleTimeString('en-GB', opts);
+  }
+
+  function fmtDate(date, tz) {
+    return date.toLocaleDateString('en-GB', {
+      weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', timeZone: tz
+    }).toUpperCase();
+  }
+
+  function fmtDateShort(date, tz) {
+    return date.toLocaleDateString('en-GB', {
+      weekday: 'short', day: 'numeric', month: 'short', timeZone: tz
+    }).toUpperCase();
+  }
+
+  function getUTCOffset(date, tz) {
+    const utcStr = date.toLocaleString('en-GB', { timeZone: 'UTC', hour: '2-digit', minute: '2-digit', hour12: false });
+    const tzStr  = date.toLocaleString('en-GB', { timeZone: tz,    hour: '2-digit', minute: '2-digit', hour12: false });
+    const [uh, um] = utcStr.split(':').map(Number);
+    const [th, tm] = tzStr.split(':').map(Number);
+    let diff = (th * 60 + tm) - (uh * 60 + um);
+    // Handle day boundary
+    if (diff > 720) diff -= 1440;
+    if (diff < -720) diff += 1440;
+    const sign = diff >= 0 ? '+' : '-';
+    const absDiff = Math.abs(diff);
+    const h = Math.floor(absDiff / 60);
+    const m = absDiff % 60;
+    return `UTC${sign}${h}${m > 0 ? ':' + String(m).padStart(2, '0') : ''}`;
+  }
+
+  function isDaytime(date, tz) {
+    const h = parseInt(date.toLocaleString('en-GB', { hour: '2-digit', hour12: false, timeZone: tz }));
+    return h >= 6 && h < 20;
+  }
+
+  function getHour(date, tz) {
+    return parseInt(date.toLocaleString('en-GB', { hour: '2-digit', hour12: false, timeZone: tz }));
+  }
+
+  // ── Build zone cards ──
+  const grid = document.getElementById('zone-grid');
+  ZONES.forEach((z, i) => {
+    const card = document.createElement('div');
+    card.className = 'zone-card';
+    card.id = `zone-${i}`;
+    card.innerHTML = `
+      <div class="zc-city">${z.city}</div>
+      <div class="zc-time"><span class="zc-hm">--:--</span><span class="zc-seconds">:--</span></div>
+      <div class="zc-bottom">
+        <span><span class="zc-day-indicator"></span><span class="zc-date">---</span></span>
+        <span class="zc-offset">---</span>
+      </div>
+    `;
+    grid.appendChild(card);
+  });
+
+  // ── Sun strip ──
+  function buildSunStrip(date) {
+    const strip = document.getElementById('sun-strip');
+    strip.innerHTML = '';
+    ZONES.forEach(z => {
+      const h = getHour(date, z.tz);
+      const isDay = h >= 6 && h < 20;
+      const seg = document.createElement('div');
+      seg.className = `sun-seg ${isDay ? 'day' : 'night'}`;
+      // Abbreviate city name
+      const abbr = z.city.length > 6 ? z.city.substring(0, 5) + '.' : z.city;
+      seg.innerHTML = `<span class="seg-city">${abbr}</span>`;
+      strip.appendChild(seg);
+    });
+  }
+
+  // ── Main tick ──
+  function tick() {
+    const now = new Date();
+
+    // UTC
+    document.getElementById('utc-time').textContent = fmtTime(now, 'UTC');
+    document.getElementById('utc-date').textContent = fmtDateShort(now, 'UTC');
+
+    // Local header
+    const localTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    document.getElementById('local-time-big').textContent = fmtTime(now, localTz);
+    document.getElementById('local-date').textContent = fmtDate(now, localTz);
+
+    // Primary clock
+    const pTz = PRIMARY_TZ || localTz;
+    const pLabel = PRIMARY_TZ ? PRIMARY_TZ.split('/').pop().replace(/_/g, ' ').toUpperCase() : 'LOCAL';
+    document.getElementById('primary-label').textContent = pLabel;
+    document.getElementById('primary-clock').textContent = fmtTime(now, pTz);
+    document.getElementById('primary-date').textContent = fmtDate(now, pTz);
+    document.getElementById('primary-offset').textContent = getUTCOffset(now, pTz);
+
+    // Zone cards
+    ZONES.forEach((z, i) => {
+      const card = document.getElementById(`zone-${i}`);
+      const time = fmtTime(now, z.tz);
+      const [hm, sec] = [time.substring(0, 5), time.substring(5)];
+      card.querySelector('.zc-hm').textContent = hm;
+      card.querySelector('.zc-seconds').textContent = sec;
+      card.querySelector('.zc-date').textContent = fmtDateShort(now, z.tz);
+      card.querySelector('.zc-offset').textContent = getUTCOffset(now, z.tz);
+
+      const isDay = isDaytime(now, z.tz);
+      card.classList.toggle('is-night', !isDay);
+      const indicator = card.querySelector('.zc-day-indicator');
+      indicator.className = `zc-day-indicator ${isDay ? 'day' : 'night'}`;
+    });
+
+    // Sun strip
+    buildSunStrip(now);
+  }
+
+  // Start
+  tick();
+  setInterval(tick, 1000);
+</script>
+</body>
+</html>

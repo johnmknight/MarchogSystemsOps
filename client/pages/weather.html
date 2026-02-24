@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Marchog Systems — Weather</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="../themes/theme-engine.js"></script>
   <script src="states_data.js"></script>
   <script src="land_data.js"></script>
   <script src="lakes_data.js"></script>
@@ -17,25 +18,26 @@
   <script src="data/mars/mars_regions.js"></script>
   <script src="data/mars/mars_geology.js"></script>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&family=Share+Tech+Mono&display=swap');
+    /* Fonts loaded by theme-engine.js */
 
     :root {
-      --cyan: #00e5ff;
-      --cyan-bright: #40efff;
-      --cyan-dim: rgba(0, 229, 255, 0.35);
-      --white: #e8f0ff;
+      /* Aliases — driven by theme-engine.js, with Marchog defaults as fallback */
+      --cyan: var(--theme-primary, #00e5ff);
+      --cyan-bright: var(--theme-accent, #40efff);
+      --cyan-dim: var(--theme-primary-dim, rgba(0, 229, 255, 0.35));
+      --white: var(--theme-text, #e8f0ff);
       --white-bright: #ffffff;
-      --text-primary: #e8f0ff;
-      --text-secondary: #a0c0e0;
-      --bg-dark: #020a14;
-      --bg-panel: rgba(4, 16, 32, 0.82);
-      --border-glow: rgba(0, 229, 255, 0.18);
+      --text-primary: var(--theme-text, #e8f0ff);
+      --text-secondary: var(--theme-text-dim, #a0c0e0);
+      --bg-dark: var(--theme-bg, #020a14);
+      --bg-panel: var(--theme-bg-panel, rgba(4, 16, 32, 0.82));
+      --border-glow: var(--theme-border, rgba(0, 229, 255, 0.18));
     }
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body {
       width: 100%; height: 100%; overflow: hidden;
       background: var(--bg-dark);
-      font-family: 'Share Tech Mono', monospace;
+      font-family: var(--theme-font-body, 'Share Tech Mono'), monospace;
       color: var(--text-primary);
     }
 
@@ -48,8 +50,8 @@
     #globeContainer {
       position: absolute; top: 0; right: 0; width: 35%; height: 50%;
       z-index: 2;
-      border-left: 1px solid rgba(0,229,255,0.06);
-      border-bottom: 1px solid rgba(0,229,255,0.06);
+      border-left: 1px solid var(--border-glow);
+      border-bottom: 1px solid var(--border-glow);
       background: #010408;
     }
     #globeCanvas { width: 100%; height: 100%; display: block; }
@@ -74,16 +76,16 @@
     }
 
     .wp-temp {
-      font-family: 'Orbitron', sans-serif;
+      font-family: var(--theme-font-heading), sans-serif;
       font-size: clamp(2.4em, 5vw, 4em); font-weight: 900;
       color: var(--white-bright); line-height: 1;
-      text-shadow: 0 0 14px rgba(0,229,255,0.2);
+      text-shadow: 0 0 14px var(--cyan-dim);
     }
     .wp-temp .unit { font-size: 0.3em; font-weight: 500; color: var(--cyan-bright); vertical-align: super; }
     .wp-condition-row { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
     .wp-condition-icon { font-size: 1.5em; }
     .wp-condition-text {
-      font-family: 'Orbitron', sans-serif;
+      font-family: var(--theme-font-heading), sans-serif;
       font-size: 0.6em; font-weight: 600; color: var(--white); letter-spacing: 0.08em;
     }
     .wp-feels { font-size: 0.72em; color: var(--text-secondary); margin-top: 2px; }
@@ -94,19 +96,19 @@
     }
     .wp-row { display: flex; justify-content: space-between; align-items: baseline; }
     .wp-label { font-size: 0.62em; color: var(--text-secondary); }
-    .wp-val { font-family: 'Orbitron', sans-serif; font-size: 0.72em; font-weight: 600; color: var(--white-bright); }
+    .wp-val { font-family: var(--theme-font-heading), sans-serif; font-size: 0.72em; font-weight: 600; color: var(--white-bright); }
 
     .wp-forecast-label {
-      font-family: 'Orbitron', sans-serif;
+      font-family: var(--theme-font-heading), sans-serif;
       font-size: 0.4em; font-weight: 500; letter-spacing: 0.15em;
       color: var(--cyan); opacity: 0.6; margin-top: auto; margin-bottom: 4px;
     }
     .wp-forecast-strip {
       display: flex; gap: 2px;
     }
-    .wp-forecast-day { text-align: center; flex: 1; padding: 3px 2px; border-right: 1px solid rgba(0,229,255,0.06); }
+    .wp-forecast-day { text-align: center; flex: 1; padding: 3px 2px; border-right: 1px solid var(--border-glow); }
     .wp-forecast-day:last-child { border-right: none; }
-    .wp-forecast-day-name { font-family: 'Orbitron', sans-serif; font-size: 0.4em; font-weight: 600; color: var(--cyan); letter-spacing: 0.08em; }
+    .wp-forecast-day-name { font-family: var(--theme-font-heading), sans-serif; font-size: 0.4em; font-weight: 600; color: var(--cyan); letter-spacing: 0.08em; }
     .wp-forecast-day-icon { font-size: 1em; margin: 1px 0; }
     .wp-forecast-day-temp { font-size: 0.68em; color: var(--white-bright); }
     .wp-forecast-day-lo { font-size: 0.52em; color: var(--text-secondary); }
@@ -122,7 +124,7 @@
 
     .hud-system {
       position: absolute; top: 10px; left: 14px;
-      font-family: 'Orbitron', sans-serif;
+      font-family: var(--theme-font-heading), sans-serif;
       font-size: 0.5em; font-weight: 500;
       letter-spacing: 0.2em; color: var(--cyan); opacity: 0.5;
     }
@@ -130,22 +132,22 @@
       position: absolute; top: 10px; right: 14px; text-align: right;
     }
     .hud-clock-time {
-      font-family: 'Orbitron', sans-serif;
+      font-family: var(--theme-font-heading), sans-serif;
       font-size: clamp(1em,2vw,1.5em); font-weight: 700;
       color: var(--white-bright); letter-spacing: 0.06em;
-      text-shadow: 0 0 10px rgba(0,229,255,0.25);
+      text-shadow: 0 0 10px var(--cyan-dim);
     }
     .hud-clock-date { font-size: 0.65em; color: var(--cyan-bright); }
 
     .hud-location { position: absolute; top: 30px; left: 14px; }
     .hud-location-name {
-      font-family: 'Orbitron', sans-serif;
+      font-family: var(--theme-font-heading), sans-serif;
       font-size: clamp(1.4em,3vw,2.4em); font-weight: 800;
       color: var(--white-bright);
-      text-shadow: 0 0 20px rgba(0,229,255,0.4), 0 0 40px rgba(0,229,255,0.15);
+      text-shadow: 0 0 20px var(--cyan-dim), 0 0 40px var(--cyan-dim);
     }
     .hud-location-coords {
-      font-family: 'Orbitron', sans-serif;
+      font-family: var(--theme-font-heading), sans-serif;
       font-size: clamp(0.7em,1.5vw,1.1em); font-weight: 600;
       color: var(--cyan-bright); letter-spacing: 0.15em;
       margin-bottom: 2px;
@@ -167,17 +169,17 @@
       padding: 14px; display: none; backdrop-filter: blur(12px); pointer-events: auto;
     }
     #settingsPanel.open { display: block; }
-    .settings-title { font-family: 'Orbitron', sans-serif; font-size: 0.6em; font-weight: 600; letter-spacing: 0.12em; color: var(--cyan); margin-bottom: 10px; }
+    .settings-title { font-family: var(--theme-font-heading), sans-serif; font-size: 0.6em; font-weight: 600; letter-spacing: 0.12em; color: var(--cyan); margin-bottom: 10px; }
     .setting-group { margin-bottom: 10px; }
     .setting-group label { display: block; font-size: 0.65em; color: var(--text-secondary); margin-bottom: 3px; }
     .setting-group input, .setting-group select {
-      width: 100%; background: rgba(4,16,32,0.9); border: 1px solid rgba(0,229,255,0.15);
-      color: var(--text-primary); font-family: 'Share Tech Mono', monospace;
+      width: 100%; background: var(--bg-panel); border: 1px solid var(--border-glow);
+      color: var(--text-primary); font-family: var(--theme-font-body, 'Share Tech Mono'), monospace;
       font-size: 0.75em; padding: 5px 8px; border-radius: 3px;
     }
     .btn-apply {
-      width: 100%; background: rgba(0,229,255,0.1); border: 1px solid rgba(0,229,255,0.3);
-      color: var(--cyan); font-family: 'Orbitron', sans-serif;
+      width: 100%; background: var(--cyan-dim); border: 1px solid var(--cyan);
+      color: var(--cyan); font-family: var(--theme-font-heading), sans-serif;
       font-size: 0.55em; padding: 7px; border-radius: 3px; cursor: pointer;
     }
     .loading { color: var(--text-secondary); font-size: 0.8em; animation: pulse 1.5s ease-in-out infinite; }
@@ -193,17 +195,17 @@
     }
     body:hover #bodySelector { opacity: 1; }
     .body-btn {
-      font-family: 'Orbitron', sans-serif; font-size: 0.45em; font-weight: 600;
+      font-family: var(--theme-font-heading), sans-serif; font-size: 0.45em; font-weight: 600;
       letter-spacing: 0.12em; padding: 5px 14px;
       background: transparent; border: 1px solid transparent;
       color: var(--text-secondary); cursor: pointer; border-radius: 3px;
       transition: all 0.2s;
     }
-    .body-btn:hover { color: var(--cyan); border-color: rgba(0,229,255,0.2); }
+    .body-btn:hover { color: var(--cyan); border-color: var(--border-glow); }
     .body-btn.active {
-      color: var(--cyan-bright); background: rgba(0,229,255,0.1);
-      border-color: rgba(0,229,255,0.4);
-      text-shadow: 0 0 8px rgba(0,229,255,0.3);
+      color: var(--cyan-bright); background: var(--cyan-dim);
+      border-color: var(--cyan);
+      text-shadow: 0 0 8px var(--cyan-dim);
     }
   </style>
 </head>
@@ -264,6 +266,11 @@
     <button class="btn-apply" onclick="applySettings()">APPLY</button>
   </div>
 <script>
+// ═══════════════════════════════════════════════════════════════
+//  Initialize theme engine (reads ?theme= param, defaults to marchog)
+// ═══════════════════════════════════════════════════════════════
+MarchogTheme.init();
+
 // ═══════════════════════════════════════════════════════════════
 //  MARCHOG WEATHER — State Zoom + Globe + Tactical HUD v3
 //  Multi-body: Earth / Luna / Mars
