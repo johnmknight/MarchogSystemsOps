@@ -179,3 +179,43 @@ existing work already completed:
 5. **Phases 9-10 (Media/Operations)** — Production reliability features.
 6. **Backlog** — Page builder is the biggest growth unlock but requires the most work.
    Audio, multi-user, and theming are important but can wait for a v2 milestone.
+
+---
+
+## Future Research
+
+### Grafana Dashboard Embedding
+- **Concept:** Embed live Grafana dashboards (from `dev1:3000`) as pages in the MarchogSystemsOps page
+  rotation, showing real-time SmartLab metrics directly on a kiosk screen.
+- **Why it fits:** The existing `.page-frame` iframe architecture already supports this — `pages.json`
+  `file` entries accept external URLs. A Grafana page would be a zero-code addition.
+- **What's needed on the Grafana side (two `grafana.ini` changes on dev1):**
+  ```ini
+  [security]
+  allow_embedding = true        # disables X-Frame-Options: deny header
+
+  [auth.anonymous]
+  enabled = true
+  org_name = Main Org
+  org_role = Viewer             # read-only, LAN-only exposure
+  ```
+- **What the pages.json entry would look like:**
+  ```json
+  {
+    "id": "smartlab-metrics",
+    "name": "SmartLab Metrics",
+    "description": "Live system metrics — all hosts",
+    "file": "http://192.168.4.49:3000/d/<dashboard-uid>/system-metrics?kiosk=true&refresh=30s",
+    "icon": "ti-chart-bar",
+    "category": "data",
+    "params": {}
+  }
+  ```
+- **Open questions before implementing:**
+  - Confirm `index.html` frame loader handles absolute `http://` URLs (vs relative paths) — quick
+    code scan needed
+  - Decide on `kiosk` vs `kiosk=tv` mode (tv mode hides the top nav bar entirely)
+  - Consider a themed wrapper page (`grafana-metrics.html`) that iframe-embeds Grafana with
+    MarchogSystems border/overlay treatment rather than raw Grafana chrome
+- **Security note:** Anonymous + LAN-only is acceptable for a home lab kiosk. No sensitive data
+  in these dashboards (CPU, mem, disk, uptime). Do not expose Grafana port externally.
