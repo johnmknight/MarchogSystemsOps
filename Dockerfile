@@ -17,4 +17,5 @@ RUN mkdir -p /app/data
 
 EXPOSE 8082
 
-CMD ["uvicorn", "server.main:app", "--host", "0.0.0.0", "--port", "8082"]
+# Run from server/ so bare imports resolve correctly
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8082", "--app-dir", "server"]
