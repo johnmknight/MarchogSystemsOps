@@ -876,8 +876,8 @@
     <div class="modal" id="modalContent"></div>
   </div>
 
+  <script src="mso-base.js"></script>
   <script>
-    // ═══════════════════════════════════════════════════
     //  STATE
     // ═══════════════════════════════════════════════════
     let rooms = [];
@@ -1259,7 +1259,7 @@
       const grid = document.getElementById('pageGrid');
       grid.innerHTML = pages.map(p => `
         <div class="card" style="padding:12px">
-          <img src="/thumbnails/${p.id}.png" alt="${p.name}" style="width:100%;border-radius:4px;margin-bottom:8px;background:#0a0e14;aspect-ratio:16/9;object-fit:cover" onerror="this.style.display='none'">
+          <img src="${MSO_BASE}/thumbnails/${p.id}.png" alt="${p.name}" style="width:100%;border-radius:4px;margin-bottom:8px;background:#0a0e14;aspect-ratio:16/9;object-fit:cover" onerror="this.style.display='none'">
           <div class="card-header" style="margin-bottom:4px">
             <div class="card-icon"><i class="ti ${p.icon || 'ti-file'}"></i></div>
             <div style="flex:1">
@@ -1276,7 +1276,7 @@
           <div class="card-actions">
             <button class="btn btn-sm" onclick="showEditPageModal('${p.id}')">EDIT</button>
             <button class="btn btn-sm btn-danger" onclick="deletePage('${p.id}','${p.name}')">DELETE</button>
-            <a href="/pages/${p.file}" target="_blank" class="btn btn-sm" style="text-decoration:none">PREVIEW <i class="ti ti-external-link"></i></a>
+            <a href="${MSO_BASE}/pages/${p.file}" target="_blank" class="btn btn-sm" style="text-decoration:none">PREVIEW <i class="ti ti-external-link"></i></a>
           </div>
         </div>
       `).join('') + `

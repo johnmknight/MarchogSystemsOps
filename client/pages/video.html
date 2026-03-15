@@ -310,7 +310,8 @@
     </div>
   </div>
 
-  <script>
+  <script src="../mso-base.js"></script>
+<script>
     // ═══════════════════════════════════════════════════
     //  MEDIA LIBRARY PICKER
     // ═══════════════════════════════════════════════════
@@ -328,7 +329,7 @@
       list.innerHTML = '<div style="color:#5a6a7a; text-align:center; padding:20px;">Loading...</div>';
       try {
         // Resolve API URL relative to parent shell origin (not iframe origin)
-        const apiBase = window.parent.location.origin;
+        const apiBase = window.parent.location.origin + (typeof MSO_BASE !== 'undefined' ? MSO_BASE : '');
         const resp = await fetch(apiBase + '/api/media/videos');
         const videos = await resp.json();
         list.innerHTML = '';
