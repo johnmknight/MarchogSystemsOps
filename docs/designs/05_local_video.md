@@ -139,7 +139,7 @@ GET http://localhost:9090/status
 Configuration:
 ```json
 {
-  "server_url": "http://192.168.1.100:8082",
+  "server_url": "http://YOUR_SERVER_IP:8082",
   "screen_id": "bar-left-monitor",
   "media_dir": "/opt/marchog/media",
   "agent_port": 9090
@@ -254,7 +254,7 @@ need physical access to devices after initial setup.
 **Configurable settings:**
 ```json
 {
-  "server_url": "http://192.168.1.100:8082",
+  "server_url": "http://YOUR_SERVER_IP:8082",
   "screen_id": "bar-left-monitor",
   "media_dir": "/opt/marchog/media",
   "agent_port": 9090,
@@ -304,7 +304,7 @@ POST server/api/agent/{screen_id}/telemetry
   "battery_charging": null,
   "network": {
     "interface": "eth0",
-    "ip": "192.168.1.50",
+    "ip": "YOUR_DEVICE_IP",
     "ssid": null,
     "signal_dbm": null
   },
@@ -402,7 +402,7 @@ The kiosk agent is Python-based. Platform-specific behavior:
 ```bash
 # On kiosk device:
 pip install marchog-agent
-marchog-agent --server http://192.168.1.100:8082 --screen-id bar-left
+marchog-agent --server http://YOUR_SERVER_IP:8082 --screen-id bar-left
 ```
 
 Or with a config file:

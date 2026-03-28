@@ -205,7 +205,7 @@ existing work already completed:
     "id": "smartlab-metrics",
     "name": "SmartLab Metrics",
     "description": "Live system metrics — all hosts",
-    "file": "http://192.168.4.49:3000/d/<dashboard-uid>/system-metrics?kiosk=true&refresh=30s",
+    "file": "http://YOUR_SERVER_IP:3000/d/<dashboard-uid>/system-metrics?kiosk=true&refresh=30s",
     "icon": "ti-chart-bar",
     "category": "data",
     "params": {}
