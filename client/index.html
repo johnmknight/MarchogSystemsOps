@@ -405,7 +405,15 @@
       },
 
       showPage(pageId, report = true) {
-        if (!this.loadedFrames[pageId]) return;
+        if (!this.loadedFrames[pageId]) {
+          // Don't silently disappear — log so we can tell from the
+          // kiosk's devtools that a navigate target was missing. The
+          // `navigate` WS handler lazy-creates frames before calling
+          // us (see Bug #6 fix), so this path should only be hit for
+          // truly bogus page ids.
+          console.warn(`[showPage] No frame for "${pageId}" — cannot display. Known frames:`, Object.keys(this.loadedFrames));
+          return;
+        }
 
         this.currentPage = pageId;
         this.currentPageIndex = this.pages.findIndex(p => p.id === pageId);
@@ -808,6 +816,35 @@
             if (msg.params) {
               this.screenParamsOverride = msg.params;
             }
+
+            // Bug #6 fix: make sure a frame exists for this page before
+            // showPage runs. If the Shell's cached `this.pages` list
+            // predates the target page (stale client, page added later,
+            // etc.) `showPage` would silently bail because
+            // `loadedFrames[pageId]` is undefined — and the monitor
+            // stayed on whatever page was active (typically hyperspace,
+            // the first page). The server now includes a `file` hint
+            // in the navigate message so we can lazy-create the frame
+            // even when our cached pages list doesn't know about it.
+            if (!this.loadedFrames[msg.page]) {
+              const pageMeta = this.pages.find(p => p.id === msg.page);
+              const fileHint = (pageMeta && pageMeta.file) || msg.file;
+              if (fileHint) {
+                console.warn(`[navigate] Frame for "${msg.page}" missing — creating lazily (file="${fileHint}", pages list ${pageMeta ? 'matched' : 'stale'})`);
+                this.ensureFrame(msg.page, fileHint);
+                // If the page wasn't in this.pages at all, our dots bar
+                // and subsequent navigations will still be wrong until
+                // we refresh — do so in the background so the current
+                // navigation isn't blocked.
+                if (!pageMeta) {
+                  this.loadPages().catch(err => console.error('[navigate] background loadPages refresh failed:', err));
+                }
+              } else {
+                console.error(`[navigate] Cannot navigate to "${msg.page}" — no frame, no file hint, not in pages list`);
+                break;
+              }
+            }
+
             this.showPage(msg.page);
             // Always send configure for navigate-with-params, even if page is already showing
             if (msg.params && this.loadedFrames[msg.page]) {

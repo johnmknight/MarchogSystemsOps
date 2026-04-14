@@ -1019,11 +1019,21 @@ def build_navigate_message(page_id: str, params_override: dict = None) -> dict:
     """
     page = get_page(page_id)
     page_defaults = page.get("params", {}) if page else {}
+    page_file = page.get("file") if page else None
     merged_params = {**page_defaults, **(params_override or {})}
 
+    # Include `file` as a hint so the Shell can lazy-create a frame for
+    # this page even if its cached `this.pages` list is stale (e.g. the
+    # page was added after the Shell did its initial `loadPages()`).
+    # Without this hint, a navigate to a page the Shell has never seen
+    # silently fails in `showPage` because `loadedFrames[pageId]` is
+    # undefined — which is the Bug #6 symptom (selecting `video` from
+    # the Connected Screens dropdown looked like it did nothing; the
+    # monitor stayed on whatever page it was on, typically hyperspace).
     return {
         "type": "navigate",
         "page": page_id,
+        "file": page_file,
         "params": merged_params,
         "version": BUILD_VERSION,
     }

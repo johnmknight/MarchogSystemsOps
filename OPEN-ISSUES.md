@@ -59,6 +59,81 @@ RELOAD ALL button in the config panel). Then reproduce and, if the error
 persists, capture the JS console from the kiosk.
 **Status:** OPEN — needs verification after deploy + reload-all.
 
+### 6. Connected Screens: selecting "video" snaps back to hyperspace
+**Severity:** Medium (user-facing) — related to Bug #4
+**Symptom:** On the Config panel → Connected Screens view, changing a
+screen's page dropdown to `video` does not switch the live monitor to the
+video page. Instead the monitor reverts (or never leaves) the first page
+in the list, which happens to be `hyperspace`. Other page selections from
+the same dropdown appear to work.
+**Suspected causes (not yet isolated):**
+- Stale Shell code (see Bug #5) — the old handler might fall back to
+  the first loaded iframe when it fails to interpret a `video`
+  navigate message.
+- `screenParamsOverride` state interacting with video-specific param
+  resolution (`resolveMediaParams` → `asset`/`video` rewriting) —
+  possible the video param is empty/undefined for a bare navigate with
+  no stored override and the page fails to load, causing a visible
+  snap-back.
+- The video page's iframe failing to load `pages/video.html?v=<build>`
+  (cache-bust introduced today) — worth checking the Network tab on
+  a freshly reloaded kiosk.
+**Repro steps:**
+1. In Config panel, pick any connected screen showing a non-video page.
+2. Change the page dropdown for that screen to `video`.
+3. Observe: the monitor either doesn't change or ends up on `hyperspace`
+   (the first entry in the page list).
+**Root cause (confirmed in code review, pending live verification):**
+The Shell's `showPage(pageId)` bails silently when
+`this.loadedFrames[pageId]` is undefined. Frames are only created at
+initial `loadPages()` time from `/api/pages`. If the Shell is running
+stale cached code whose startup `this.pages` list predates a later
+page addition (or — more likely given how often this is hit — a
+browser cache that's serving an older `/api/pages` snapshot), the
+iframe for `video` never exists. A navigate-to-video message then
+hits `showPage`, the `if (!this.loadedFrames[pageId]) return;` guard
+fires, and nothing happens on screen. The user sees the dropdown
+snap back to the server-reported page on the next `/api/screens` poll
+— and since the screen never left its previous page (typically the
+first one, hyperspace), it looks like "video snapped back to
+hyperspace."
+
+**Fix (this commit):**
+1. Server `build_navigate_message` now includes `file` (the page's
+   HTML filename) in the navigate WS message as a hint, so the Shell
+   can lazy-create a frame it doesn't already know about.
+2. Shell's `navigate` WS handler: if `loadedFrames[msg.page]` is
+   missing, call `ensureFrame(msg.page, pageMeta.file || msg.file)`
+   before `showPage`. If `msg.page` wasn't in `this.pages` at all,
+   background-refresh the pages list so the dots bar and subsequent
+   nav calls work.
+3. Shell's `showPage`: no longer silent on the miss — logs a
+   `console.warn` listing known frames so this class of bug can be
+   diagnosed from devtools in the future.
+
+**Repro steps:**
+1. In Config panel, pick any connected screen showing a non-video page.
+2. Change the page dropdown for that screen to `video`.
+3. Observe: the monitor either doesn't change or ends up on `hyperspace`
+   (the first entry in the page list).
+
+**Plan to verify fix:**
+1. Restart the server so the new `build_navigate_message` is live.
+2. Hit RELOAD ALL so every kiosk is on the fresh Shell with the
+   lazy-create navigate handler. Confirm via Identify overlay that
+   Shell and Server builds match.
+3. Reproduce with the browser devtools open on one kiosk: expect to
+   see either direct success (if the frame already existed) or the
+   new `[navigate] Frame for "video" missing — creating lazily …`
+   warning followed by the video page appearing.
+4. If video still fails to appear after the fresh Shell, the bug is
+   NOT in the Shell route but in the video page itself (empty `video`
+   param, iframe load failure). Capture the iframe Network request
+   for `pages/video.html?v=<build>` and any console errors.
+
+**Status:** FIX APPLIED — needs live verification after server
+restart + RELOAD ALL.
+
 ---
 
 ## Needs Further Testing
