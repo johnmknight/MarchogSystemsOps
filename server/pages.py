@@ -114,3 +114,29 @@ def scan_pages_directory(pages_dir: Path) -> list[str]:
     if discovered:
         _write_pages(pages)
     return discovered
+
+
+def get_page_variant(page_id: str, variant_id: str) -> dict | None:
+    """Get a specific variant of a page merged with page defaults."""
+    page = get_page(page_id)
+    if not page or "variants" not in page:
+        return None
+    for variant in page.get("variants", []):
+        if variant["id"] == variant_id:
+            # Merge page defaults with variant params
+            merged_params = {**page.get("params", {}), **variant.get("params", {})}
+            return {
+                **page,
+                "variant_id": variant_id,
+                "variant_name": variant.get("name", variant_id),
+                "params": merged_params
+            }
+    return None
+
+
+def list_page_variants(page_id: str) -> list[dict]:
+    """Get all variants for a page."""
+    page = get_page(page_id)
+    if not page:
+        return []
+    return page.get("variants", [])

@@ -347,6 +347,13 @@ async def get_screen_assignment(screen_id: str):
                 ORDER BY sort_order
             """, (config["id"],))
             config["playlist"] = [dict(r) for r in await cursor.fetchall()]
+        
+        # Parse params_override from JSON string to dict
+        if config.get("params_override"):
+            try:
+                config["params_override"] = json.loads(config["params_override"])
+            except (json.JSONDecodeError, TypeError):
+                config["params_override"] = None
 
         return config
 

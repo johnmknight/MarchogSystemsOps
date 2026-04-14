@@ -41,8 +41,31 @@
     "description": "Video player with themed borders",
     "file": "video.html",
     "icon": "ti-player-play",
-    "category": "general",
-    "params": {}
+    "category": "media",
+    "params": {
+      "video": "",
+      "border": "none"
+    },
+    "variants": [
+      {
+        "id": "tiki-bar",
+        "name": "Tiki Bar Loop",
+        "icon": "ti-palm-tree",
+        "params": {
+          "video": "/media/videos/tikiloop.mp4",
+          "border": "imperial"
+        }
+      },
+      {
+        "id": "test-loop",
+        "name": "Test Loop",
+        "icon": "ti-player-play",
+        "params": {
+          "video": "/media/videos/test-loop.mp4",
+          "border": "hud"
+        }
+      }
+    ]
   },
   {
     "id": "hangar-scan",
@@ -56,7 +79,7 @@
   {
     "id": "weather",
     "name": "Weather",
-    "description": "Sci-fi weather readout with vector map and live data from Open-Meteo",
+    "description": "Live atmospheric conditions and forecast in a sci-fi readout",
     "file": "weather.html",
     "icon": "ti-cloud",
     "category": "data",
@@ -64,7 +87,7 @@
       "lat": 27.5222,
       "lon": -82.5276,
       "name": "Ellenton, FL",
-      "units": "fahrenheit"
+      "units": "imperial"
     }
   },
   {
@@ -77,20 +100,6 @@
     "params": {
       "countdown": 60,
       "abort_at": 10
-    }
-  },
-  {
-    "id": "weather",
-    "name": "Weather",
-    "description": "Live atmospheric conditions and forecast in a sci-fi readout",
-    "file": "weather.html",
-    "icon": "ti-cloud",
-    "category": "data",
-    "params": {
-      "lat": 27.5225,
-      "lon": -82.5276,
-      "location": "Ellenton, FL",
-      "units": "imperial"
     }
   },
   {

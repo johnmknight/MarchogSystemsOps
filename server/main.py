@@ -25,7 +25,7 @@ from database import (
 )
 from pages import (
     get_all_pages, get_page, create_page, update_page, delete_page,
-    scan_pages_directory,
+    scan_pages_directory, get_page_variant, list_page_variants,
 )
 from rooms import (
     get_all_rooms, get_room, create_room, update_room, delete_room,
@@ -420,6 +420,31 @@ async def api_delete_page(page_id: str):
     return {"status": "deleted"}
 
 
+@app.get("/api/pages/{page_id}/variants")
+async def api_page_variants(page_id: str):
+    """List all variants for a page."""
+    return list_page_variants(page_id)
+
+
+class NavigateVariantCommand(BaseModel):
+    page_id: str
+    variant_id: str
+
+
+@app.post("/api/screens/{screen_id}/navigate-variant")
+async def api_navigate_variant(screen_id: str, cmd: NavigateVariantCommand):
+    """Navigate to a page with a specific variant."""
+    variant = get_page_variant(cmd.page_id, cmd.variant_id)
+    if not variant:
+        raise HTTPException(404, "Variant not found")
+    
+    # Navigate with variant params
+    return await api_navigate_screen(screen_id, NavigateCommand(
+        page=cmd.page_id,
+        params=variant["params"]
+    ))
+
+
 # ── API: Scenes ──────────────────────────────────────────────
 
 @app.get("/api/scenes")
@@ -536,16 +561,20 @@ async def api_screen_registry():
 
 @app.post("/api/screens/{screen_id}/navigate")
 async def api_navigate_screen(screen_id: str, cmd: NavigateCommand):
-    """Send a navigation command to a specific screen."""
+    """Send a navigation command to a specific screen, merging with stored params."""
     if screen_id in app_state["screens"]:
         ws = app_state["screens"][screen_id]["ws"]
         try:
-            msg = {
-                "type": "navigate",
-                "page": cmd.page
-            }
-            if cmd.params:
-                msg["params"] = cmd.params
+            # Get stored params_override for this screen
+            assignment = await get_screen_assignment(screen_id)
+            stored_params = assignment.get("params_override") if assignment else None
+            
+            # Merge stored params with command params (command params take priority)
+            merged_params = {**(stored_params or {}), **(cmd.params or {})}
+            
+            # Build proper message with merged params
+            msg = build_navigate_message(cmd.page, merged_params)
+            
             await ws.send_json(msg)
             return {"status": "sent", "page": cmd.page}
         except Exception as e:
@@ -801,13 +830,16 @@ async def ws_screen(websocket: WebSocket, screen_id: str):
             "screen_id": screen_id
         })
 
-        # Send current scene assignment if any
+        # Send current scene assignment if any (with parsed params)
         assignment = await get_screen_assignment(screen_id)
         if assignment:
-            await websocket.send_json({
-                "type": "assignment",
-                "config": assignment
-            })
+            page_id = assignment.get("static_page")
+            params_override = assignment.get("params_override")
+            
+            if page_id:
+                # Send proper navigate message on reconnect
+                msg = build_navigate_message(page_id, params_override)
+                await websocket.send_json(msg)
 
         # Message loop
         while True:
@@ -878,8 +910,58 @@ async def ws_screen(websocket: WebSocket, screen_id: str):
 
 # ── Scene Push Helpers ───────────────────────────────────────
 
+def build_navigate_message(page_id: str, params_override: dict = None) -> dict:
+    """
+    Build a navigate message with the correct type and params for a given page.
+    
+    Maps page files to their expected message types:
+    - video.html → type: "videoConfig" 
+    - selfdestruct.html → type: "configure"
+    - weather.html → type: "configure"
+    - all others → type: "navigate"
+    
+    Merges page default params with params_override.
+    """
+    page = get_page(page_id)
+    if not page:
+        # Fallback for unknown pages
+        return {
+            "type": "navigate",
+            "page": page_id,
+            "params": params_override or {}
+        }
+    
+    # Get page file to determine message type
+    page_file = page.get("file", "")
+    page_defaults = page.get("params", {})
+    
+    # Merge defaults with override
+    merged_params = {**page_defaults, **(params_override or {})}
+    
+    # Map page file to message type
+    if page_file == "video.html":
+        # video.html expects: {type: "videoConfig", video: "...", border: "..."}
+        return {
+            "type": "videoConfig",
+            **merged_params  # Spread params directly (video, border)
+        }
+    elif page_file in ["selfdestruct.html", "weather.html"]:
+        # These pages expect: {type: "configure", params: {...}}
+        return {
+            "type": "configure",
+            "params": merged_params
+        }
+    else:
+        # Standard navigation: {type: "navigate", page: "...", params: {...}}
+        return {
+            "type": "navigate",
+            "page": page_id,
+            "params": merged_params
+        }
+
+
 async def push_scene_to_screens(scene_id: str):
-    """Push a scene's configs to all connected screens."""
+    """Push a scene's configs to all connected screens with proper params."""
     scene = await get_scene(scene_id)
     if not scene:
         return
@@ -887,29 +969,37 @@ async def push_scene_to_screens(scene_id: str):
     for screen_config in scene.get("screens", []):
         sid = screen_config["screen_id"]
         if sid in app_state["screens"]:
-            try:
-                await app_state["screens"][sid]["ws"].send_json({
-                    "type": "assignment",
-                    "config": screen_config
-                })
-            except Exception as e:
-                print(f"Failed to push to {sid}: {e}")
+            page_id = screen_config.get("static_page")
+            params_override = screen_config.get("params_override")
+            
+            if page_id:
+                msg = build_navigate_message(page_id, params_override)
+                
+                try:
+                    await app_state["screens"][sid]["ws"].send_json(msg)
+                except Exception as e:
+                    print(f"Failed to push to {sid}: {e}")
 
 
 async def push_assignment_to_screen(screen_id: str):
-    """Push the active scene's assignment to a specific screen."""
+    """Push the active scene's assignment to a specific screen with params."""
     if screen_id not in app_state["screens"]:
         return
 
     assignment = await get_screen_assignment(screen_id)
     if assignment:
-        try:
-            await app_state["screens"][screen_id]["ws"].send_json({
-                "type": "assignment",
-                "config": assignment
-            })
-        except Exception as e:
-            print(f"Failed to push assignment to {screen_id}: {e}")
+        # Extract page and params from assignment
+        page_id = assignment.get("static_page")
+        params_override = assignment.get("params_override")
+        
+        if page_id:
+            # Build proper navigate message with correct type and merged params
+            msg = build_navigate_message(page_id, params_override)
+            
+            try:
+                await app_state["screens"][screen_id]["ws"].send_json(msg)
+            except Exception as e:
+                print(f"Failed to push assignment to {screen_id}: {e}")
 
 
 # ── Explicit page routes ─────────────────────────────────────
@@ -1053,3 +1143,11 @@ app.mount("/media", StaticFiles(directory=str(MEDIA_DIR)), name="media")
 
 # Serve client files
 app.mount("/", StaticFiles(directory=str(CLIENT_DIR), html=True), name="client")
+
+
+
+# ── Run Server ───────────────────────────────────────────────
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8080)
