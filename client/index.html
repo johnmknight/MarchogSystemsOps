@@ -6,6 +6,15 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
+  <!--
+    Build version stamp. The server's `/` and `/index.html` routes replace
+    `{{BUILD_VERSION}}` with the server's current build (git short hash).
+    The Shell reads this via `document.querySelector('meta[name="mso-build"]')`
+    on startup, compares it to the `version` field on every WS message, and
+    surfaces any drift through the Identify overlay. Intentionally hidden
+    during normal operation — admins see it only when they hit Identify.
+  -->
+  <meta name="mso-build" content="{{BUILD_VERSION}}">
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#020509">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -259,6 +268,15 @@
       currentPageIndex: 0,
       screenParamsOverride: null,  // per-screen params override from navigate command
 
+      // Version tracking — Shell reads its embedded build from the
+      // `<meta name="mso-build">` tag that the server substituted at
+      // request time. `serverVersion` is populated from the `version`
+      // field on every WS message so we can detect drift in real time
+      // without polling `/api/version`. Both are surfaced through the
+      // Identify overlay for admin-initiated verification.
+      shellVersion: null,
+      serverVersion: null,
+
       // Local agent
       agentUrl: null,             // e.g. 'http://localhost:9090' if agent detected
 
@@ -282,6 +300,20 @@
       // ── Init ─────────────────────────────────────
       async init() {
         console.log('%c⚡ MarchogSystemsOps Shell initializing...', 'color: #e74c3c; font-weight: bold');
+
+        // Read our embedded build version. The server injects this via the
+        // <meta name="mso-build"> template token in index.html. A literal
+        // "{{BUILD_VERSION}}" here means the Shell was loaded via raw
+        // StaticFiles (i.e. the server route isn't active), which is itself
+        // a useful signal that something is off.
+        const buildMeta = document.querySelector('meta[name="mso-build"]');
+        this.shellVersion = buildMeta ? buildMeta.getAttribute('content') : null;
+        if (!this.shellVersion || this.shellVersion.includes('{{')) {
+          console.warn('[version] Shell build version not substituted — loaded via static mount?');
+          this.shellVersion = 'unstamped';
+        } else {
+          console.log(`%c[version] Shell build: ${this.shellVersion}`, 'color: #3498db');
+        }
 
         this.parseUrlParams();
         this.updateScreenIdDisplay();
@@ -347,7 +379,11 @@
         const iframe = document.createElement('iframe');
         iframe.className = 'page-frame';
         iframe.id = `frame-${pageId}`;
-        iframe.src = `pages/${file}`;
+        // Append ?v=<build> so page iframes also bust the browser cache
+        // when we deploy new Shell code. Without this the Shell can be
+        // fresh while its iframes serve months-old page HTML/JS.
+        const v = this.shellVersion || 'dev';
+        iframe.src = `pages/${file}?v=${encodeURIComponent(v)}`;
         document.getElementById('pageContent').appendChild(iframe);
 
         this.loadedFrames[pageId] = iframe;
@@ -497,6 +533,12 @@
             console.log('WebSocket connected');
             this.wsReconnectAttempts = 0;
             this.setConnectionStatus('connected');
+            // Report our embedded build so the server can flag drift in
+            // the config panel. Sent before reportPage() so the version
+            // lands before the first state message.
+            try {
+              this.ws.send(`build:${this.shellVersion || 'unknown'}`);
+            } catch(e) { /* ignore — reportPage will also fail and reconnect */ }
             this.reportPage();
             this.startHeartbeat();
           };
@@ -705,6 +747,18 @@
       handleWSMessage(msg) {
         console.log('WS:', msg.type, msg);
 
+        // Any message from the server may carry a `version` field — use it
+        // to keep our notion of the server's build current. Drift between
+        // this value and `shellVersion` is surfaced via the Identify
+        // overlay, not in persistent UI (John's preference: kiosks
+        // shouldn't show debug badges during normal operation).
+        if (msg.version) {
+          if (this.serverVersion && this.serverVersion !== msg.version) {
+            console.warn(`[version] Server rolled: ${this.serverVersion} -> ${msg.version}`);
+          }
+          this.serverVersion = msg.version;
+        }
+
         switch (msg.type) {
           case 'pong':
             this.handlePong(msg.seq || 0);
@@ -712,6 +766,26 @@
 
           case 'registered':
             this.notify(`Registered: ${msg.screen_id}`, 'info');
+            if (msg.version && this.shellVersion && this.shellVersion !== msg.version
+                && this.shellVersion !== 'unstamped') {
+              console.warn(`[version] Drift detected — Shell ${this.shellVersion} vs server ${msg.version}`);
+            }
+            break;
+
+          case 'identify':
+            // Admin-triggered identify pulse. We flash our ID + build
+            // info overlay; this is the only time build version becomes
+            // visible on the kiosk screen.
+            this.flashIdentify();
+            break;
+
+          case 'reload':
+            // Admin-triggered reload. Unregister the service worker, wipe
+            // caches, and hard-reload so we pick up the latest Shell code.
+            // Guarded against accidental loops by a one-shot sessionStorage
+            // flag — if a reload was just performed, we ignore additional
+            // reload messages within the same session.
+            this.performReload(msg.hard !== false);
             break;
 
           case 'navigate':
@@ -752,10 +826,43 @@
             // Scene-based assignment
             this.applyAssignment(msg.config);
             break;
-
-          case 'pong':
-            break;
         }
+      },
+
+      async performReload(hard) {
+        // One-shot guard: if we just reloaded within the last 30s, don't
+        // reload again (prevents infinite loops if the server somehow keeps
+        // sending reload after a page loads).
+        try {
+          const lastReload = parseInt(sessionStorage.getItem('mso_last_reload') || '0');
+          if (Date.now() - lastReload < 30000) {
+            console.warn('[reload] Skipping — reloaded too recently');
+            return;
+          }
+          sessionStorage.setItem('mso_last_reload', String(Date.now()));
+        } catch(e) { /* sessionStorage may be disabled */ }
+
+        console.log('[reload] Admin-triggered reload starting...');
+        try {
+          // Unregister all service workers so no stale SW intercepts fetches
+          if ('serviceWorker' in navigator) {
+            const regs = await navigator.serviceWorker.getRegistrations();
+            for (const r of regs) { await r.unregister(); }
+            console.log(`[reload] Unregistered ${regs.length} service worker(s)`);
+          }
+          // Wipe all caches — the SW's cache_name is versioned, but wipe
+          // everything to be safe in case of orphaned caches.
+          if ('caches' in window) {
+            const keys = await caches.keys();
+            await Promise.all(keys.map(k => caches.delete(k)));
+            console.log(`[reload] Cleared ${keys.length} cache(s)`);
+          }
+        } catch(e) {
+          console.error('[reload] Cleanup failed:', e);
+        }
+        // Hard reload — cache-busted query param forces a network hit
+        const sep = location.href.includes('?') ? '&' : '?';
+        location.href = location.href.split('#')[0] + sep + '_reload=' + Date.now();
       },
 
       applyAssignment(config) {
@@ -844,29 +951,62 @@
       },
 
       flashIdentify() {
-        // Flash the screen with the screen ID for visual identification
+        // Full-screen overlay used as the sole reveal mechanism for build
+        // version info. Shows three rows:
+        //   1. Screen ID — for physically locating a kiosk
+        //   2. Shell build — what the kiosk is actually running
+        //   3. Server build — what the server is currently serving
+        // When Shell and server builds disagree we swap the background
+        // to an alert-red tone and tag the row so drift is immediately
+        // obvious from across the room. Overlay auto-dismisses after 4s
+        // (longer than the old 2s so there's time to read three lines).
+        const shell = this.shellVersion || 'unknown';
+        const server = this.serverVersion || '—';
+        const mismatch = this.shellVersion
+          && this.serverVersion
+          && this.shellVersion !== 'unstamped'
+          && this.shellVersion !== this.serverVersion;
+
+        const bg = mismatch
+          ? 'rgba(231, 76, 60, 0.88)'   // accent-red tint when drifted
+          : 'rgba(74, 158, 255, 0.85)'; // normal blue tint
+        const mismatchTag = mismatch
+          ? '<span style="color:#fff;background:#000;padding:2px 8px;margin-left:10px;font-size:0.6em;letter-spacing:0.15em">DRIFT</span>'
+          : '';
+
         const overlay = document.createElement('div');
         overlay.style.cssText = `
           position: fixed; inset: 0; z-index: 99999;
           display: flex; align-items: center; justify-content: center;
-          flex-direction: column; gap: 12px;
-          background: rgba(74, 158, 255, 0.85);
+          flex-direction: column; gap: 14px;
+          background: ${bg};
           font-family: 'Orbitron', 'Courier New', monospace;
-          animation: idFlash 2s ease-out forwards;
+          animation: idFlash 4s ease-out forwards;
+          padding: 2vw;
         `;
         overlay.innerHTML = `
           <div style="font-size:5vw;font-weight:700;color:#fff;text-shadow:0 0 30px rgba(255,255,255,0.8)">
             ${this.screenId || 'SCREEN'}
           </div>
-          <div style="font-size:1.5vw;color:rgba(255,255,255,0.7);letter-spacing:0.2em">IDENTIFY</div>
+          <div style="font-size:1.5vw;color:rgba(255,255,255,0.75);letter-spacing:0.2em">IDENTIFY</div>
+          <div style="
+            display:flex;flex-direction:column;gap:6px;margin-top:18px;
+            font-family:'Share Tech Mono','Courier New',monospace;
+            font-size:1.2vw;color:rgba(255,255,255,0.9);line-height:1.4;
+            background:rgba(0,0,0,0.35);padding:10px 18px;border-radius:2px;
+            letter-spacing:0.08em;min-width:30vw;
+          ">
+            <div><span style="opacity:0.55">SHELL&nbsp;&nbsp;</span>${shell}</div>
+            <div><span style="opacity:0.55">SERVER&nbsp;</span>${server}${mismatchTag}</div>
+          </div>
         `;
         const style = document.createElement('style');
         style.textContent = `@keyframes idFlash {
-          0% { opacity: 1; } 70% { opacity: 1; } 100% { opacity: 0; }
+          0% { opacity: 1; } 85% { opacity: 1; } 100% { opacity: 0; }
         }`;
         document.head.appendChild(style);
         document.body.appendChild(overlay);
-        setTimeout(() => { overlay.remove(); style.remove(); }, 2000);
+        setTimeout(() => { overlay.remove(); style.remove(); }, 4000);
       },
 
       notify(message, type = 'info') {

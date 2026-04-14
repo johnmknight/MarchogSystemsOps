@@ -809,7 +809,10 @@
       <div class="section">
         <div class="section-head">
           <div class="section-title">Connected Screens</div>
-          <button class="btn btn-sm" onclick="refreshAll()"><i class="ti ti-refresh"></i> REFRESH</button>
+          <div style="display:flex;gap:6px">
+            <button class="btn btn-sm" onclick="reloadAllScreens()" title="Hard-reload every connected screen"><i class="ti ti-reload"></i> RELOAD ALL</button>
+            <button class="btn btn-sm" onclick="refreshAll()"><i class="ti ti-refresh"></i> REFRESH</button>
+          </div>
         </div>
         <div class="connected-bar" id="connectedScreens">
           <span class="empty-state" style="padding:8px">Polling…</span>
@@ -1134,10 +1137,26 @@
         const uptime = s.connected_at ? timeSince(s.connected_at) : '';
         const displayName = s.display_name || '';
         const nameLabel = displayName ? `<strong style="color:var(--text-bright)">${displayName}</strong> <span style="opacity:0.5">${s.screen_id}</span>` : s.screen_id;
+        // Version drift badge — green when Shell/server builds match,
+        // red with tooltip when they don't. Intentionally small because
+        // most of the time nothing is wrong and it shouldn't dominate
+        // the row. Clicking it runs Identify so the matching kiosk
+        // flashes its own build overlay for visual confirmation.
+        const shellVer = s.shell_version || '?';
+        const serverVer = s.server_version || '?';
+        const versionMatch = shellVer === serverVer && shellVer !== '?' && shellVer !== 'unstamped';
+        const versionTone = versionMatch
+          ? 'background:rgba(46,204,113,0.15);color:#2ecc71;border:1px solid rgba(46,204,113,0.4)'
+          : 'background:rgba(231,76,60,0.2);color:#ff6b5b;border:1px solid rgba(231,76,60,0.55)';
+        const versionTitle = versionMatch
+          ? `Build matches server (${shellVer})`
+          : `DRIFT — Shell: ${shellVer}, Server: ${serverVer}. Click RELOAD to update.`;
+        const versionBadge = `<span class="version-badge" title="${versionTitle}" onclick="identifyScreen('${s.screen_id}')" style="cursor:pointer;padding:1px 6px;border-radius:2px;font-size:0.65em;letter-spacing:0.08em;font-family:'Share Tech Mono',monospace;${versionTone}">v ${shellVer}</span>`;
         return `
         <div class="conn-screen">
           <span class="screen-dot online"></span>
           <span class="conn-id">${nameLabel}</span>
+          ${versionBadge}
           <select class="conn-page-select" onchange="navigateScreen('${s.screen_id}', this.value)">
             <option value="" disabled ${!s.page ? 'selected' : ''}>— select page —</option>
             ${pageOptions}
@@ -1147,7 +1166,8 @@
             <button class="conn-btn" onclick="showRenameScreenModal('${s.screen_id}')" title="Rename screen"><i class="ti ti-pencil"></i></button>
             <button class="conn-btn" onclick="openScreen('${s.screen_id}')" title="Open screen in new tab">OPEN <i class="ti ti-external-link"></i></button>
             <button class="conn-btn" onclick="sendFullscreen('${s.screen_id}')" title="Send fullscreen command"><i class="ti ti-arrows-maximize"></i> FS</button>
-            <button class="conn-btn" onclick="identifyScreen('${s.screen_id}')" title="Flash screen to identify">ID</button>
+            <button class="conn-btn" onclick="identifyScreen('${s.screen_id}')" title="Flash ID overlay (shows build versions)">ID</button>
+            <button class="conn-btn" onclick="reloadScreen('${s.screen_id}')" title="Hard-reload this screen" style="color:#ff6b5b"><i class="ti ti-reload"></i></button>
           </div>
         </div>
       `}).join('');
@@ -2062,6 +2082,36 @@
       try {
         await api('POST', `/api/screens/${screenId}/navigate`, { page: '__identify__' });
       } catch(e) {}
+    }
+
+    // ── Reload helpers ─────────────────────────────
+    // Uses the dedicated /reload endpoints added to the server. The kiosk
+    // Shell receives a {type: 'reload'} WS message, unregisters its SW,
+    // clears caches, and hard-reloads. Useful after deploying new Shell
+    // code (sw.js cache name, iframe src cache-bust, WS handlers etc.)
+    // so every kiosk picks up the latest build without physical access.
+    async function reloadScreen(screenId) {
+      if (!confirm(`Hard-reload screen ${screenId}? The kiosk will go blank briefly while it reconnects.`)) return;
+      try {
+        await api('POST', `/api/screens/${screenId}/reload`);
+        // Refresh the Connected Screens list shortly so the new version
+        // badge reflects reality once the kiosk comes back online.
+        setTimeout(() => refreshAll(), 5000);
+      } catch(e) {
+        alert(`Reload failed for ${screenId}: ${e.message || e}`);
+      }
+    }
+
+    async function reloadAllScreens() {
+      if (!confirm('Hard-reload EVERY connected screen? Every kiosk will go blank briefly while it reconnects.')) return;
+      try {
+        const res = await api('POST', '/api/screens/reload-all');
+        const count = (res.results || []).length;
+        alert(`Reload broadcast to ${count} screen(s) at build ${res.version || '?'}`);
+        setTimeout(() => refreshAll(), 6000);
+      } catch(e) {
+        alert(`Reload-all failed: ${e.message || e}`);
+      }
     }
 
     // ── Rename Screen ─────────────────────────────────────

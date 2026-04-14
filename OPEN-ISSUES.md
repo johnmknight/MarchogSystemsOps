@@ -27,6 +27,85 @@ write but before the response, so the config panel saw a network error.
 **Fix:** Removed `await` from both `get_zone()` call sites in `main.py`.
 The third call site (line 302, GET `/api/zones/{zone_id}`) was already correct.
 
+### 4. Parameter changes didn't reach live screens (FIX APPLIED — NEEDS VERIFICATION)
+**Severity:** Medium (user-facing)
+**Symptom:** Editing a screen's video URL / weather location / countdown in
+the config panel persisted to the DB, but the live monitor did not update.
+**Root cause:** `build_navigate_message` in `server/main.py` emitted per-page
+WS message types (`videoConfig`, `configure`) that the Shell's
+`handleWSMessage` switch had no cases for — so the messages were silently
+dropped. The video/weather/selfdestruct pages all listen for a uniform
+`{ type: 'configure', ...fields }` postMessage on the top level, so unifying
+the WS transport on a single `{ type: "navigate", page, params }` shape
+(which the Shell's existing `navigate` case forwards as `configure`) fixes
+every page at once.
+**Fix:** `build_navigate_message` now always emits `{type: "navigate", page,
+params}`. All call sites (api_navigate_screen, push_assignment_to_screen,
+push_scene_to_screens, the WS reconnect handler) inherit the fix.
+**Status:** Open until John verifies live. A follow-up report ("still buggy.
+Error changing from any screen to video screen in Connected Screens view")
+strongly suggests the kiosk was running stale cached Shell code that
+predated the fix — motivating the version-stamping work below.
+
+### 5. Video screen transition errors — NEEDS TESTING
+**Severity:** Medium (user-facing)
+**Symptom:** "Error changing from any screen to video screen in Connected
+Screens view" after the Bug #4 fix. Not yet reproduced on a fresh Shell.
+**Likely cause:** Stale cached Shell code (service worker + browser cache)
+from before the `build_navigate_message` unification. Old Shell code
+expected the `videoConfig` WS message type that the server no longer sends.
+**Plan:** Force a hard reload on every kiosk (now possible via the new
+RELOAD ALL button in the config panel). Then reproduce and, if the error
+persists, capture the JS console from the kiosk.
+**Status:** OPEN — needs verification after deploy + reload-all.
+
+---
+
+## Needs Further Testing
+
+### Version drift detection & cache-busting (fresh work, today)
+**What was added:**
+- Server `BUILD_VERSION` (git short hash + `-dirty` flag, mtime fallback)
+- `/api/version` endpoint + `version` field on every WS `registered`/
+  `navigate` message
+- `/` and `/sw.js` template routes that substitute `{{BUILD_VERSION}}`
+  into `client/index.html` (`<meta name="mso-build">`) and the SW cache
+  name
+- Kiosk Shell reports its embedded build on WS connect (`build:<version>`),
+  server tracks it per-screen and exposes it in `/api/screens` as
+  `shell_version`
+- `flashIdentify()` now shows screen ID + Shell build + Server build,
+  tinted red with a DRIFT tag when they disagree
+- WS `{type: "reload"}` handler in Shell: unregisters SW, wipes caches,
+  hard-reloads with a 30s one-shot loop guard
+- New endpoints: `POST /api/screens/{id}/reload`, `POST /api/screens/reload-all`,
+  `POST /api/screens/{id}/identify`
+- Config panel: per-row build badge (green match / red drift), per-row
+  RELOAD button, RELOAD ALL button in the Connected Screens header
+- sw.js cache name is now `marchog-<BUILD_VERSION>`; `activate` evicts
+  stale `marchog-*` caches
+- Page iframe `src` gets `?v=<shellVersion>` cache-buster
+
+**Nothing is visible on the kiosk during normal operation** (per John's
+explicit preference). Build info only surfaces through the Identify
+overlay or in the admin config panel.
+
+**Needs testing after next server restart:**
+- [ ] `/api/version` returns real git hash, not `mtime-*` or `unknown`
+- [ ] Loading `/` shows `<meta name="mso-build" content="<hash>">` in view-source
+- [ ] Kiosk Shell logs `[version] Shell build: <hash>` on load
+- [ ] Kiosk reports `build:<hash>` on connect; config panel badges show green
+- [ ] Hitting Identify on any screen shows three-row overlay with matching builds
+- [ ] Intentionally edit a file, redeploy without reloading kiosks → config
+  panel shows drift badges red → click RELOAD on one row → kiosk comes
+  back on fresh build → badge goes green
+- [ ] RELOAD ALL broadcasts to every connected screen simultaneously
+- [ ] Service worker cache name actually becomes `marchog-<hash>` and old
+  caches are evicted on activate (check DevTools → Application → Cache)
+- [ ] Page iframes no longer load stale cached HTML after reload (e.g. try
+  an edit to `pages/video.html` without a server restart — reload all —
+  confirm change is live without manually clearing cache)
+
 ---
 
 ## Known Limitations

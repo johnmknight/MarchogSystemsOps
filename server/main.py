@@ -13,6 +13,7 @@ from pydantic import BaseModel
 from typing import Optional
 import asyncio
 import json
+import subprocess
 
 from database import (
     init_db,
@@ -39,6 +40,71 @@ CLIENT_DIR = BASE_DIR.parent / "client"
 MEDIA_DIR = BASE_DIR.parent / "media"
 MEDIA_DIR.mkdir(exist_ok=True)
 (MEDIA_DIR / "videos").mkdir(exist_ok=True)
+
+
+# ── Build Version ────────────────────────────────────────────
+#
+# We compute a short build identifier at module load so the server and its
+# clients (Shell + config panel) can detect when someone is running stale code.
+# Priority order:
+#   1. `git rev-parse --short HEAD` — the canonical source of truth in dev
+#   2. The mtime of this file, formatted as a short string — a reasonable
+#      fallback when git isn't available (e.g. stripped deployment tarball)
+#
+# If HEAD is dirty (uncommitted changes), we append "-dirty" so mismatches
+# surface immediately during active development. The value is exposed via
+# the `/api/version` endpoint, injected into index.html at request time,
+# and shipped on every WS `registered`/`navigate` message so the kiosk
+# Shell can compare against its own embedded build.
+
+def _compute_build_version() -> tuple[str, str, bool]:
+    """Return (build_version, git_commit_or_empty, is_dirty).
+
+    Uses git when available; falls back to the main.py mtime otherwise.
+    Never raises — a broken git invocation must not crash the server.
+    """
+    try:
+        commit = subprocess.check_output(
+            ["git", "-C", str(BASE_DIR.parent), "rev-parse", "--short", "HEAD"],
+            stderr=subprocess.DEVNULL, timeout=2,
+        ).decode("utf-8", errors="replace").strip()
+        if commit:
+            # Check dirty state
+            dirty_out = subprocess.check_output(
+                ["git", "-C", str(BASE_DIR.parent), "status", "--porcelain"],
+                stderr=subprocess.DEVNULL, timeout=2,
+            ).decode("utf-8", errors="replace").strip()
+            is_dirty = bool(dirty_out)
+            version = f"{commit}{'-dirty' if is_dirty else ''}"
+            return version, commit, is_dirty
+    except Exception:
+        pass
+    # Fallback: mtime of main.py
+    try:
+        mtime = Path(__file__).stat().st_mtime
+        stamp = datetime.fromtimestamp(mtime, tz=timezone.utc).strftime("%y%m%d-%H%M%S")
+        return f"mtime-{stamp}", "", False
+    except Exception:
+        return "unknown", "", False
+
+
+BUILD_VERSION, GIT_COMMIT, GIT_DIRTY = _compute_build_version()
+STARTED_AT = datetime.now(timezone.utc).isoformat()
+print(f"[+] Build version: {BUILD_VERSION} (started {STARTED_AT})")
+
+
+def _render_index_html() -> str:
+    """Read client/index.html and substitute the {{BUILD_VERSION}} template
+    token with the running server's build. Read fresh on every call so that
+    uvicorn `--reload` and editor saves are reflected without restarting
+    the server process."""
+    index_path = CLIENT_DIR / "index.html"
+    try:
+        html = index_path.read_text(encoding="utf-8")
+    except Exception as e:
+        return f"<!DOCTYPE html><h1>Shell unavailable</h1><pre>{e}</pre>"
+    return html.replace("{{BUILD_VERSION}}", BUILD_VERSION)
+
 
 # ── Device Type Taxonomy ─────────────────────────────────────
 
@@ -534,6 +600,12 @@ async def api_screens():
             "display_name": reg.get("display_name", ""),
             "description": reg.get("description", ""),
             "icon": reg.get("icon", "ti-device-desktop"),
+            # Version drift visibility: `shell_version` is whatever the
+            # kiosk reported on connect, `server_version` is the server's
+            # build. Config panel compares the two to render a drift
+            # indicator without making version visible on the kiosk.
+            "shell_version": info.get("shell_version"),
+            "server_version": BUILD_VERSION,
         })
     return screens
 
@@ -824,10 +896,13 @@ async def ws_screen(websocket: WebSocket, screen_id: str):
         }
 
     try:
-        # Send registration confirmation
+        # Send registration confirmation — includes the server's build
+        # version so the kiosk Shell can compare against its own embedded
+        # build and surface mismatches via the Identify overlay.
         await websocket.send_json({
             "type": "registered",
-            "screen_id": screen_id
+            "screen_id": screen_id,
+            "version": BUILD_VERSION,
         })
 
         # Send current scene assignment if any (with parsed params)
@@ -845,7 +920,14 @@ async def ws_screen(websocket: WebSocket, screen_id: str):
         while True:
             data = await websocket.receive_text()
 
-            if data.startswith("page:"):
+            if data.startswith("build:"):
+                # Screen reporting its embedded Shell build version so the
+                # config panel can compare against the server's current
+                # BUILD_VERSION and flag drift per-kiosk.
+                app_state["screens"][screen_id]["shell_version"] = data.split(":", 1)[1].strip()
+                app_state["screens"][screen_id]["last_seen"] = datetime.now(timezone.utc).isoformat()
+
+            elif data.startswith("page:"):
                 # Screen reporting its current page
                 page = data.split(":", 1)[1]
                 app_state["screens"][screen_id]["page"] = page
@@ -912,52 +994,54 @@ async def ws_screen(websocket: WebSocket, screen_id: str):
 
 def build_navigate_message(page_id: str, params_override: dict = None) -> dict:
     """
-    Build a navigate message with the correct type and params for a given page.
-    
-    Maps page files to their expected message types:
-    - video.html → type: "videoConfig" 
-    - selfdestruct.html → type: "configure"
-    - weather.html → type: "configure"
-    - all others → type: "navigate"
-    
-    Merges page default params with params_override.
+    Build a unified `navigate` WebSocket message for the Shell (client/index.html).
+
+    The Shell's `handleWSMessage` only handles a single message type for page
+    routing — `navigate`. When it receives a `navigate` message with params, it
+    loads the target page and forwards the params to the iframe as a
+    `configure` postMessage with fields spread at the top level, e.g.:
+
+        { type: 'configure', video: '…', border: '…', countdown: 60, lat: …, … }
+
+    All of the pages that accept parameters (video.html, weather.html,
+    selfdestruct.html) already listen for `{ type: 'configure', … }`
+    postMessages and pull fields off the top level of the message, so this
+    single transport works uniformly for every page.
+
+    Historical note: earlier revisions of this function emitted specialised
+    WebSocket types (`videoConfig`, `configure`) per page file, but the Shell
+    never had matching cases in its switch statement and silently dropped
+    them — so parameter updates never reached live screens. Unifying on
+    `navigate` fixes that class of bugs and keeps the protocol simple.
+
+    Merges page default params (from the pages registry) with `params_override`
+    so a scene's override always wins over registry defaults.
     """
     page = get_page(page_id)
-    if not page:
-        # Fallback for unknown pages
-        return {
-            "type": "navigate",
-            "page": page_id,
-            "params": params_override or {}
-        }
-    
-    # Get page file to determine message type
-    page_file = page.get("file", "")
-    page_defaults = page.get("params", {})
-    
-    # Merge defaults with override
+    page_defaults = page.get("params", {}) if page else {}
     merged_params = {**page_defaults, **(params_override or {})}
-    
-    # Map page file to message type
-    if page_file == "video.html":
-        # video.html expects: {type: "videoConfig", video: "...", border: "..."}
-        return {
-            "type": "videoConfig",
-            **merged_params  # Spread params directly (video, border)
-        }
-    elif page_file in ["selfdestruct.html", "weather.html"]:
-        # These pages expect: {type: "configure", params: {...}}
-        return {
-            "type": "configure",
-            "params": merged_params
-        }
-    else:
-        # Standard navigation: {type: "navigate", page: "...", params: {...}}
-        return {
-            "type": "navigate",
-            "page": page_id,
-            "params": merged_params
-        }
+
+    return {
+        "type": "navigate",
+        "page": page_id,
+        "params": merged_params,
+        "version": BUILD_VERSION,
+    }
+
+
+def build_reload_message(hard: bool = True) -> dict:
+    """Build a `reload` message that tells the Shell to unregister its
+    service worker, wipe caches, and do a hard reload so it picks up the
+    latest code from the server.
+
+    `hard=False` would allow a gentle reload (future use — right now the
+    Shell always performs the full wipe to guarantee no stale iframes
+    survive the reload)."""
+    return {
+        "type": "reload",
+        "hard": hard,
+        "version": BUILD_VERSION,
+    }
 
 
 async def push_scene_to_screens(scene_id: str):
@@ -1007,6 +1091,70 @@ async def push_assignment_to_screen(screen_id: str):
 @app.get("/config")
 async def config_page():
     return FileResponse(str(CLIENT_DIR / "config.html"))
+
+
+# ── API: Version + Reload + Identify ─────────────────────────
+
+@app.get("/api/version")
+async def api_version():
+    """Return the server's build metadata so clients can verify they're
+    running the same version as the server. The Shell compares this to its
+    own embedded `<meta name="mso-build">` value and flags mismatches in
+    the Identify overlay."""
+    return {
+        "version": BUILD_VERSION,
+        "started_at": STARTED_AT,
+        "git_commit": GIT_COMMIT,
+        "git_dirty": GIT_DIRTY,
+    }
+
+
+@app.post("/api/screens/{screen_id}/reload")
+async def api_reload_screen(screen_id: str):
+    """Send a reload message to a specific connected screen so it wipes
+    caches and hard-reloads the Shell."""
+    if screen_id not in app_state["screens"]:
+        raise HTTPException(404, "Screen not connected")
+    ws = app_state["screens"][screen_id]["ws"]
+    try:
+        await ws.send_json(build_reload_message())
+        return {"status": "sent", "screen_id": screen_id, "version": BUILD_VERSION}
+    except Exception as e:
+        raise HTTPException(500, f"Failed to send: {e}")
+
+
+@app.post("/api/screens/reload-all")
+async def api_reload_all_screens():
+    """Broadcast reload to every connected screen. Use after deploying new
+    Shell code so all kiosks pick it up without walking to each monitor."""
+    results = []
+    for sid, info in list(app_state["screens"].items()):
+        ws = info["ws"]
+        try:
+            await ws.send_json(build_reload_message())
+            results.append({"screen_id": sid, "status": "sent"})
+        except Exception as e:
+            results.append({"screen_id": sid, "status": "error", "error": str(e)})
+    return {"status": "broadcast", "version": BUILD_VERSION, "results": results}
+
+
+@app.post("/api/screens/{screen_id}/identify")
+async def api_identify_screen(screen_id: str):
+    """Flash the Identify overlay on a specific screen — useful for
+    physically locating a kiosk in a multi-monitor install, and for
+    comparing the Shell's embedded build against the server's current
+    build without leaving a badge visible during normal operation."""
+    if screen_id not in app_state["screens"]:
+        raise HTTPException(404, "Screen not connected")
+    ws = app_state["screens"][screen_id]["ws"]
+    try:
+        await ws.send_json({
+            "type": "identify",
+            "version": BUILD_VERSION,
+        })
+        return {"status": "sent", "screen_id": screen_id}
+    except Exception as e:
+        raise HTTPException(500, f"Failed to send: {e}")
 
 
 # ── Thumbnails ───────────────────────────────────────────────
@@ -1134,6 +1282,45 @@ async def ical_proxy(url: str):
             return {"ok": True, "data": text, "cached": False}
     except Exception as e:
         raise HTTPException(502, f"Feed fetch failed: {str(e)}")
+
+
+# ── Shell Entry Point ────────────────────────────────────────
+#
+# We serve client/index.html via an explicit route (rather than letting the
+# StaticFiles mount handle it) so we can inject the server's BUILD_VERSION
+# into a `<meta name="mso-build">` tag at request time. The Shell reads its
+# own build off that meta tag, compares it against the version surfaced on
+# every WS message, and flags drift via the Identify overlay.
+
+from fastapi.responses import HTMLResponse
+
+@app.get("/", response_class=HTMLResponse)
+async def shell_root():
+    return HTMLResponse(_render_index_html())
+
+@app.get("/index.html", response_class=HTMLResponse)
+async def shell_index():
+    return HTMLResponse(_render_index_html())
+
+
+# The service worker also needs BUILD_VERSION substituted in so its cache
+# name is version-aware. Without this, a kiosk could keep serving pages
+# from a cache named after whatever version it first installed, even
+# after we redeploy. Route it explicitly ahead of StaticFiles.
+@app.get("/sw.js")
+async def shell_sw():
+    sw_path = CLIENT_DIR / "sw.js"
+    try:
+        js = sw_path.read_text(encoding="utf-8")
+    except Exception as e:
+        raise HTTPException(500, f"sw.js unavailable: {e}")
+    js = js.replace("{{BUILD_VERSION}}", BUILD_VERSION)
+    from fastapi.responses import Response
+    return Response(
+        content=js,
+        media_type="application/javascript",
+        headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
+    )
 
 
 # ── Static Files ─────────────────────────────────────────────
