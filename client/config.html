@@ -1129,11 +1129,20 @@
         return;
       }
       el.innerHTML = screens.map(s => {
+        // Connected Screens dropdown — reflect the screen's CURRENT page.
+        // The server's /api/screens endpoint returns s.page as the PAGE
+        // ID (e.g. "standby", "video"), NOT the filename — so compare
+        // against p.id, not p.file. Previously this compared
+        // "standby.html" === "standby" which never matched; the
+        // <select> then fell back to browser-default behavior and
+        // always showed the FIRST option (Hyperspace) regardless of
+        // actual state, making the dropdown look stuck even when
+        // Device Health reported the real page correctly.
         const pageOptions = pages.map(p =>
-          `<option value="${p.id}" ${p.file === s.page ? 'selected' : ''}>${p.icon} ${p.name}</option>`
+          `<option value="${p.id}" ${p.id === s.page ? 'selected' : ''}>${p.icon} ${p.name}</option>`
         ).join('');
-        // Find page name for display
-        const pg = pages.find(p => p.file === s.page);
+        // Find page name for display (same id-vs-file fix)
+        const pg = pages.find(p => p.id === s.page);
         const uptime = s.connected_at ? timeSince(s.connected_at) : '';
         const displayName = s.display_name || '';
         const nameLabel = displayName ? `<strong style="color:var(--text-bright)">${displayName}</strong> <span style="opacity:0.5">${s.screen_id}</span>` : s.screen_id;
@@ -2378,6 +2387,49 @@
       }
 
       await api('PUT', `/api/pages/${id}`, body);
+
+      // ─────────────────────────────────────────────────────────────
+      // Re-broadcast navigate to screens currently on the edited page
+      // so they pick up the new defaults (video URL, border, etc.)
+      // IMMEDIATELY instead of waiting for the next page switch.
+      //
+      // Without this, changing a page's default params only affects
+      // FUTURE navigations — any screen already showing that page
+      // keeps rendering the old params until someone manually
+      // re-navigates it. That's confusing ("I changed the video and
+      // nothing happened"), so we do the re-nav for them.
+      //
+      // Guarded on `body.params` so this is a no-op for pages whose
+      // editor UI doesn't collect params (i.e. most pages). Today
+      // that means this fires for video.html and selfdestruct.html.
+      //
+      // Per-screen param_overrides (set via zone assignments) WILL
+      // get clobbered by this call — that's a known trade-off of the
+      // narrow fix; revisit if it turns into a real problem.
+      // ─────────────────────────────────────────────────────────────
+      if (body.params) {
+        try {
+          const allScreens = await api('GET', '/api/screens');
+          const onThisPage = (allScreens || []).filter(s => s.page === id);
+          if (onThisPage.length) {
+            await Promise.all(onThisPage.map(s =>
+              api('POST', `/api/screens/${s.screen_id}/navigate`, {
+                page: id,
+                params: body.params
+              }).catch(err => console.warn(
+                `[editPage] re-navigate failed for ${s.screen_id}:`, err
+              ))
+            ));
+            console.log(
+              `[editPage] Re-navigated ${onThisPage.length} screen(s) on "${id}" with new defaults`,
+              body.params
+            );
+          }
+        } catch (err) {
+          console.warn('[editPage] Could not re-navigate screens after defaults update:', err);
+        }
+      }
+
       closeModal();
       await loadAll();
     }

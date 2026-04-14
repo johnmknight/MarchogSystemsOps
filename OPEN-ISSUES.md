@@ -134,6 +134,49 @@ hyperspace."
 **Status:** FIX APPLIED — needs live verification after server
 restart + RELOAD ALL.
 
+### 7. Connected Screens dropdown shows "Hyperspace" when screen is on Video
+**Severity:** Low (admin UI only, doesn't affect live screens)
+**Symptom:** In the Config panel's Connected Screens section, the per-row
+page dropdown always shows "Hyperspace" (the first entry) even when
+`/api/screens` clearly reports the screen is on `video` or another page.
+Device Health section shows the correct page ID; only the dropdown is wrong.
+**Root cause:** The dropdown option builder compared the wrong fields:
+```js
+`<option value="${p.id}" ${p.file === s.page ? 'selected' : ''}>...`
+```
+`p.file` is the filename (`"video.html"`) while `s.page` is the page ID
+(`"video"`) — they never match, so no option ever gets `selected`, and the
+browser falls back to the first non-disabled option (Hyperspace).
+**Fix:** Compare `p.id === s.page` in both the dropdown option builder and
+the page-name lookup directly below it. Verified live on localdev1:
+server reports `page: "standby"` → dropdown now shows "Standby".
+Files: `client/config.html` (Connected Screens render path).
+**Status:** FIXED — live-verified.
+
+### 8. Editing a page's defaults doesn't update live screens immediately
+**Severity:** Medium (user-facing, design-vs-expectation mismatch)
+**Symptom:** In the Pages library, clicking Edit on the Video page and
+pasting a new video URL (e.g. a YouTube URL) persists the new default
+to `/api/pages/{id}` — but any screen currently showing the video page
+keeps looping the previous video. No error; just silently stale.
+**Root cause:** `submitEditPage` in `client/config.html` PUT the new
+page definition and closed the modal, but never told any connected screen
+to re-navigate. The new defaults only applied the *next* time a screen
+switched to that page. Expected behavior: changing the default video
+should reflect on every screen currently on that page, immediately.
+**Fix:** After the PUT succeeds, and only when `body.params` is present
+(today that means video.html and selfdestruct.html), `submitEditPage` now:
+1. GETs `/api/screens`
+2. Filters to screens where `s.page === id`
+3. POSTs `/api/screens/{sid}/navigate` with `{ page: id, params: body.params }`
+   for each, in parallel
+Errors are swallowed per-screen so one offline screen doesn't break the
+batch. Verified live on localdev1 (John confirmed "seems to work now").
+Known trade-off: per-screen `params_override` (set via zone assignments)
+will get clobbered by this call. Acceptable for now; revisit if it bites.
+Files: `client/config.html` (`submitEditPage` body).
+**Status:** FIXED — live-verified.
+
 ---
 
 ## Needs Further Testing
