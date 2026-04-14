@@ -1226,7 +1226,7 @@
                       </span>
                       ${hasParams ? `<button class="conn-btn" onclick="showScreenParamsModal('${z.id}','${sc.screen_id}','${sc.static_page}')" title="Page params override" style="font-size:12px;padding:2px 6px"><i class="ti ti-settings"></i></button>` : ''}
                       ${overrideInfo ? `<span style="font-size:10px;color:var(--accent);opacity:0.6" title="${overrideInfo.replace(/"/g,'&quot;')}"><i class="ti ti-settings"></i></span>` : ''}
-                      <button class="conn-btn" onclick="forceScreenRefresh('${sc.screen_id}','${sc.static_page}')" title="Force refresh this screen" style="font-size:12px;padding:2px 6px"><i class="ti ti-refresh"></i></button>
+                      <button class="conn-btn" onclick="forceScreenRefresh(event, '${sc.screen_id}','${sc.static_page}')" title="Force refresh this screen" style="font-size:12px;padding:2px 6px"><i class="ti ti-refresh"></i></button>
                       <span class="screen-remove" onclick="unassignScreen('${z.id}','${sc.screen_id}')" title="Remove screen">&#10005;</span>
                     </div>
                   `;
@@ -1510,7 +1510,7 @@
       await loadAll();
     }
 
-    async function forceScreenRefresh(screenId, pageId) {
+    async function forceScreenRefresh(event, screenId, pageId) {
       // Send navigate command to force the screen to reload its current page
       try {
         await api('POST', `/api/screens/${screenId}/navigate`, { page: pageId });
