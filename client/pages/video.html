@@ -495,14 +495,28 @@
           width: '100%',
           height: '100%',
           playerVars: {
+            // Kiosk-appropriate YouTube defaults.
+            //  - autoplay+mute is REQUIRED by YouTube's autoplay policy;
+            //    unmuted autoplay is silently blocked without a user
+            //    gesture, which a signage display never gets.
+            //  - loop:1 alone is ignored by the YouTube player for a
+            //    single video; the canonical trick is to pair it with
+            //    playlist:<same videoId> so it loops the "playlist" of
+            //    one item.
+            //  - controls:0 / disablekb:1 / iv_load_policy:3 hide all
+            //    player chrome, annotations and keyboard shortcuts so
+            //    the kiosk looks like pure content.
             autoplay: 1,
-            controls: 1,
+            mute: 1,
+            controls: 0,
             modestbranding: 1,
             loop: 1,
             playlist: source.id,
             rel: 0,
             fs: 1,
             iv_load_policy: 3,
+            playsinline: 1,
+            disablekb: 1,
             origin: window.location.origin
           }
         });
@@ -513,18 +527,39 @@
 
         const video = document.createElement('video');
         video.id = 'nativeVideo';
+        // Kiosk-appropriate <video> defaults.
+        //  - muted:true is REQUIRED for autoplay without a user gesture.
+        //    Chromium's autoplay policy blocks unmuted playback on first
+        //    load of a page the user hasn't interacted with — exactly the
+        //    case on a signage kiosk. If the operator wants audio, they
+        //    can unmute via the settings panel after the video is
+        //    running.
+        //  - loop:true makes the video repeat indefinitely (signage
+        //    displays should never "end").
+        //  - controls:false hides the transport UI — this is a display,
+        //    not a video player.
+        //  - We set BOTH the IDL property (e.g. video.autoplay = true)
+        //    AND the HTML attribute (setAttribute('autoplay','')). Some
+        //    older/embedded Chromiums respect only the attribute at the
+        //    moment the element is first parsed into the DOM.
         video.src = source.url;
         video.autoplay = true;
         video.loop = true;
-        video.muted = false;
-        video.controls = true;
+        video.muted = true;
+        video.controls = false;
         video.playsInline = true;
+        video.setAttribute('autoplay', '');
+        video.setAttribute('loop', '');
+        video.setAttribute('muted', '');
+        video.setAttribute('playsinline', '');
         video.style.cssText = 'width:100%;height:100%;object-fit:contain;background:#000;';
         document.getElementById('videoWrap').appendChild(video);
-        video.play().catch(() => {
-          // Autoplay may be blocked — try muted
-          video.muted = true;
-          video.play().catch(() => {});
+        // Explicit play() call as a belt-and-suspenders for browsers that
+        // don't honor the autoplay attribute on dynamically-created
+        // elements. Muted is already true so this should never be
+        // blocked by autoplay policy.
+        video.play().catch((err) => {
+          console.warn('[video] autoplay blocked even while muted:', err);
         });
       }
     }
