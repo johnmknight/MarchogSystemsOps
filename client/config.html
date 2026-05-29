@@ -806,6 +806,32 @@
 
     <!-- Tab: Screens -->
     <div class="tab-panel active" id="tab-screens">
+
+      <!-- Red Alert broadcast -->
+      <!--
+        Raising a red alert publishes a RETAINED navigate to the red-alert page
+        on the selected group topic (default "all" = marchog/all). Because the
+        scene model picks the newest-timestamp channel, the alert overrides each
+        screen's own scene. CLEAR empties that retained topic so every screen
+        falls back to its per-screen scene. There is no server-side snapshot —
+        the broker's retained-message model is the single source of truth.
+      -->
+      <div class="section" style="margin-bottom:16px;border-color:#c83c28">
+        <div class="section-head">
+          <div class="section-title" style="color:#ff6b5b"><i class="ti ti-alert-triangle"></i> Red Alert</div>
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+            <select id="alertTarget" title="Which screens to alert" style="background:#1a0d0d;color:#ffb4a0;border:1px solid #c83c28;border-radius:3px;padding:5px 8px;font-family:inherit;font-size:0.8em">
+              <option value="all">All screens</option>
+            </select>
+            <input id="alertMessage" type="text" placeholder="Optional message…" maxlength="120"
+              style="background:#1a0d0d;color:#ffb4a0;border:1px solid #c83c28;border-radius:3px;padding:5px 8px;font-family:inherit;font-size:0.8em;min-width:200px">
+            <button class="btn btn-sm" onclick="raiseRedAlert()" title="Broadcast red alert to the selected target"
+              style="border-color:#c83c28;color:#ff6b5b"><i class="ti ti-alert-triangle"></i> RAISE</button>
+            <button class="btn btn-sm" onclick="clearRedAlert()" title="Clear the alert; screens fall back to their scene"><i class="ti ti-x"></i> CLEAR</button>
+          </div>
+        </div>
+      </div>
+
       <div class="section">
         <div class="section-head">
           <div class="section-title">Connected Screens</div>
@@ -950,6 +976,38 @@
       renderRooms();
       renderPages();
       renderAutomations();
+      renderAlertTargets();
+    }
+
+    // ═══════════════════════════════════════════════════
+    //  RED ALERT TARGET PICKER
+    // ═══════════════════════════════════════════════════
+    // Rebuild the target dropdown from the current room/zone/screen layout.
+    // Values map 1:1 onto the server's _resolve_alert_topic():
+    //   "all"        → marchog/all
+    //   "room/<id>"  → marchog/room/<id>
+    //   "zone/<id>"  → marchog/zone/<id>
+    //   "scr-<id>"   → marchog/screen/scr-<id>
+    // We preserve the operator's current selection across refreshes.
+    function renderAlertTargets() {
+      const sel = document.getElementById('alertTarget');
+      if (!sel) return;
+      const prev = sel.value;
+      let html = '<option value="all">All screens</option>';
+      (rooms || []).forEach(room => {
+        html += `<option value="room/${room.id}">Room: ${room.name}</option>`;
+        (room.zones || []).forEach(z => {
+          html += `<option value="zone/${z.id}">&nbsp;&nbsp;Zone: ${z.name}</option>`;
+          (z.screens || []).forEach(sc => {
+            const reg = screenRegistry[sc.screen_id];
+            const label = reg && reg.display_name ? reg.display_name : sc.screen_id;
+            html += `<option value="screen/${sc.screen_id}">&nbsp;&nbsp;&nbsp;&nbsp;${label}</option>`;
+          });
+        });
+      });
+      sel.innerHTML = html;
+      // Restore prior selection if it still exists.
+      if (prev && [...sel.options].some(o => o.value === prev)) sel.value = prev;
     }
 
     // ═══════════════════════════════════════════════════
@@ -2214,6 +2272,36 @@
         setTimeout(() => refreshAll(), 6000);
       } catch(e) {
         alert(`Reload-all failed: ${e.message || e}`);
+      }
+    }
+
+    // ── Red Alert ─────────────────────────────────────────
+    // RAISE publishes a retained navigate to the red-alert page on the chosen
+    // group topic; CLEAR empties it so screens fall back to their own scene.
+    // The server resolves the target string identically for both calls, so a
+    // RAISE on a target and a CLEAR on the same target always pair up.
+    async function raiseRedAlert() {
+      const target = document.getElementById('alertTarget').value || 'all';
+      const message = document.getElementById('alertMessage').value.trim();
+      const label = document.getElementById('alertTarget').selectedOptions[0]?.text.trim() || target;
+      if (!confirm(`Raise RED ALERT on "${label}"?${message ? `\nMessage: ${message}` : ''}`)) return;
+      try {
+        const res = await api('POST', '/api/alert/red', { target, message });
+        alert(`Red alert raised on ${res.topic}.`);
+      } catch(e) {
+        alert(`Red alert failed: ${e.message || e}`);
+      }
+    }
+
+    async function clearRedAlert() {
+      const target = document.getElementById('alertTarget').value || 'all';
+      const label = document.getElementById('alertTarget').selectedOptions[0]?.text.trim() || target;
+      if (!confirm(`Clear red alert on "${label}"? Screens fall back to their assigned scene.`)) return;
+      try {
+        const res = await api('POST', '/api/alert/clear', { target });
+        alert(`Red alert cleared on ${res.topic}.`);
+      } catch(e) {
+        alert(`Clear failed: ${e.message || e}`);
       }
     }
 

@@ -172,8 +172,19 @@ class MQTTBus:
                 topic, payload, retain = await asyncio.wait_for(
                     self._get_from_queue(), timeout=1.0
                 )
-                await client.publish(topic, json.dumps(payload), retain=retain)
-                logger.debug(f"Published to {topic}: {payload.get('type', '?')}")
+                # Payload shapes: a dict is JSON-encoded; a str/bytes is sent
+                # verbatim; None becomes an empty (zero-byte) payload, which —
+                # when retained — clears a retained topic so subscribers drop
+                # that scene channel (used by clear_retained / red-alert clear).
+                if payload is None:
+                    body = b""
+                elif isinstance(payload, (str, bytes)):
+                    body = payload
+                else:
+                    body = json.dumps(payload)
+                await client.publish(topic, body, retain=retain)
+                ptype = payload.get("type", "?") if isinstance(payload, dict) else ("<clear>" if payload is None else "<raw>")
+                logger.debug(f"Published to {topic}: {ptype}")
             except asyncio.TimeoutError:
                 continue
             except Exception as e:
@@ -190,9 +201,13 @@ class MQTTBus:
 
     # ── Publishing (thread-safe) ──────────────────────
 
-    def _enqueue_publish(self, topic: str, payload: dict, retain: bool = False):
-        """Thread-safe: enqueue a publish request for the MQTT thread."""
-        if "timestamp" not in payload:
+    def _enqueue_publish(self, topic: str, payload, retain: bool = False):
+        """Thread-safe: enqueue a publish request for the MQTT thread.
+
+        Only dict payloads get a server `timestamp` stamped in; str/bytes/None
+        payloads (raw publishes and retained-clears) are passed through as-is.
+        """
+        if isinstance(payload, dict) and "timestamp" not in payload:
             payload["timestamp"] = datetime.now(timezone.utc).isoformat()
         self._publish_queue.put_nowait((topic, payload, retain))
 
@@ -202,6 +217,18 @@ class MQTTBus:
             logger.warning(f"MQTT not connected, cannot publish to {topic}")
             return False
         self._enqueue_publish(topic, payload, retain)
+        return True
+
+    async def clear_retained(self, topic: str) -> bool:
+        """Publish an empty retained payload to `topic`, which deletes the
+        broker's retained message there. Subscribers receive a zero-length
+        message and drop that scene channel — this is how a red-alert (or any
+        group broadcast) is cancelled so screens fall back to their own
+        per-screen retained scene."""
+        if not self._connected:
+            logger.warning(f"MQTT not connected, cannot clear {topic}")
+            return False
+        self._enqueue_publish(topic, None, retain=True)
         return True
 
     async def publish_navigate(self, targets: list[str], page_id: str,
@@ -313,6 +340,12 @@ def is_connected() -> bool:
 async def publish(topic: str, payload: dict, retain: bool = False) -> bool:
     if _bus:
         return await _bus.publish(topic, payload, retain)
+    return False
+
+
+async def clear_retained(topic: str) -> bool:
+    if _bus:
+        return await _bus.clear_retained(topic)
     return False
 
 

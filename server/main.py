@@ -1204,6 +1204,80 @@ async def api_identify_screen(screen_id: str):
     return {"status": "sent", "screen_id": screen_id}
 
 
+# ── API: Red Alert (group broadcast) ─────────────────────────
+
+def _resolve_alert_topic(target: str) -> str:
+    """Map an alert target to its MQTT scene topic.
+
+    The SET (broadcast) and CLEAR paths must always land on the same topic:
+      "all"           -> marchog/all          (every screen)
+      "room/<id>"     -> marchog/room/<id>
+      "zone/<id>"     -> marchog/zone/<id>
+      "type/<id>"     -> marchog/type/<id>
+      "screen/<id>"   -> marchog/screen/<id>  (single screen, bare id)
+      "scr-<id>"      -> marchog/screen/scr-<id>  (compat: id already prefixed)
+      "marchog/..."   -> used verbatim
+    Screens subscribe to their own `marchog/screen/<id>` plus the group
+    channels above, so any of these reaches the intended audience.
+    """
+    t = (target or "all").strip().strip("/")
+    if not t:
+        t = "all"
+    if t.startswith("marchog/"):
+        return t
+    if t.startswith("screen/"):
+        return f"marchog/{t}"
+    if t.startswith("scr-"):
+        return f"marchog/screen/{t}"
+    return f"marchog/{t}"
+
+
+class RedAlertCommand(BaseModel):
+    # Default scope is every screen. Narrow with "room/<id>", "zone/<id>",
+    # "type/<id>", or a single "scr-<id>".
+    target: str = "all"
+    message: str = ""
+
+
+@app.post("/api/alert/red")
+async def api_red_alert(cmd: RedAlertCommand):
+    """Raise a red alert across a group of screens.
+
+    Publishes a *retained* navigate to the red-alert page on the resolved
+    group topic (default `marchog/all`). Because the scene model picks the
+    newest-timestamp channel, a fresh broadcast here overrides each screen's
+    own per-screen scene. Clear it with POST /api/alert/clear (same target),
+    which empties the retained topic so screens fall back to their scene.
+    """
+    if not mqtt_bus.is_connected():
+        raise HTTPException(503, "MQTT not connected")
+    topic = _resolve_alert_topic(cmd.target)
+    params = {"message": cmd.message} if cmd.message else {}
+    msg = build_navigate_message("red-alert", params)
+    await mqtt_bus.publish_navigate(
+        [topic],
+        "red-alert",
+        msg["params"],
+        source="alert",
+        retain=True,
+        extra={"file": msg.get("file"), "version": msg.get("version")},
+    )
+    return {"status": "alert", "topic": topic, "page": "red-alert"}
+
+
+@app.post("/api/alert/clear")
+async def api_clear_alert(cmd: RedAlertCommand):
+    """Cancel a red alert on the given target by emptying its retained scene
+    topic. Screens drop that channel and fall back to their own per-screen
+    retained scene (newest-timestamp model). A screen with no per-screen scene
+    will keep showing the alert until it's given one."""
+    if not mqtt_bus.is_connected():
+        raise HTTPException(503, "MQTT not connected")
+    topic = _resolve_alert_topic(cmd.target)
+    await mqtt_bus.clear_retained(topic)
+    return {"status": "cleared", "topic": topic}
+
+
 # ── Thumbnails ───────────────────────────────────────────────
 
 @app.post("/api/thumbnails/generate")

@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Marchog Systems — Red Alert</title>
+  <!-- Orbitron (geometric sci-fi display face) for the RED ALERT title. Pulled
+       from the Google Fonts CSS2 API rather than a hard-coded gstatic hash so
+       the URL stays valid across font revisions. Michroma/monospace remain the
+       fallback if the CDN is unreachable. -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&display=swap">
+  <style>
+    @font-face { font-family: 'Aurebesh'; src: url('../fonts/Aurebesh.otf') format('opentype'); }
+    @font-face { font-family: 'Aurebesh'; src: url('../fonts/Aurebesh Bold.otf') format('opentype'); font-weight: bold; }
+    @font-face { font-family: 'Aurebesh Condensed'; src: url('../fonts/Aurebesh Condensed.otf') format('opentype'); }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    html, body {
+      width: 100%; height: 100%; overflow: hidden;
+      background: #0a0102;
+      font-family: 'Courier New', monospace;
+      cursor: none;
+    }
+
+    /* The whole field pulses between deep maroon and a brighter alarm red.
+       This is the signature "red alert" cabin-light throb. */
+    .alert-field {
+      position: absolute; inset: 0;
+      z-index: 1;
+      animation: fieldPulse 1.1s ease-in-out infinite;
+    }
+    @keyframes fieldPulse {
+      0%, 100% { background: radial-gradient(ellipse at center, rgba(120,15,12,0.55), rgba(10,1,2,0.95) 75%); }
+      50%      { background: radial-gradient(ellipse at center, rgba(220,40,30,0.85), rgba(40,4,4,0.95) 80%); }
+    }
+
+    /* Static overlays for texture (shared with the rest of the suite). */
+    .scanlines {
+      position: absolute; inset: 0; z-index: 80; pointer-events: none;
+      background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.06) 2px, rgba(0,0,0,0.06) 4px);
+    }
+    .vignette {
+      position: absolute; inset: 0; z-index: 81; pointer-events: none;
+      background: radial-gradient(ellipse at center, transparent 25%, rgba(0,0,0,0.75) 100%);
+    }
+
+    /* Hazard stripes top + bottom, scrolling. */
+    .hazard {
+      position: absolute; left: 0; right: 0; height: 10px;
+      z-index: 60; pointer-events: none;
+      background: repeating-linear-gradient(
+        -45deg,
+        rgba(230,50,35,0.85), rgba(230,50,35,0.85) 12px,
+        rgba(10,2,2,0.95) 12px, rgba(10,2,2,0.95) 24px
+      );
+      animation: hazardScroll 0.8s linear infinite;
+    }
+    .hazard.top { top: 0; }
+    .hazard.bot { bottom: 0; }
+    @keyframes hazardScroll {
+      from { background-position: 0 0; }
+      to   { background-position: 33.9px 0; }
+    }
+
+    /* Klaxon sweep bars that flash with the pulse. */
+    .klaxon-bar {
+      position: absolute; left: 0; right: 0; height: 4px;
+      background: rgba(255,90,60,0.95);
+      box-shadow: 0 0 18px rgba(255,90,60,0.7);
+      z-index: 55; pointer-events: none;
+      animation: klaxonBlink 1.1s steps(1) infinite;
+    }
+    .klaxon-bar.top { top: 12px; }
+    .klaxon-bar.bot { bottom: 12px; }
+    @keyframes klaxonBlink {
+      0%, 49% { opacity: 0; }
+      50%, 100% { opacity: 1; }
+    }
+
+    /* Corner warning triangles. */
+    .warn-corner {
+      position: absolute; z-index: 50; pointer-events: none;
+      opacity: 0.7;
+      animation: cornerPulse 1.1s ease-in-out infinite;
+    }
+    .warn-corner.tl { top: 26px; left: 26px; }
+    .warn-corner.tr { top: 26px; right: 26px; }
+    .warn-corner.bl { bottom: 26px; left: 26px; }
+    .warn-corner.br { bottom: 26px; right: 26px; }
+    .warn-corner svg { width: 34px; height: 34px; }
+    @keyframes cornerPulse {
+      0%, 100% { opacity: 0.35; }
+      50% { opacity: 0.9; }
+    }
+
+    /* ── Center stack ─────────────────────────────── */
+    .center {
+      position: absolute; inset: 0; z-index: 20;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      text-align: center;
+    }
+
+    .aurebesh-top {
+      font-family: 'Aurebesh', monospace;
+      font-size: clamp(20px, 4vw, 56px);
+      letter-spacing: 0.4em;
+      color: rgba(255,120,90,0.55);
+      margin-bottom: 14px;
+    }
+
+    .title {
+      font-family: 'Orbitron', Michroma, 'Courier New', monospace;
+      font-weight: 900;
+      font-size: clamp(48px, 13vw, 200px);
+      letter-spacing: 0.18em;
+      color: #ff5a3c;
+      text-transform: uppercase;
+      line-height: 1;
+      text-shadow:
+        0 0 30px rgba(255,90,60,0.7),
+        0 0 70px rgba(255,60,40,0.35),
+        0 0 120px rgba(255,40,30,0.2);
+      animation: titlePulse 1.1s ease-in-out infinite;
+    }
+    @keyframes titlePulse {
+      0%, 100% { transform: scale(1); text-shadow: 0 0 30px rgba(255,90,60,0.6), 0 0 70px rgba(255,60,40,0.3); }
+      50%      { transform: scale(1.03); text-shadow: 0 0 45px rgba(255,120,90,0.95), 0 0 110px rgba(255,70,50,0.5); }
+    }
+
+    .message {
+      font-family: Michroma, 'Courier New', monospace;
+      font-size: clamp(14px, 2.6vw, 34px);
+      letter-spacing: 0.22em;
+      color: rgba(255,180,150,0.92);
+      text-transform: uppercase;
+      margin-top: 28px;
+      max-width: 80vw;
+      text-shadow: 0 0 18px rgba(255,90,60,0.4);
+    }
+
+    .subline {
+      font-family: 'Aurebesh Condensed', monospace;
+      font-size: clamp(9px, 1.2vw, 15px);
+      letter-spacing: 0.45em;
+      color: rgba(255,120,90,0.4);
+      margin-top: 18px;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="alert-field"></div>
+  <div class="scanlines"></div>
+  <div class="vignette"></div>
+
+  <div class="hazard top"></div>
+  <div class="hazard bot"></div>
+  <div class="klaxon-bar top"></div>
+  <div class="klaxon-bar bot"></div>
+
+  <div class="warn-corner tl"><svg viewBox="0 0 24 24" fill="none" stroke="rgba(255,90,60,0.9)" stroke-width="1.5"><path d="M12 2L1 21h22L12 2z"/><line x1="12" y1="9" x2="12" y2="14"/><circle cx="12" cy="17" r="0.5" fill="rgba(255,90,60,0.9)"/></svg></div>
+  <div class="warn-corner tr"><svg viewBox="0 0 24 24" fill="none" stroke="rgba(255,90,60,0.9)" stroke-width="1.5"><path d="M12 2L1 21h22L12 2z"/><line x1="12" y1="9" x2="12" y2="14"/><circle cx="12" cy="17" r="0.5" fill="rgba(255,90,60,0.9)"/></svg></div>
+  <div class="warn-corner bl"><svg viewBox="0 0 24 24" fill="none" stroke="rgba(255,90,60,0.9)" stroke-width="1.5"><path d="M12 2L1 21h22L12 2z"/><line x1="12" y1="9" x2="12" y2="14"/><circle cx="12" cy="17" r="0.5" fill="rgba(255,90,60,0.9)"/></svg></div>
+  <div class="warn-corner br"><svg viewBox="0 0 24 24" fill="none" stroke="rgba(255,90,60,0.9)" stroke-width="1.5"><path d="M12 2L1 21h22L12 2z"/><line x1="12" y1="9" x2="12" y2="14"/><circle cx="12" cy="17" r="0.5" fill="rgba(255,90,60,0.9)"/></svg></div>
+
+  <div class="center">
+    <div class="aurebesh-top">RED ALERT</div>
+    <div class="title">RED ALERT</div>
+    <div class="message" id="message"></div>
+    <div class="subline">all hands to battle stations</div>
+  </div>
+
+  <script src="../mso-base.js"></script>
+  <script>
+    // ── Fonts ────────────────────────────────────────
+    // Aurebesh ships locally; Michroma comes from Google's CDN to match the
+    // rest of the suite. Failure is non-fatal — we fall back to monospace.
+    async function loadFonts() {
+      try {
+        const aurebesh = new FontFace('Aurebesh', "url('../fonts/Aurebesh.otf')");
+        const aurebeshBold = new FontFace('Aurebesh', "url('../fonts/Aurebesh Bold.otf')", { weight: 'bold' });
+        const michroma = new FontFace('Michroma', "url('https://fonts.gstatic.com/s/michroma/v19/PN_zRfy9qWD8fEagAPg9pTk.woff2')");
+        await Promise.all([aurebesh.load(), aurebeshBold.load(), michroma.load()]);
+        document.fonts.add(aurebesh);
+        document.fonts.add(aurebeshBold);
+        document.fonts.add(michroma);
+      } catch (e) {
+        console.warn('Font load failed, using fallback', e);
+      }
+    }
+
+    // ── Message ──────────────────────────────────────
+    // Optional operator message shown under the title. Hidden when empty so
+    // the layout stays centered on the title alone.
+    const messageEl = document.getElementById('message');
+    function setMessage(text) {
+      const t = (text || '').toString().trim();
+      messageEl.textContent = t;
+      messageEl.style.display = t ? 'block' : 'none';
+    }
+
+    // The shell delivers per-scene params via a `configure` postMessage; the
+    // red-alert broadcast carries an optional `message`.
+    window.addEventListener('message', (event) => {
+      if (event.data && event.data.type === 'configure') {
+        if (event.data.message !== undefined) setMessage(event.data.message);
+      }
+    });
+
+    // Forward arrow keys so the parent shell's paging still works if someone
+    // is at a keyboard during an alert.
+    document.addEventListener('keydown', (e) => {
+      if (['ArrowLeft', 'ArrowRight'].includes(e.key)) {
+        window.parent.postMessage({ type: 'keydown', key: e.key }, '*');
+      }
+    });
+
+    // ── Init ─────────────────────────────────────────
+    loadFonts();
+    // URL-param fallback for standalone loads (?message=...).
+    const params = new URLSearchParams(window.location.search);
+    setMessage(params.get('message') || '');
+
+    // Signal ready so the shell will push us our configure params.
+    window.parent.postMessage({ type: 'pageReady', page: 'red-alert' }, '*');
+  </script>
+</body>
+</html>

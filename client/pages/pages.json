@@ -103,6 +103,17 @@
     }
   },
   {
+    "id": "red-alert",
+    "name": "Red Alert",
+    "description": "Full-screen red alert klaxon with optional operator message",
+    "file": "red-alert.html",
+    "icon": "ti-alert-triangle",
+    "category": "effect",
+    "params": {
+      "message": ""
+    }
+  },
+  {
     "id": "clock",
     "name": "Clock",
     "description": "Auto-discovered: clock.html",
