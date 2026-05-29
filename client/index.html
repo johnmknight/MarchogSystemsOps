@@ -197,6 +197,12 @@
     </div>
   </div>
   <script src="mso-base.js"></script>
+  <!-- MQTT-over-WebSocket client (UMD; exposes window.mqtt). Used as the
+       authoritative transport for scene `navigate` commands. WebSocket
+       remains for heartbeat/metrics/reload/identify until that path is
+       retired. If this fails to load, the Shell silently falls back to
+       receiving navigate over the existing WebSocket. -->
+  <script src="mqtt.min.js"></script>
   <script>
     (function() {
       const overlay = document.getElementById('fsOverlay');
@@ -297,6 +303,20 @@
       _heartbeatTimeout: null,
       _awaitingPong: false,
 
+      // MQTT (authoritative transport for scene `navigate`)
+      mqtt: null,
+      mqttConnected: false,
+      meta: null,                 // routing meta from `registered` {room_id, zone_id, device_type, ...}
+      _mqttSubscribed: {},        // topic -> true (idempotent subscribe guard)
+      // Each retained scene channel (screen / all / room / zone / type) keeps
+      // its last navigate; the *effective* scene is whichever has the newest
+      // timestamp. This makes broadcast overrides (e.g. red alert on
+      // marchog/all) win over a per-screen scene, and a retained-empty
+      // payload clears that channel so the screen falls back to the next
+      // newest (normally its own per-screen scene).
+      sceneChannels: {},          // topic -> {page, params, file, version, ts}
+      _appliedSceneKey: null,     // dedupe guard for the currently-shown scene
+
       // ── Init ─────────────────────────────────────
       async init() {
         console.log('%c⚡ MarchogSystemsOps Shell initializing...', 'color: #e74c3c; font-weight: bold');
@@ -323,8 +343,10 @@
         // Load available pages from server
         await this.loadPages();
 
-        // Connect WebSocket
+        // Connect WebSocket (heartbeat/metrics/reload/identify + legacy
+        // navigate fallback) and MQTT (authoritative navigate transport).
         this.connectWebSocket();
+        this.connectMQTT();
         // Start FPS counter for health metrics
         this.startFpsCounter();
         // Discover local agent for media resolution
@@ -577,6 +599,118 @@
         }
       },
 
+      // ── MQTT (scene navigate transport) ─────────
+      // Connects to the Mosquitto broker over WebSockets and subscribes to
+      // this screen's retained scene channels. While MQTT is connected it is
+      // the authoritative source of `navigate`; WS-delivered navigate is
+      // ignored to avoid double-application. If MQTT is down, WS navigate is
+      // honoured again so a broker outage never blacks out the kiosk.
+      connectMQTT() {
+        if (typeof mqtt === 'undefined') {
+          console.warn('[mqtt] library not loaded — navigate stays on WebSocket');
+          return;
+        }
+        const params = new URLSearchParams(window.location.search);
+        // Default: same host as the page, broker WS listener on 9002. The
+        // kiosk talks to the marchog server directly, so location.hostname is
+        // the appserv1 IP. Overridable with ?broker=ws://host:port for tests.
+        const brokerUrl = params.get('broker') || `ws://${location.hostname}:9002`;
+        console.log(`[mqtt] connecting to ${brokerUrl}`);
+        try {
+          const client = mqtt.connect(brokerUrl, {
+            clientId: `kiosk-${this.screenId}-${Math.random().toString(16).slice(2, 8)}`,
+            clean: true,
+            reconnectPeriod: 3000,
+            connectTimeout: 8000,
+            keepalive: 30,
+          });
+          this.mqtt = client;
+
+          client.on('connect', () => {
+            this.mqttConnected = true;
+            console.log('%c[mqtt] connected — navigate now via MQTT', 'color: #10b981');
+            this.subscribeSceneTopics();
+          });
+          client.on('reconnect', () => console.log('[mqtt] reconnecting...'));
+          client.on('close', () => {
+            if (this.mqttConnected) console.warn('[mqtt] connection closed — WS navigate re-enabled as fallback');
+            this.mqttConnected = false;
+          });
+          client.on('error', (e) => console.error('[mqtt] error:', e && e.message ? e.message : e));
+          client.on('message', (topic, payload) => this.handleMqttMessage(topic, payload));
+        } catch (e) {
+          console.error('[mqtt] connect failed, staying on WebSocket navigate:', e);
+          this.mqtt = null;
+          this.mqttConnected = false;
+        }
+      },
+
+      subscribeSceneTopics() {
+        // Idempotent: safe to call on connect and again when `meta` arrives
+        // from the `registered` WS message (room/zone/type may not be known
+        // at the moment MQTT first connects).
+        if (!this.mqtt || !this.mqttConnected) return;
+        const topics = [`marchog/screen/${this.screenId}`, 'marchog/all'];
+        if (this.meta) {
+          if (this.meta.room_id) topics.push(`marchog/room/${this.meta.room_id}`);
+          if (this.meta.zone_id) topics.push(`marchog/zone/${this.meta.zone_id}`);
+          if (this.meta.device_type) topics.push(`marchog/type/${this.meta.device_type}`);
+          if (this.meta.device_type_secondary) topics.push(`marchog/type/${this.meta.device_type_secondary}`);
+        }
+        for (const t of topics) {
+          if (this._mqttSubscribed[t]) continue;
+          this.mqtt.subscribe(t, { qos: 0 }, (err) => {
+            if (err) { console.error('[mqtt] subscribe failed:', t, err); return; }
+            this._mqttSubscribed[t] = true;
+            console.log('[mqtt] subscribed:', t);
+          });
+        }
+      },
+
+      handleMqttMessage(topic, payloadBuf) {
+        const raw = payloadBuf ? payloadBuf.toString() : '';
+        // Empty retained payload = clear this channel's override.
+        if (!raw) {
+          if (this.sceneChannels[topic]) {
+            console.log(`[mqtt] cleared channel ${topic}`);
+            delete this.sceneChannels[topic];
+            this.recomputeEffectiveScene();
+          }
+          return;
+        }
+        let msg;
+        try { msg = JSON.parse(raw); }
+        catch (e) { console.error('[mqtt] bad payload on', topic, e); return; }
+        if (msg.type !== 'navigate') return;  // only navigate handled via MQTT for now
+        if (msg.version) this.serverVersion = msg.version;
+        const ts = msg.timestamp ? Date.parse(msg.timestamp) : Date.now();
+        this.sceneChannels[topic] = {
+          page: msg.page_id || msg.page,
+          params: msg.params || null,
+          file: msg.file || null,
+          version: msg.version || null,
+          ts: isNaN(ts) ? Date.now() : ts,
+        };
+        this.recomputeEffectiveScene();
+      },
+
+      recomputeEffectiveScene() {
+        // Effective scene = channel entry with the newest timestamp. Applying
+        // on key change (not timestamp) lets a clear fall back to an older
+        // per-screen scene while still de-duping identical re-applies.
+        let best = null;
+        for (const t in this.sceneChannels) {
+          const e = this.sceneChannels[t];
+          if (!best || e.ts > best.ts) best = e;
+        }
+        if (!best || !best.page) return;  // nothing to show — keep current
+        const key = best.page + '|' + JSON.stringify(best.params || {});
+        if (key === this._appliedSceneKey) return;
+        this._appliedSceneKey = key;
+        console.log('[mqtt] applying scene:', best.page, best.params || {});
+        this.applyNavigate(best);
+      },
+
       // ── Client Metrics ──
       // FPS counter + periodic metrics report to server.
       _fpsFrames: 0,
@@ -778,6 +912,14 @@
                 && this.shellVersion !== 'unstamped') {
               console.warn(`[version] Drift detected — Shell ${this.shellVersion} vs server ${msg.version}`);
             }
+            // The server includes this screen's routing metadata (device type,
+            // zone, room) in the registration ack. We stash it so the MQTT
+            // layer knows which group channels to subscribe to (room/zone/type
+            // broadcasts) in addition to the per-screen channel.
+            if (msg.meta) {
+              this.meta = msg.meta;
+              this.subscribeSceneTopics();
+            }
             break;
 
           case 'identify':
@@ -797,7 +939,9 @@
             break;
 
           case 'navigate':
-            // Special commands from config panel
+            // Special commands from the config panel always travel over WS
+            // (they're admin/control actions, not scene state) and are honoured
+            // regardless of the MQTT transport.
             if (msg.page === '__fullscreen__') {
               if (document.fullscreenElement) {
                 document.exitFullscreen();
@@ -810,59 +954,66 @@
               this.flashIdentify();
               break;
             }
-            // Direct navigation command
-            this.stopPlaylist();
-            // Store per-screen params override if provided
-            if (msg.params) {
-              this.screenParamsOverride = msg.params;
+            // While MQTT is connected it owns scene navigation. Ignore
+            // WS-delivered navigate to avoid applying the same scene twice.
+            // If the broker drops, mqttConnected flips false and WS navigate
+            // is honoured again — so an outage never blacks out the kiosk.
+            if (this.mqttConnected) {
+              console.log('[navigate] ignoring WS navigate (MQTT is the active transport)');
+              break;
             }
-
-            // Bug #6 fix: make sure a frame exists for this page before
-            // showPage runs. If the Shell's cached `this.pages` list
-            // predates the target page (stale client, page added later,
-            // etc.) `showPage` would silently bail because
-            // `loadedFrames[pageId]` is undefined — and the monitor
-            // stayed on whatever page was active (typically hyperspace,
-            // the first page). The server now includes a `file` hint
-            // in the navigate message so we can lazy-create the frame
-            // even when our cached pages list doesn't know about it.
-            if (!this.loadedFrames[msg.page]) {
-              const pageMeta = this.pages.find(p => p.id === msg.page);
-              const fileHint = (pageMeta && pageMeta.file) || msg.file;
-              if (fileHint) {
-                console.warn(`[navigate] Frame for "${msg.page}" missing — creating lazily (file="${fileHint}", pages list ${pageMeta ? 'matched' : 'stale'})`);
-                this.ensureFrame(msg.page, fileHint);
-                // If the page wasn't in this.pages at all, our dots bar
-                // and subsequent navigations will still be wrong until
-                // we refresh — do so in the background so the current
-                // navigation isn't blocked.
-                if (!pageMeta) {
-                  this.loadPages().catch(err => console.error('[navigate] background loadPages refresh failed:', err));
-                }
-              } else {
-                console.error(`[navigate] Cannot navigate to "${msg.page}" — no frame, no file hint, not in pages list`);
-                break;
-              }
-            }
-
-            this.showPage(msg.page);
-            // Always send configure for navigate-with-params, even if page is already showing
-            if (msg.params && this.loadedFrames[msg.page]) {
-              const frame = this.loadedFrames[msg.page];
-              if (frame && frame.contentWindow) {
-                const page = this.pages.find(p => p.id === msg.page);
-                const defaultParams = (page && page.params) ? { ...page.params } : {};
-                const merged = this.resolveMediaParams({ ...defaultParams, ...msg.params });
-                frame.contentWindow.postMessage({ type: 'configure', ...merged }, '*');
-                console.log(`[navigate] Sent configure to ${msg.page}:`, merged);
-              }
-            }
+            this.applyNavigate({ page: msg.page, params: msg.params, file: msg.file });
             break;
 
           case 'assignment':
             // Scene-based assignment
             this.applyAssignment(msg.config);
             break;
+        }
+      },
+
+      // Apply a scene navigation. Shared by the MQTT transport and the WS
+      // fallback. `scene` = { page, params, file }.
+      applyNavigate(scene) {
+        const page = scene.page;
+        if (!page) return;
+        this.stopPlaylist();
+        if (scene.params) {
+          this.screenParamsOverride = scene.params;
+        }
+
+        // Bug #6 fix: make sure a frame exists for this page before showPage
+        // runs. If the Shell's cached `this.pages` list predates the target
+        // page, `showPage` would silently bail because `loadedFrames[pageId]`
+        // is undefined. The `file` hint (from build_navigate_message) lets us
+        // lazy-create the frame even when the cached pages list is stale.
+        if (!this.loadedFrames[page]) {
+          const pageMeta = this.pages.find(p => p.id === page);
+          const fileHint = (pageMeta && pageMeta.file) || scene.file;
+          if (fileHint) {
+            console.warn(`[navigate] Frame for "${page}" missing — creating lazily (file="${fileHint}", pages list ${pageMeta ? 'matched' : 'stale'})`);
+            this.ensureFrame(page, fileHint);
+            if (!pageMeta) {
+              this.loadPages().catch(err => console.error('[navigate] background loadPages refresh failed:', err));
+            }
+          } else {
+            console.error(`[navigate] Cannot navigate to "${page}" — no frame, no file hint, not in pages list`);
+            return;
+          }
+        }
+
+        this.showPage(page);
+        // Always send configure for navigate-with-params, even if the page is
+        // already showing.
+        if (scene.params && this.loadedFrames[page]) {
+          const frame = this.loadedFrames[page];
+          if (frame && frame.contentWindow) {
+            const pageMeta = this.pages.find(p => p.id === page);
+            const defaultParams = (pageMeta && pageMeta.params) ? { ...pageMeta.params } : {};
+            const merged = this.resolveMediaParams({ ...defaultParams, ...scene.params });
+            frame.contentWindow.postMessage({ type: 'configure', ...merged }, '*');
+            console.log(`[navigate] Sent configure to ${page}:`, merged);
+          }
         }
       },
 

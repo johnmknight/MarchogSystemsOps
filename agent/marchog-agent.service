@@ -1,0 +1,25 @@
+[Unit]
+Description=Marchog kiosk agent (VLC video handoff + telemetry)
+# Start alongside the graphical session so the Pi's Wayland socket is available
+# for VLC handoff. The agent only needs Wayland when it actually plays a video,
+# so a small startup race here is harmless.
+After=graphical-session.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/john/marchog-agent
+ExecStart=/usr/bin/python3 /home/john/marchog-agent/marchog_agent.py --server-url http://192.168.4.148:8082 --screen-id pi5screen11
+# Keep the agent alive across crashes; this is the kiosk's video brain.
+Restart=always
+RestartSec=3
+# VLC handoff env. XDG_RUNTIME_DIR is already /run/user/1000 for a --user unit;
+# the agent's _env() fills in the rest, but we set these explicitly for clarity.
+Environment=WAYLAND_DISPLAY=wayland-0
+Environment=DISPLAY=:0
+# Unbuffered so the agent's print() diagnostics reach journald in real time
+# (journalctl --user -u marchog-agent.service).
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=default.target

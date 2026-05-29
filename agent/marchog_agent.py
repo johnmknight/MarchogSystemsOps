@@ -26,18 +26,19 @@ import os
 import platform
 import shutil
 import socket
+import subprocess
 import sys
 import threading
 import time
 import traceback
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
-from urllib.parse import unquote
+from urllib.parse import unquote, urlparse
 from urllib.request import urlopen, Request
 from urllib.error import URLError, HTTPError
 from datetime import datetime, timezone
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 # ── Defaults ──
 
@@ -63,13 +64,23 @@ class AgentConfig:
         self.sync_interval = DEFAULT_SYNC_INTERVAL
         self.telemetry_interval = DEFAULT_TELEMETRY_INTERVAL
         self.auto_cleanup = False  # delete local files not in server manifest
+        # ── Native video player (VLC HW-decode handoff) ──
+        # The browser kiosk cannot reach the Pi's hardware video decoder
+        # (HEVC/high-bitrate H.264 stutter in <video>). When a video scene is
+        # pushed to this screen, the agent launches VLC fullscreen on top of the
+        # kiosk so playback uses the hardware decoder, then kills it on the next
+        # non-video scene. See PlayerController + start_mqtt_listener below.
+        self.enable_player = True
+        self.broker_host = None   # None ⇒ derive from server_url host
+        self.broker_port = 1883
 
     def load_file(self, path):
         with open(path) as f:
             data = json.load(f)
         for key in ("port", "media_dir", "server_url", "screen_id",
                      "bind_address", "sync_interval", "telemetry_interval",
-                     "auto_cleanup"):
+                     "auto_cleanup", "enable_player", "broker_host",
+                     "broker_port"):
             if key in data:
                 setattr(self, key, data[key])
 
@@ -317,6 +328,175 @@ def _report_media_status():
     _http_post_json(url, data)
 
 
+# ── Native Video Player (VLC hardware-decode handoff) ──
+
+def resolve_video_url(value):
+    """Turn a marchog page `video` param into something VLC can open.
+
+    Mirrors the kiosk shell's resolveMediaUrl():
+      - absolute http(s):// URLs (e.g. HoloVault) pass through untouched
+      - a root-relative "/media/..." path is joined onto the central server
+      - a bare filename is treated as a local video under the server's library
+    VLC streams http(s) sources directly, so no pre-download is required.
+    """
+    if not value:
+        return None
+    value = str(value).strip()
+    if value.startswith(("http://", "https://")):
+        return value
+    base = (config.server_url or "").rstrip("/")
+    if value.startswith("/"):
+        return f"{base}{value}"
+    return f"{base}/media/videos/{value}"
+
+
+class PlayerController:
+    """Launches/kills a fullscreen VLC instance for video scenes.
+
+    Why VLC and not the browser: this Debian VLC build uses the `drm_avcodec`
+    module, which routes HEVC / high-bitrate H.264 straight to the Pi 5's
+    hardware decoder via DRM-PRIME (~4% CPU for 1080p60 HEVC). The Chromium
+    kiosk has no path to that decoder, so video scenes are handed off here.
+    """
+
+    # Flags proven to HW-decode 1080p60 HEVC smoothly on a Pi 5 (labwc/Wayland).
+    VLC_FLAGS = [
+        "--intf", "dummy",          # no UI, controlled purely by process lifecycle
+        "--fullscreen",
+        "--loop",                   # signage clips repeat until the scene changes
+        "--no-video-title-show",
+        "--no-osd",
+        "--avcodec-hw=any",         # enable hardware decode (drm_avcodec)
+        "--quiet",
+    ]
+
+    def __init__(self, cfg):
+        self.config = cfg
+        self.proc = None
+        self.current_url = None
+        self.lock = threading.Lock()
+
+    def _env(self):
+        """Environment that points VLC at the kiosk's graphical session."""
+        env = os.environ.copy()
+        env.setdefault("WAYLAND_DISPLAY", "wayland-0")
+        getuid = getattr(os, "getuid", None)
+        if getuid is not None:
+            env.setdefault("XDG_RUNTIME_DIR", f"/run/user/{getuid()}")
+        env.setdefault("DISPLAY", ":0")
+        return env
+
+    def play(self, url):
+        with self.lock:
+            if self.proc and self.proc.poll() is None:
+                if url == self.current_url:
+                    return  # already playing exactly this — no restart/flicker
+                self._stop_locked()
+            cmd = ["vlc", *self.VLC_FLAGS, url]
+            try:
+                self.proc = subprocess.Popen(
+                    cmd, env=self._env(),
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                )
+                self.current_url = url
+                print(f"[player] VLC launched (pid {self.proc.pid}) for {url}")
+            except FileNotFoundError:
+                print("[player] ERROR: vlc not found on PATH; cannot play video")
+                self.proc = None
+                self.current_url = None
+
+    def stop(self):
+        with self.lock:
+            self._stop_locked()
+
+    def _stop_locked(self):
+        if self.proc and self.proc.poll() is None:
+            self.proc.terminate()
+            try:
+                self.proc.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                self.proc.kill()
+            print("[player] VLC stopped")
+        self.proc = None
+        self.current_url = None
+
+    def status(self):
+        playing = self.proc is not None and self.proc.poll() is None
+        return {
+            "playing": playing,
+            "url": self.current_url if playing else None,
+        }
+
+
+# Global player instance (created in main() when enabled).
+_player = None
+
+
+def start_mqtt_listener(player):
+    """Subscribe to this screen's marchog navigate topics and drive the player.
+
+    marchog publishes navigate commands as JSON on:
+      marchog/screen/{screen_id}, marchog/all, marchog/room/*, marchog/type/* …
+    Each carries {type:"navigate", page_id, params}. We treat any navigate
+    whose params contain a `video` URL as a video scene → play; anything else
+    → stop (so leaving a video scene tears VLC down and reveals the kiosk).
+
+    paho-mqtt is optional: if it isn't installed, player control via MQTT is
+    simply disabled (the HTTP /api/player endpoints still work for testing).
+    """
+    try:
+        import paho.mqtt.client as mqtt
+    except ImportError:
+        print("[player] paho-mqtt not installed — MQTT scene control disabled "
+              "(install with: pip install paho-mqtt). HTTP /api/player still works.")
+        return None
+
+    host = config.broker_host or urlparse(config.server_url).hostname or "localhost"
+    port = config.broker_port
+    screen = config.screen_id
+
+    def on_connect(client, userdata, flags, rc, *args):
+        client.subscribe(f"{'marchog'}/screen/{screen}")
+        client.subscribe("marchog/all")
+        print(f"[player] MQTT connected {host}:{port}; "
+              f"subscribed marchog/screen/{screen} + marchog/all")
+
+    def on_message(client, userdata, msg):
+        try:
+            payload = json.loads(msg.payload.decode())
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            return
+        if payload.get("type") != "navigate":
+            return
+        params = payload.get("params") or {}
+        url = resolve_video_url(params.get("video"))
+        if url:
+            print(f"[player] scene '{payload.get('page_id')}' → video {url}")
+            player.play(url)
+        else:
+            print(f"[player] scene '{payload.get('page_id')}' (no video) → stop")
+            player.stop()
+
+    # paho-mqtt 2.x requires an explicit callback API version; 1.x doesn't.
+    try:
+        client = mqtt.Client(
+            mqtt.CallbackAPIVersion.VERSION1,
+            client_id=f"marchog-agent-{screen}",
+        )
+    except (AttributeError, TypeError):
+        client = mqtt.Client(client_id=f"marchog-agent-{screen}")
+
+    client.on_connect = on_connect
+    client.on_message = on_message
+    try:
+        client.connect(host, port, keepalive=60)
+    except Exception as e:
+        print(f"[player] MQTT connect to {host}:{port} failed: {e}")
+        return None
+    client.loop_start()  # background network thread; auto-reconnects
+    return client
+
+
 # ── Telemetry ──
 
 def collect_telemetry():
@@ -500,6 +680,10 @@ class AgentHandler(SimpleHTTPRequestHandler):
             })
             return
 
+        if path == "/api/player/status":
+            self.send_json(_player.status() if _player else {"playing": False, "enabled": False})
+            return
+
         # ── Static media files ──
         if path.startswith("/media/"):
             rel = path[len("/media/"):]
@@ -540,6 +724,28 @@ class AgentHandler(SimpleHTTPRequestHandler):
 
     def do_POST(self):
         path = unquote(self.path).split("?")[0]
+
+        # ── Native video player control (manual / testing) ──
+        if path == "/api/player/play":
+            if not _player:
+                self.send_json({"error": "player disabled"}, 503)
+                return
+            body = self.read_body()
+            url = resolve_video_url(body.get("url") or body.get("video"))
+            if not url:
+                self.send_json({"error": "url (or video) required"}, 400)
+                return
+            _player.play(url)
+            self.send_json({"status": "playing", "url": url})
+            return
+
+        if path == "/api/player/stop":
+            if not _player:
+                self.send_json({"error": "player disabled"}, 503)
+                return
+            _player.stop()
+            self.send_json({"status": "stopped"})
+            return
 
         if path == "/api/media/sync":
             # Trigger a full sync in background
@@ -660,6 +866,19 @@ def main():
         print(f"  Worker:      started (sync + telemetry)")
     else:
         print(f"  Worker:      disabled (no server_url or screen_id)")
+
+    # Start native video player + MQTT scene listener (VLC HW-decode handoff)
+    global _player
+    if config.enable_player and config.screen_id:
+        _player = PlayerController(config)
+        _mqtt_client = start_mqtt_listener(_player)
+        broker = config.broker_host or urlparse(config.server_url).hostname or "localhost"
+        if _mqtt_client:
+            print(f"  Player:      VLC handoff active (MQTT {broker}:{config.broker_port})")
+        else:
+            print(f"  Player:      VLC handoff via HTTP only (MQTT unavailable)")
+    else:
+        print(f"  Player:      disabled")
     print()
 
     server = HTTPServer((config.bind_address, config.port), AgentHandler)

@@ -328,26 +328,42 @@
       modal.style.display = 'flex';
       list.innerHTML = '<div style="color:#5a6a7a; text-align:center; padding:20px;">Loading...</div>';
       try {
-        // Resolve API URL relative to parent shell origin (not iframe origin)
-        const apiBase = window.parent.location.origin + (typeof MSO_BASE !== 'undefined' ? MSO_BASE : '');
-        const resp = await fetch(apiBase + '/api/media/videos');
-        const videos = await resp.json();
+        // Pull from HoloVault — the SmartLab media cache. It lives on the same
+        // host as this shell (just a different path, /holovault/), so this is
+        // a same-origin request. HoloVault serves pre-fetched H.264 files that
+        // a Pi 5 decodes smoothly in a native <video>, sidestepping the
+        // VP9/AV1 stutter you get from embedded YouTube. Its filenames carry
+        // the descriptors (height/codec) — there is no separate metadata DB.
+        const holoBase = window.parent.location.origin + '/holovault';
+        const resp = await fetch(holoBase + '/api/library');
+        const data = await resp.json();
+        const videos = data.items || [];
         list.innerHTML = '';
         if (videos.length === 0) {
           list.innerHTML = '<div style="color:#5a6a7a; text-align:center; padding:20px; line-height:1.8;">' +
-            'No videos in media library.<br>' +
-            '<span style="font-size:0.85em;">Place MP4/WebM files in the server\'s<br><code style="color:#4a9eff;">media/videos/</code> directory.</span></div>';
+            'HoloVault library is empty.<br>' +
+            '<span style="font-size:0.85em;">Add videos from the<br><code style="color:#4a9eff;">/holovault/</code> admin console.</span></div>';
           return;
         }
         videos.forEach(v => {
           const item = document.createElement('div');
           item.style.cssText = 'display:flex; justify-content:space-between; align-items:center; padding:10px 12px; border:1px solid rgba(100,140,200,0.1); border-radius:3px; margin-bottom:6px; cursor:pointer; transition:all 0.15s;';
-          item.innerHTML = '<span style="color:#c8d6e5; font-family:Share Tech Mono,monospace; font-size:0.85em;">' + v.filename + '</span>' +
-            '<span style="color:#5a6a7a; font-size:0.75em;">' + formatBytes(v.size) + '</span>';
+          // Codec badge: green for h264 (Pi-5 safe), amber for anything that
+          // would software-decode poorly (vp9/av1/hevc).
+          const codec = (v.codec || '').toLowerCase();
+          const codecColor = codec === 'h264' ? '#39d98a' : '#f0a73e';
+          const meta = [v.height ? v.height + 'p' : null, v.codec || null].filter(Boolean).join(' · ');
+          item.innerHTML = '<span style="color:#c8d6e5; font-family:Share Tech Mono,monospace; font-size:0.85em;">' + (v.title || v.filename) + '</span>' +
+            '<span style="display:flex; gap:8px; align-items:center;">' +
+              (meta ? '<span style="color:' + codecColor + '; font-size:0.72em; font-family:Share Tech Mono,monospace;">' + meta + '</span>' : '') +
+              '<span style="color:#5a6a7a; font-size:0.75em;">' + formatBytes(v.size) + '</span>' +
+            '</span>';
           item.onmouseenter = () => { item.style.borderColor = 'rgba(74,158,255,0.4)'; item.style.background = 'rgba(74,158,255,0.05)'; };
           item.onmouseleave = () => { item.style.borderColor = 'rgba(100,140,200,0.1)'; item.style.background = 'transparent'; };
           item.onclick = () => {
-            const url = v.url;
+            // HoloVault returns a root-relative url (/holovault/media/...);
+            // make it absolute against the shell origin for the <video> src.
+            const url = window.parent.location.origin + v.url;
             document.getElementById('videoUrl').value = url;
             document.getElementById('urlInput').value = url;
             loadVideo(url);

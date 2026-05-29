@@ -7,6 +7,7 @@ ProactorEventLoop. We solve this by running the MQTT client in a
 dedicated thread with its own SelectorEventLoop.
 """
 import asyncio
+import os
 import sys
 import json
 import logging
@@ -18,8 +19,12 @@ import aiomqtt
 
 logger = logging.getLogger("marchog.mqtt")
 
-BROKER_HOST = "localhost"
-BROKER_PORT = 1883
+# Broker location is environment-configurable so the same code runs both
+# locally (default localhost) and in the appserv1 container, where the
+# Mosquitto broker (homeops-mqtt) runs in host-network mode and is reached
+# via the host LAN IP rather than the container's own loopback.
+BROKER_HOST = os.environ.get("MQTT_BROKER_HOST", "localhost")
+BROKER_PORT = int(os.environ.get("MQTT_BROKER_PORT", "1883"))
 TOPIC_PREFIX = "marchog"
 
 # Aliases for main.py compatibility
@@ -195,14 +200,24 @@ class MQTTBus:
         return True
 
     async def publish_navigate(self, targets: list[str], page_id: str,
-                                params: dict = None, source: str = "server"):
-        """Publish navigation commands to target topics."""
+                                params: dict = None, source: str = "server",
+                                retain: bool = False, extra: dict = None):
+        """Publish navigation commands to target topics.
+
+        `retain=True` keeps the message on the broker as the topic's last
+        known scene, so a kiosk/agent that (re)subscribes immediately
+        receives the current scene without the server having to replay it.
+        `extra` merges additional top-level fields (e.g. `file`, `version`)
+        that the browser-kiosk navigate handler expects.
+        """
         payload = {
             "type": "navigate",
             "page_id": page_id,
             "params": params or {},
             "source": source,
         }
+        if extra:
+            payload.update(extra)
         for target in targets:
             if target.startswith("marchog/"):
                 topic = target
@@ -210,7 +225,7 @@ class MQTTBus:
                 topic = f"{TOPIC_PREFIX}/screen/{target}"
             else:
                 topic = f"{TOPIC_PREFIX}/{target}"
-            await self.publish(topic, payload)
+            await self.publish(topic, payload, retain=retain)
 
     # ── Dispatching ───────────────────────────────────
 
@@ -260,6 +275,12 @@ class MQTTBus:
                         "page": payload.get("page_id"),
                         "params": payload.get("params", {}),
                     }
+                    # Carry through the Shell hints if the publisher included
+                    # them (build_navigate_message adds file/version).
+                    if "file" in payload:
+                        msg["file"] = payload["file"]
+                    if "version" in payload:
+                        msg["version"] = payload["version"]
                     # Schedule WS send on the main event loop
                     asyncio.run_coroutine_threadsafe(
                         ws.send_json(msg), self._main_loop
@@ -354,9 +375,11 @@ async def publish(topic: str, payload: dict, retain: bool = False) -> bool:
 
 
 async def publish_navigate(targets: list[str], page_id: str,
-                           params: dict = None, source: str = "server"):
+                           params: dict = None, source: str = "server",
+                           retain: bool = False, extra: dict = None):
     if _bus:
-        return await _bus.publish_navigate(targets, page_id, params, source)
+        return await _bus.publish_navigate(targets, page_id, params, source,
+                                           retain=retain, extra=extra)
 
 
 async def publish_heartbeat(device_id: str, device_type: str = "screen"):

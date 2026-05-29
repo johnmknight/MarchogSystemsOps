@@ -9,11 +9,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy server and client
 COPY server/ ./server/
 COPY client/ ./client/
-COPY data/ ./data/
-COPY media/ ./media/
 
-# Data directory for SQLite
-RUN mkdir -p /app/data
+# Data directories will be provided by Docker volumes
+# DO NOT copy data/ or media/ - volumes provide production data
+RUN mkdir -p /app/data /app/media
 
 EXPOSE 8082
 

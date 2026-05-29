@@ -633,25 +633,55 @@ async def api_screen_registry():
 
 @app.post("/api/screens/{screen_id}/navigate")
 async def api_navigate_screen(screen_id: str, cmd: NavigateCommand):
-    """Send a navigation command to a specific screen, merging with stored params."""
+    """Send a navigation command to a specific screen, merging with stored params.
+
+    Publishes a *retained* `navigate` to the screen's MQTT topic
+    (marchog/screen/{id}) on every scene push. This is the canonical
+    transport: it reaches the native VLC player agent directly and, because
+    it is retained, a kiosk/agent that (re)connects immediately picks up the
+    current scene — replacing the old reconnect-replay hack.
+
+    While the browser kiosk is still WebSocket-based (until the
+    MQTT-over-WebSocket shell ships, task #24), we ALSO send the same message
+    straight over its WS if it is connected. This does not double-deliver:
+    the server only subscribes to action/event/sensor/heartbeat topics, so it
+    never receives its own navigate publish and the MQTT->WS bridge does not
+    fire for it.
+    """
+    # Merge stored params_override with command params (command wins), then
+    # let build_navigate_message fold in the page registry defaults too.
+    assignment = await get_screen_assignment(screen_id)
+    stored_params = assignment.get("params_override") if assignment else None
+    merged_params = {**(stored_params or {}), **(cmd.params or {})}
+    msg = build_navigate_message(cmd.page, merged_params)
+
+    published = False
+    if mqtt_bus.is_connected():
+        await mqtt_bus.publish_navigate(
+            [f"marchog/screen/{screen_id}"],
+            cmd.page,
+            msg["params"],
+            source="api",
+            retain=True,
+            extra={"file": msg.get("file"), "version": msg.get("version")},
+        )
+        published = True
+
+    sent_ws = False
     if screen_id in app_state["screens"]:
         ws = app_state["screens"][screen_id]["ws"]
         try:
-            # Get stored params_override for this screen
-            assignment = await get_screen_assignment(screen_id)
-            stored_params = assignment.get("params_override") if assignment else None
-            
-            # Merge stored params with command params (command params take priority)
-            merged_params = {**(stored_params or {}), **(cmd.params or {})}
-            
-            # Build proper message with merged params
-            msg = build_navigate_message(cmd.page, merged_params)
-            
             await ws.send_json(msg)
-            return {"status": "sent", "page": cmd.page}
+            sent_ws = True
         except Exception as e:
-            raise HTTPException(500, f"Failed to send: {e}")
-    raise HTTPException(404, "Screen not connected")
+            # Only surface a hard failure if MQTT didn't carry it either.
+            if not published:
+                raise HTTPException(500, f"Failed to send: {e}")
+
+    if not published and not sent_ws:
+        raise HTTPException(404, "Screen not connected and MQTT unavailable")
+
+    return {"status": "ok", "page": cmd.page, "mqtt": published, "ws": sent_ws}
 
 
 # ── API: Automations (JSON-backed) ───────────────────────────
@@ -878,43 +908,58 @@ async def ws_screen(websocket: WebSocket, screen_id: str):
     if mqtt_bus.is_connected():
         await mqtt_bus.publish_heartbeat(screen_id, "screen")
 
-    # Populate screen_meta for MQTT topic matching
+    # Populate screen_meta for MQTT topic matching and for the kiosk's own
+    # subscription topics. Defaults are applied so a screen with no explicit
+    # assignment still gets a device_type channel.
     assignment = await get_screen_assignment(screen_id)
-    if assignment:
-        zone_id = assignment.get("zone_id")
-        # Look up room_id from zone
-        room_id = None
-        if zone_id:
-            zone = get_zone(zone_id)
-            if zone:
-                room_id = zone.get("room_id")
-        app_state["screen_meta"][screen_id] = {
-            "device_type": assignment.get("device_type", "info-display"),
-            "device_type_secondary": assignment.get("device_type_secondary"),
-            "zone_id": zone_id,
-            "room_id": room_id,
-        }
+    zone_id = assignment.get("zone_id") if assignment else None
+    room_id = None
+    if zone_id:
+        zone = get_zone(zone_id)
+        if zone:
+            room_id = zone.get("room_id")
+    meta = {
+        "device_type": (assignment or {}).get("device_type", "info-display"),
+        "device_type_secondary": (assignment or {}).get("device_type_secondary"),
+        "zone_id": zone_id,
+        "room_id": room_id,
+    }
+    app_state["screen_meta"][screen_id] = meta
 
     try:
-        # Send registration confirmation — includes the server's build
-        # version so the kiosk Shell can compare against its own embedded
-        # build and surface mismatches via the Identify overlay.
+        # Send registration confirmation — includes the server's build version
+        # (so the kiosk can flag drift via the Identify overlay) AND the
+        # screen's routing meta, which the kiosk uses to subscribe to its MQTT
+        # scene channels: marchog/screen/{id}, /all, /room/{room}, /zone/{zone},
+        # and /type/{device_type}.
         await websocket.send_json({
             "type": "registered",
             "screen_id": screen_id,
             "version": BUILD_VERSION,
+            "meta": meta,
         })
 
-        # Send current scene assignment if any (with parsed params)
-        assignment = await get_screen_assignment(screen_id)
+        # Current scene assignment, if any. Sent over WS for legacy kiosks AND
+        # published as a *retained* navigate to the screen's MQTT topic, so an
+        # MQTT-based kiosk picks up its current scene immediately on subscribe
+        # (this is what makes MQTT the authoritative scene source).
         if assignment:
             page_id = assignment.get("static_page")
             params_override = assignment.get("params_override")
-            
+
             if page_id:
                 # Send proper navigate message on reconnect
                 msg = build_navigate_message(page_id, params_override)
                 await websocket.send_json(msg)
+                if mqtt_bus.is_connected():
+                    await mqtt_bus.publish_navigate(
+                        [f"marchog/screen/{screen_id}"],
+                        page_id,
+                        msg["params"],
+                        source="assignment",
+                        retain=True,
+                        extra={"file": msg.get("file"), "version": msg.get("version")},
+                    )
 
         # Message loop
         while True:

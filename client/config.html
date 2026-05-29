@@ -1331,6 +1331,97 @@
       document.getElementById('modalOverlay').classList.remove('open');
     }
 
+    // ═══════════════════════════════════════════════════
+    //  HOLOVAULT LIBRARY PICKER
+    //
+    //  Every "Video URL" field in this config app can take a raw YouTube
+    //  URL, but the kiosk screens are Pi 5s with no HW decode for YouTube's
+    //  VP9/AV1 — embedded YouTube stutters. HoloVault (the SmartLab media
+    //  cache at /holovault/ on this same host) pre-fetches H.264 files a
+    //  Pi 5 decodes smoothly. This picker lets an operator drop a HoloVault
+    //  file straight into a Video URL input instead of pasting a URL.
+    //
+    //  It's a self-contained floating overlay (its OWN element, appended to
+    //  <body>) layered ABOVE the edit modal, so it never clobbers the form
+    //  underneath. On pick it writes the file's root-relative url
+    //  (/holovault/media/...) into the target <input> by id; that resolves
+    //  against this origin and feeds the video page's native <video>.
+    // ═══════════════════════════════════════════════════
+    function holoFmtBytes(bytes) {
+      if (bytes == null) return '';
+      if (bytes < 1024) return bytes + ' B';
+      if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+      if (bytes < 1073741824) return (bytes / 1048576).toFixed(1) + ' MB';
+      return (bytes / 1073741824).toFixed(2) + ' GB';
+    }
+
+    async function pickHoloVideo(targetInputId) {
+      let ov = document.getElementById('holoPickerOverlay');
+      if (!ov) {
+        ov = document.createElement('div');
+        ov.id = 'holoPickerOverlay';
+        ov.style.cssText = 'position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,0.65);display:flex;align-items:center;justify-content:center';
+        ov.innerHTML =
+          '<div style="background:#0c1118;border:1px solid var(--border-med);border-radius:8px;width:min(560px,92vw);max-height:80vh;display:flex;flex-direction:column;padding:16px">' +
+            '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">' +
+              '<div style="font-size:12px;text-transform:uppercase;letter-spacing:1px;color:var(--accent-blue)"><i class="ti ti-database"></i> HoloVault Library</div>' +
+              '<button class="btn" type="button" onclick="document.getElementById(\'holoPickerOverlay\').remove()">X</button>' +
+            '</div>' +
+            '<div id="holoPickerList" style="overflow:auto"></div>' +
+          '</div>';
+        document.body.appendChild(ov);
+        ov.addEventListener('click', e => { if (e.target === ov) ov.remove(); });
+      }
+      const list = document.getElementById('holoPickerList');
+      list.innerHTML = '<div style="color:#5a6a7a;text-align:center;padding:20px">Loading…</div>';
+      try {
+        const resp = await fetch(location.origin + '/holovault/api/library');
+        const data = await resp.json();
+        const items = data.items || [];
+        if (!items.length) {
+          list.innerHTML = '<div style="color:#5a6a7a;text-align:center;padding:20px;line-height:1.7">HoloVault library is empty.<br>' +
+            '<span style="font-size:.85em">Add videos from the <code style="color:var(--accent-blue)">/holovault/</code> admin console.</span></div>';
+          return;
+        }
+        list.innerHTML = '';
+        items.forEach(v => {
+          // Codec badge: green for h264 (Pi-5 safe), amber for anything that
+          // would software-decode poorly (vp9/av1/hevc).
+          const codec = (v.codec || '').toLowerCase();
+          const codecColor = codec === 'h264' ? '#39d98a' : '#f0a73e';
+          const meta = [v.height ? v.height + 'p' : null, v.codec || null].filter(Boolean).join(' · ');
+          const row = document.createElement('div');
+          row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 11px;border:1px solid var(--border-dim);border-radius:4px;margin-bottom:6px;cursor:pointer';
+          row.innerHTML =
+            '<span style="color:#c8d6e5;font-family:monospace;font-size:.84em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (v.title || v.filename) + '</span>' +
+            '<span style="display:flex;gap:8px;align-items:center;white-space:nowrap">' +
+              (meta ? '<span style="color:' + codecColor + ';font-size:.72em;font-family:monospace">' + meta + '</span>' : '') +
+              '<span style="color:#5a6a7a;font-size:.74em">' + holoFmtBytes(v.size) + '</span>' +
+            '</span>';
+          row.onmouseenter = () => { row.style.borderColor = 'var(--border-hi)'; row.style.background = 'rgba(74,158,255,0.06)'; };
+          row.onmouseleave = () => { row.style.borderColor = 'var(--border-dim)'; row.style.background = 'transparent'; };
+          row.onclick = () => {
+            // Store an ABSOLUTE url (origin + /holovault/media/...), NOT the
+            // root-relative path. Two reasons, both learned the hard way:
+            //   1. The kiosk shell connects straight to the marchog server
+            //      (:8082), where /holovault/ doesn't exist — only nginx (:80)
+            //      proxies it. A root-relative path resolves against :8082 and
+            //      404s (black screen). An absolute http URL hits nginx:80.
+            //   2. The shell's resolveMediaUrl() rewrites any value that
+            //      isn't already an http(s) URL — a bare/relative path gets
+            //      "/media/videos/" prepended. A full URL is passed through
+            //      untouched. So absolute is the only form that survives.
+            const inp = document.getElementById(targetInputId);
+            if (inp) inp.value = location.origin + v.url;
+            ov.remove();
+          };
+          list.appendChild(row);
+        });
+      } catch (e) {
+        list.innerHTML = '<div style="color:var(--accent-red);text-align:center;padding:20px">Failed to reach HoloVault.</div>';
+      }
+    }
+
     function slugify(str) {
       return str.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
     }
@@ -1769,7 +1860,10 @@
             <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--accent);margin-bottom:10px"><i class="ti ti-player-play"></i> Video Override</div>
             <div class="form-group">
               <label>Video URL</label>
-              <input id="scrParamVideo" value="${merged.video || ''}" placeholder="YouTube or direct URL">
+              <div style="display:flex;gap:6px;align-items:stretch">
+                <input id="scrParamVideo" value="${merged.video || ''}" placeholder="YouTube or direct URL" style="flex:1">
+                <button type="button" class="btn" style="white-space:nowrap" onclick="pickHoloVideo('scrParamVideo')"><i class="ti ti-folder-open"></i> Library</button>
+              </div>
             </div>
             <div class="form-group">
               <label>Border Style</label>
@@ -2190,7 +2284,10 @@
             <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--accent);margin-bottom:10px"><i class="ti ti-player-play"></i> Video Configuration</div>
             <div class="form-group">
               <label>Video URL</label>
-              <input id="pageVideoUrl" placeholder="YouTube URL or direct .mp4/.webm URL">
+              <div style="display:flex;gap:6px;align-items:stretch">
+                <input id="pageVideoUrl" placeholder="YouTube URL or direct .mp4/.webm URL" style="flex:1">
+                <button type="button" class="btn" style="white-space:nowrap" onclick="pickHoloVideo('pageVideoUrl')"><i class="ti ti-folder-open"></i> Library</button>
+              </div>
             </div>
             <div class="form-group">
               <label>Border Style</label>
@@ -2322,7 +2419,10 @@
           <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--accent);margin-bottom:10px"><i class="ti ti-player-play"></i> Video Configuration</div>
           <div class="form-group">
             <label>Video URL</label>
-            <input id="editPageVideoUrl" value="${p.params?.video || ''}" placeholder="YouTube URL or direct .mp4/.webm URL">
+            <div style="display:flex;gap:6px;align-items:stretch">
+              <input id="editPageVideoUrl" value="${p.params?.video || ''}" placeholder="YouTube URL or direct .mp4/.webm URL" style="flex:1">
+              <button type="button" class="btn" style="white-space:nowrap" onclick="pickHoloVideo('editPageVideoUrl')"><i class="ti ti-folder-open"></i> Library</button>
+            </div>
           </div>
           <div class="form-group">
             <label>Border Style</label>
@@ -2634,7 +2734,10 @@
             <div style="font-size:10px;text-transform:uppercase;color:var(--accent-gold);margin-bottom:8px"><i class="ti ti-player-play"></i> Video Params</div>
             <div class="form-group">
               <label>Video URL</label>
-              <input id="autoParamVideo" value="" placeholder="YouTube or direct URL">
+              <div style="display:flex;gap:6px;align-items:stretch">
+                <input id="autoParamVideo" value="" placeholder="YouTube or direct URL" style="flex:1">
+                <button type="button" class="btn" style="white-space:nowrap" onclick="pickHoloVideo('autoParamVideo')"><i class="ti ti-folder-open"></i> Library</button>
+              </div>
             </div>
           </div>
         `;
@@ -2776,7 +2879,10 @@
             <div style="font-size:10px;text-transform:uppercase;color:var(--accent-gold);margin-bottom:8px"><i class="ti ti-player-play"></i> Video Params</div>
             <div class="form-group">
               <label>Video URL</label>
-              <input id="autoParamVideo" value="${actionParams.video || ''}" placeholder="YouTube or direct URL">
+              <div style="display:flex;gap:6px;align-items:stretch">
+                <input id="autoParamVideo" value="${actionParams.video || ''}" placeholder="YouTube or direct URL" style="flex:1">
+                <button type="button" class="btn" style="white-space:nowrap" onclick="pickHoloVideo('autoParamVideo')"><i class="ti ti-folder-open"></i> Library</button>
+              </div>
             </div>
           </div>
         `;

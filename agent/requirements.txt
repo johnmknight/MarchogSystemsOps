@@ -1,0 +1,4 @@
+# marchog kiosk agent dependencies
+psutil>=5.9      # telemetry (CPU/mem/disk/temp); telemetry is skipped if absent
+paho-mqtt>=1.6   # MQTT scene listener for the VLC player handoff; player MQTT
+                 # control is skipped if absent (HTTP /api/player still works)
