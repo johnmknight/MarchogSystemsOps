@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Marchog Systems — Banner Overlay</title>
+  <!-- Web fonts MUST load via <link> (not a CSS @import): an @import placed
+       after the @font-face rules below is invalid per spec and silently
+       ignored, which left the banner falling back to the system sans. -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;800&family=Share+Tech+Mono&family=Michroma&family=IBM+Plex+Sans:wght@500;700&display=swap">
+  <style>
+    @font-face { font-family: 'Aurebesh'; src: url('../fonts/Aurebesh.otf') format('opentype'); }
+    @font-face { font-family: 'Aurebesh'; src: url('../fonts/Aurebesh Bold.otf') format('opentype'); font-weight: bold; }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    /* Banner typeface is operator-selectable (see the FONTS registry + ?font=
+       param). The chosen stack is pushed onto this CSS variable so both rows
+       update together. Default = Eurostile: prefer a system-installed
+       Eurostile/Eurostile Extended (e.g. on the Pi), else fall back to
+       Michroma, a free Google web font with the same wide sci-fi character. */
+    :root { --banner-font: 'Eurostile', 'Eurostile Extended', 'Michroma', sans-serif; }
+
+    /* This is an OVERLAY page: it is meant to render in a transparent
+       WebKitGTK window stacked ABOVE the VLC video plane on the Pi (see the
+       agent overlay-window design). The body MUST stay transparent so the
+       live video shows through — never paint it #000 like the full-screen
+       scene pages do, or you'd black out the video underneath. */
+    html, body {
+      width: 100%; height: 100%; overflow: hidden;
+      background: transparent;
+      font-family: 'Share Tech Mono', monospace;
+      color: #c8d6e5;
+    }
+
+    /* ── Border Overlay Canvas (reused verbatim from video.html) ──────── */
+    #borderCanvas {
+      position: absolute; inset: 0;
+      z-index: 10;
+      pointer-events: none;
+    }
+
+    /* ── Center Banner ────────────────────────────────────────────────── */
+    #banner {
+      position: absolute; inset: 0;
+      z-index: 20;
+      display: flex;
+      align-items: center; justify-content: center;
+      text-align: center;
+      pointer-events: none;
+      /* Soft dark scrim that fades to nothing at the edges. Bright video
+         washes out text and translucent panels (legibility lesson from the
+         overlay spike), so we darken only the area directly behind the words
+         while leaving the rest of the frame fully transparent. */
+      /* Deep enough to keep the text legible even on the brightest frame of
+         the video (the full-white hyperspace burst washes out a light scrim). */
+      background: radial-gradient(ellipse 66% 56% at 50% 50%,
+                  rgba(0, 6, 16, 0.82) 0%,
+                  rgba(0, 6, 16, 0.52) 50%,
+                  rgba(0, 6, 16, 0) 78%);
+    }
+
+    /* The framed block that holds both text rows. Corner brackets + a fade-in
+       entrance give it the "panel snapping into place" feel of the HUD scenes
+       rather than text floating loose over the video. */
+    #bannerBox {
+      position: relative;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 0.1em;
+      padding: clamp(28px, 6vh, 76px) clamp(48px, 9vw, 150px);
+      animation: boxIn 0.9s cubic-bezier(0.16, 1, 0.3, 1) both;
+    }
+    @keyframes boxIn {
+      from { opacity: 0; transform: translateY(16px) scale(0.985); }
+      to   { opacity: 1; transform: none; }
+    }
+
+    /* L-shaped corner brackets framing the banner, matching the HUD border
+       bracket motif and palette. */
+    .corner {
+      position: absolute;
+      width: clamp(20px, 3vw, 52px);
+      height: clamp(20px, 3vw, 52px);
+      border: 0 solid #4a9eff;
+      filter: drop-shadow(0 0 7px rgba(74, 158, 255, 0.6));
+      animation: cornerPulse 4s ease-in-out infinite;
+    }
+    .corner.tl { top: 0;    left: 0;    border-top-width: 2px;    border-left-width: 2px; }
+    .corner.tr { top: 0;    right: 0;   border-top-width: 2px;    border-right-width: 2px; }
+    .corner.bl { bottom: 0; left: 0;    border-bottom-width: 2px; border-left-width: 2px; }
+    .corner.br { bottom: 0; right: 0;   border-bottom-width: 2px; border-right-width: 2px; }
+    @keyframes cornerPulse {
+      0%, 100% { opacity: 0.55; }
+      50%      { opacity: 1; }
+    }
+
+    /* Row 1 — the smaller "eyebrow" line (e.g. "Welcome"), with glowing
+       accent rules sweeping out to either side. */
+    #line1 {
+      display: inline-flex; align-items: center;
+      gap: clamp(10px, 1.4vw, 28px);
+      font-family: var(--banner-font);
+      font-weight: 600;
+      font-size: clamp(20px, 4.2vw, 72px);
+      letter-spacing: 0.34em;
+      text-indent: 0.34em; /* recenter against trailing letter-spacing */
+      color: #36d6e7;
+      text-shadow: 0 0 18px rgba(54, 214, 231, 0.65),
+                   0 0 3px rgba(0, 0, 0, 0.95),
+                   0 0 10px rgba(0, 0, 0, 0.85),
+                   0 2px 6px rgba(0, 0, 0, 0.9);
+      text-transform: uppercase;
+      line-height: 1.1;
+    }
+    #line1::before, #line1::after {
+      content: '';
+      height: 2px;
+      width: clamp(24px, 5vw, 96px);
+      box-shadow: 0 0 8px rgba(54, 214, 231, 0.55);
+    }
+    #line1::before { background: linear-gradient(90deg, transparent, #36d6e7); }
+    #line1::after  { background: linear-gradient(90deg, #36d6e7, transparent); }
+
+    /* Divider between the two rows: thin rules converging on a pulsing
+       diamond node. */
+    #divider {
+      position: relative;
+      display: flex; align-items: center; justify-content: center;
+      width: clamp(200px, 34vw, 560px);
+      height: clamp(14px, 2.4vh, 26px);
+      margin: 0.12em 0 0.18em;
+    }
+    #divider::before, #divider::after {
+      content: '';
+      position: absolute; top: 50%;
+      height: 1px; width: calc(50% - 16px);
+    }
+    #divider::before { left: 0;  background: linear-gradient(90deg, transparent, rgba(74, 158, 255, 0.75)); }
+    #divider::after  { right: 0; background: linear-gradient(90deg, rgba(74, 158, 255, 0.75), transparent); }
+    #diamond {
+      width: 10px; height: 10px;
+      background: #4a9eff; transform: rotate(45deg);
+      box-shadow: 0 0 12px rgba(74, 158, 255, 0.9);
+      animation: diamondPulse 2.6s ease-in-out infinite;
+    }
+    @keyframes diamondPulse {
+      0%, 100% { transform: rotate(45deg) scale(1);    opacity: 0.85; }
+      50%      { transform: rotate(45deg) scale(1.35); opacity: 1; }
+    }
+
+    /* Row 2 — the large primary line (e.g. "Knight Family") with a slow
+       breathing glow. */
+    #line2 {
+      font-family: var(--banner-font);
+      font-weight: 800;
+      font-size: clamp(32px, 7vw, 128px);
+      letter-spacing: 0.05em;
+      color: #eaf2ff;
+      line-height: 1.05;
+      white-space: nowrap;
+      animation: glowPulse 4.2s ease-in-out infinite;
+    }
+    @keyframes glowPulse {
+      /* The tight dark layers (0 0 4px / 0 0 14px black) ride along in both
+         stops so the glyph edges stay readable over the white video burst. */
+      0%, 100% { text-shadow: 0 0 26px rgba(74, 158, 255, 0.70),
+                              0 0 60px rgba(74, 158, 255, 0.30),
+                              0 0 4px rgba(0, 0, 0, 0.95),
+                              0 0 14px rgba(0, 0, 0, 0.85),
+                              0 3px 10px rgba(0, 0, 0, 0.9); }
+      50%      { text-shadow: 0 0 34px rgba(74, 158, 255, 0.95),
+                              0 0 92px rgba(74, 158, 255, 0.50),
+                              0 0 4px rgba(0, 0, 0, 0.95),
+                              0 0 14px rgba(0, 0, 0, 0.85),
+                              0 3px 10px rgba(0, 0, 0, 0.9); }
+    }
+
+    /* When a line has no text we hide it (and JS hides the divider) so a
+       single-line banner still centers cleanly. */
+    #line1:empty, #line2:empty { display: none; }
+  </style>
+</head>
+<body>
+
+  <!-- Border Overlay (same animated border system as the video page) -->
+  <canvas id="borderCanvas"></canvas>
+
+  <!-- Center Banner: two independently-editable text rows inside a
+       corner-bracketed frame with a divider node between them. -->
+  <div id="banner">
+    <div id="bannerBox">
+      <span class="corner tl"></span>
+      <span class="corner tr"></span>
+      <span class="corner bl"></span>
+      <span class="corner br"></span>
+      <div id="line1"></div>
+      <div id="divider"><span id="diamond"></span></div>
+      <div id="line2"></div>
+    </div>
+  </div>
+
+  <script src="../mso-base.js"></script>
+<script>
+    // ═══════════════════════════════════════════════════
+    //  STATE
+    // ═══════════════════════════════════════════════════
+    let currentBorder = 'hud';
+    let currentFont = 'eurostile';
+    const canvas = document.getElementById('borderCanvas');
+    const ctx = canvas.getContext('2d');
+    let W, H;
+    let animFrame;
+
+    // ═══════════════════════════════════════════════════
+    //  BANNER TEXT
+    // ═══════════════════════════════════════════════════
+    // Two custom-text rows. Either may be blank; a blank row collapses (CSS
+    // :empty) so a one-line banner still centers. Text is set as textContent,
+    // never innerHTML, so operator-supplied strings can't inject markup.
+    // ═══════════════════════════════════════════════════
+    //  BANNER FONT  (operator-selectable typeface)
+    // ═══════════════════════════════════════════════════
+    // Each entry maps a short key to a CSS font stack. The active stack is
+    // pushed onto the --banner-font CSS variable so both rows restyle at once.
+    // Eurostile is the default: a system-installed Eurostile/Eurostile
+    // Extended (e.g. on the Pi) is preferred, with Michroma (a free Google web
+    // font with the same wide sci-fi feel) as the guaranteed fallback.
+    const FONTS = {
+      eurostile: { name: 'Eurostile', stack: "'Eurostile', 'Eurostile Extended', 'Michroma', sans-serif" },
+      michroma:  { name: 'Michroma',  stack: "'Michroma', sans-serif" },
+      orbitron:  { name: 'Orbitron',  stack: "'Orbitron', sans-serif" },
+      techmono:  { name: 'Share Tech Mono', stack: "'Share Tech Mono', monospace" },
+      plexsans:  { name: 'IBM Plex Sans',   stack: "'IBM Plex Sans', sans-serif" },
+      aurebesh:  { name: 'Aurebesh',  stack: "'Aurebesh', sans-serif" }
+    };
+    function applyFont(key) {
+      if (key && FONTS[key]) currentFont = key;
+      document.documentElement.style.setProperty('--banner-font', FONTS[currentFont].stack);
+    }
+
+    function setBanner(line1, line2) {
+      const l1 = document.getElementById('line1');
+      const l2 = document.getElementById('line2');
+      if (line1 !== undefined && line1 !== null) l1.textContent = String(line1);
+      if (line2 !== undefined && line2 !== null) l2.textContent = String(line2);
+      // The divider only makes sense between two populated rows; collapse it
+      // when either row is blank so a single-line banner centers cleanly.
+      document.getElementById('divider').style.display =
+        (l1.textContent && l2.textContent) ? '' : 'none';
+    }
+
+    // ═══════════════════════════════════════════════════
+    //  BORDER DEFINITIONS  (reused verbatim from video.html so the overlay
+    //  frame matches the video scenes exactly)
+    // ═══════════════════════════════════════════════════
+    const BORDERS = {
+      none:       { name: 'None',      draw: () => {} },
+      hud:        { name: 'HUD',       draw: drawHudBorder },
+      imperial:   { name: 'Imperial',  draw: drawImperialBorder },
+      hologram:   { name: 'Hologram',  draw: drawHologramBorder },
+      targeting:  { name: 'Targeting', draw: drawTargetingBorder },
+      datastream: { name: 'Data Feed', draw: drawDatastreamBorder }
+    };
+
+    // ═══════════════════════════════════════════════════
+    //  DRAWING HELPERS
+    // ═══════════════════════════════════════════════════
+    const C = {
+      blue: '#4a9eff',
+      blueDim: 'rgba(74, 158, 255, 0.3)',
+      blueFaint: 'rgba(74, 158, 255, 0.1)',
+      cyan: '#36d6e7',
+      cyanDim: 'rgba(54, 214, 231, 0.3)',
+      white: '#c8d6e5',
+      whiteDim: 'rgba(200, 214, 229, 0.3)',
+      orange: '#e88a30',
+      orangeDim: 'rgba(232, 138, 48, 0.4)',
+      red: '#e74c3c',
+    };
+
+    function setGlow(color, blur) { ctx.shadowColor = color; ctx.shadowBlur = blur; }
+    function clearGlow() { ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0; }
+    function line(x1, y1, x2, y2, color = C.blue, w = 1) {
+      ctx.beginPath(); ctx.strokeStyle = color; ctx.lineWidth = w;
+      ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+    }
+
+    // ── BORDER: HUD — corner brackets + top/bottom bars ──
+    function drawHudBorder() {
+      const t = performance.now() / 1000;
+      const e = 2;
+      const bLen = Math.min(W, H) * 0.08;
+      const bw = 2;
+
+      setGlow(C.blue, 6);
+      [[e, e, 1, 1], [W - e, e, -1, 1], [e, H - e, 1, -1], [W - e, H - e, -1, -1]].forEach(([x, y, dx, dy]) => {
+        line(x, y, x + bLen * dx, y, C.blue, bw);
+        line(x, y, x, y + bLen * dy, C.blue, bw);
+      });
+
+      const barW = W * 0.3;
+      line(W/2 - barW/2, e, W/2 + barW/2, e, C.blueDim, 1);
+      const tickX = W/2 - barW/2 + ((t * 80) % barW);
+      line(tickX, e - 4, tickX, e + 4, C.blue, 2);
+
+      line(W/2 - barW/2, H - e, W/2 + barW/2, H - e, C.blueDim, 1);
+
+      for (let i = 0; i < 5; i++) {
+        const y = e + bLen + i * (H - 2*e - 2*bLen) / 4;
+        line(e, y, e + 8, y, C.blueDim, 1);
+        line(W - e, y, W - e - 8, y, C.blueDim, 1);
+      }
+      clearGlow();
+    }
+
+    // ── BORDER: IMPERIAL — heavy frame, data readouts ──
+    function drawImperialBorder() {
+      const t = performance.now() / 1000;
+      const e = 2;
+      const fw = 3;
+      const barH = Math.min(H * 0.045, 32);
+
+      setGlow(C.blue, 4);
+      ctx.strokeStyle = C.blue; ctx.lineWidth = fw;
+      ctx.strokeRect(e, e, W - 2*e, H - 2*e);
+      clearGlow();
+
+      ctx.strokeStyle = C.blueDim; ctx.lineWidth = 1;
+      ctx.strokeRect(e + 6, e + 6, W - 2*e - 12, H - 2*e - 12);
+
+      ctx.fillStyle = 'rgba(10, 20, 40, 0.85)';
+      ctx.fillRect(e, e, W - 2*e, barH);
+      ctx.fillStyle = C.blueDim;
+      ctx.font = `${Math.max(10, W * 0.009)}px "Orbitron", monospace`;
+      ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+      ctx.fillText('IMPERIAL HOLONET FEED', e + 12, e + barH * 0.5);
+      ctx.textAlign = 'right';
+      ctx.fillText(`SIGNAL: ${(92 + Math.sin(t) * 3).toFixed(1)}%`, W - e - 12, e + barH * 0.5);
+
+      ctx.fillStyle = 'rgba(10, 20, 40, 0.85)';
+      ctx.fillRect(e, H - e - barH, W - 2*e, barH);
+      ctx.fillStyle = C.blueDim;
+      ctx.textAlign = 'left';
+      const fontSize = Math.max(9, W * 0.008);
+      ctx.font = `${fontSize}px "Share Tech Mono", monospace`;
+      ctx.fillText(`FREQ: ${(2187.4 + Math.sin(t * 0.7) * 2).toFixed(1)} MHz`, e + 12, H - e - barH * 0.5);
+      ctx.textAlign = 'center';
+      ctx.fillText('ENCRYPTED CHANNEL', W/2, H - e - barH * 0.5);
+      ctx.textAlign = 'right';
+      const ts = new Date().toLocaleTimeString('en-US', {hour12: false});
+      ctx.fillText(ts, W - e - 12, H - e - barH * 0.5);
+
+      const sq = 6;
+      setGlow(C.blue, 4);
+      [[e, e], [W-e-sq, e], [e, H-e-sq], [W-e-sq, H-e-sq]].forEach(([x, y]) => {
+        ctx.fillStyle = C.blue; ctx.fillRect(x, y, sq, sq);
+      });
+      clearGlow();
+    }
+
+    // ── BORDER: HOLOGRAM — scan lines + flicker + blue tint ──
+    function drawHologramBorder() {
+      const t = performance.now() / 1000;
+
+      ctx.fillStyle = 'rgba(50, 140, 255, 0.02)';
+      for (let y = 0; y < H; y += 3) {
+        ctx.fillRect(0, y, W, 1);
+      }
+
+      const scanY = (t * 60) % H;
+      const grad = ctx.createLinearGradient(0, scanY - 30, 0, scanY + 30);
+      grad.addColorStop(0, 'rgba(50, 180, 255, 0)');
+      grad.addColorStop(0.5, 'rgba(50, 180, 255, 0.06)');
+      grad.addColorStop(1, 'rgba(50, 180, 255, 0)');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, scanY - 30, W, 60);
+
+      const vig = ctx.createRadialGradient(W/2, H/2, Math.min(W,H)*0.3, W/2, H/2, Math.max(W,H)*0.7);
+      vig.addColorStop(0, 'rgba(0, 0, 0, 0)');
+      vig.addColorStop(1, 'rgba(20, 60, 140, 0.15)');
+      ctx.fillStyle = vig;
+      ctx.fillRect(0, 0, W, H);
+
+      if (Math.random() > 0.95) {
+        const gy = Math.random() * H;
+        const gh = 2 + Math.random() * 4;
+        ctx.fillStyle = `rgba(50, 180, 255, ${0.05 + Math.random() * 0.1})`;
+        ctx.fillRect(0, gy, W, gh);
+      }
+
+      const triSize = Math.min(W, H) * 0.04;
+      setGlow(C.cyan, 4);
+      ctx.strokeStyle = C.cyanDim; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(0, triSize); ctx.lineTo(0, 0); ctx.lineTo(triSize, 0); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(W - triSize, 0); ctx.lineTo(W, 0); ctx.lineTo(W, triSize); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0, H - triSize); ctx.lineTo(0, H); ctx.lineTo(triSize, H); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(W - triSize, H); ctx.lineTo(W, H); ctx.lineTo(W, H - triSize); ctx.stroke();
+      clearGlow();
+    }
+
+    // ── BORDER: TARGETING — reticle overlay + distance readout ──
+    function drawTargetingBorder() {
+      const t = performance.now() / 1000;
+      const cx = W / 2, cy = H / 2;
+      const r = Math.min(W, H) * 0.35;
+      const fontSize = Math.max(9, W * 0.008);
+
+      setGlow(C.blue, 4);
+      ctx.beginPath(); ctx.strokeStyle = C.blueDim; ctx.lineWidth = 1;
+      const segments = 36;
+      for (let i = 0; i < segments; i++) {
+        if (i % 3 === 0) continue;
+        const a1 = (i / segments) * Math.PI * 2 + t * 0.3;
+        const a2 = ((i + 0.7) / segments) * Math.PI * 2 + t * 0.3;
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, a1, a2);
+        ctx.stroke();
+      }
+
+      for (let i = 0; i < 24; i++) {
+        if (i % 4 === 0) continue;
+        const a1 = (i / 24) * Math.PI * 2 - t * 0.5;
+        const a2 = ((i + 0.5) / 24) * Math.PI * 2 - t * 0.5;
+        ctx.beginPath();
+        ctx.arc(cx, cy, r * 0.7, a1, a2);
+        ctx.strokeStyle = C.blueDim; ctx.lineWidth = 1;
+        ctx.stroke();
+      }
+
+      const chLen = r * 0.15;
+      const chGap = r * 0.05;
+      line(cx - chLen, cy, cx - chGap, cy, C.blue, 1.5);
+      line(cx + chGap, cy, cx + chLen, cy, C.blue, 1.5);
+      line(cx, cy - chLen, cx, cy - chGap, C.blue, 1.5);
+      line(cx, cy + chGap, cx, cy + chLen, C.blue, 1.5);
+
+      const e = 4;
+      const bLen = Math.min(W, H) * 0.06;
+      [[e, e, 1, 1], [W - e, e, -1, 1], [e, H - e, 1, -1], [W - e, H - e, -1, -1]].forEach(([x, y, dx, dy]) => {
+        line(x, y, x + bLen * dx, y, C.blue, 1.5);
+        line(x, y, x, y + bLen * dy, C.blue, 1.5);
+      });
+
+      ctx.font = `${fontSize}px "Share Tech Mono", monospace`;
+      ctx.fillStyle = C.blueDim; ctx.textAlign = 'right'; ctx.textBaseline = 'top';
+      ctx.fillText(`DIST: ${(1247 + Math.sin(t * 0.8) * 50).toFixed(0)} m`, W - e - 4, e + 4);
+      ctx.fillText(`AZ: ${(45.2 + Math.sin(t * 0.3) * 5).toFixed(1)}°`, W - e - 4, e + 4 + fontSize * 1.4);
+      ctx.fillText(`EL: ${(12.8 + Math.cos(t * 0.4) * 3).toFixed(1)}°`, W - e - 4, e + 4 + fontSize * 2.8);
+      clearGlow();
+    }
+
+    // ── BORDER: DATASTREAM — side data columns + aurebesh ──
+    function drawDatastreamBorder() {
+      const t = performance.now() / 1000;
+      const m = Math.min(W, H) * 0.02;
+      const colW = W * 0.04;
+      const fontSize = Math.max(8, W * 0.007);
+
+      ctx.fillStyle = 'rgba(5, 10, 20, 0.75)';
+      ctx.fillRect(0, 0, colW + m, H);
+      ctx.fillRect(W - colW - m, 0, colW + m, H);
+
+      ctx.font = `${fontSize}px "Aurebesh", monospace`;
+      ctx.fillStyle = C.blueDim;
+      ctx.textAlign = 'left';
+      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+      const lineH = fontSize * 1.6;
+      const lines = Math.ceil(H / lineH);
+      for (let i = 0; i < lines; i++) {
+        const y = ((i * lineH + t * 30) % (H + lineH)) - lineH;
+        let str = '';
+        for (let j = 0; j < 4; j++) str += chars[Math.floor(Math.random() * 100 + i * 7 + j) % chars.length];
+        ctx.fillStyle = `rgba(74, 158, 255, ${0.15 + (i % 3) * 0.1})`;
+        ctx.fillText(str, m + 2, y);
+      }
+
+      ctx.textAlign = 'right';
+      for (let i = 0; i < lines; i++) {
+        const y = ((i * lineH - t * 25 + H * 2) % (H + lineH)) - lineH;
+        const val = ((i * 0x1F3 + Math.floor(t)) & 0xFFFF).toString(16).toUpperCase().padStart(4, '0');
+        ctx.fillStyle = `rgba(74, 158, 255, ${0.12 + (i % 4) * 0.08})`;
+        ctx.fillText(val, W - m - 2, y);
+      }
+
+      setGlow(C.blue, 3);
+      line(colW + m, 2, W - colW - m, 2, C.blueDim, 1);
+      line(colW + m, H - 2, W - colW - m, H - 2, C.blueDim, 1);
+      clearGlow();
+
+      const barX = W - colW - m + 4;
+      const barW = colW - 8;
+      for (let i = 0; i < 6; i++) {
+        const bh = 3;
+        const by = H - 10 - i * (bh + 2);
+        const alpha = i < (3 + Math.sin(t * 2) * 2) ? 0.5 : 0.1;
+        ctx.fillStyle = `rgba(74, 158, 255, ${alpha})`;
+        ctx.fillRect(barX, by, barW, bh);
+      }
+    }
+
+    // ═══════════════════════════════════════════════════
+    //  RENDER LOOP
+    // ═══════════════════════════════════════════════════
+    function resizeCanvas() {
+      const dpr = window.devicePixelRatio || 1;
+      W = canvas.width = window.innerWidth * dpr;
+      H = canvas.height = window.innerHeight * dpr;
+      canvas.style.width = window.innerWidth + 'px';
+      canvas.style.height = window.innerHeight + 'px';
+    }
+
+    function render() {
+      animFrame = requestAnimationFrame(render);
+      ctx.clearRect(0, 0, W, H);
+      if (currentBorder === 'none') return;
+      BORDERS[currentBorder].draw();
+    }
+
+    // ═══════════════════════════════════════════════════
+    //  REMOTE CONTROL via postMessage (shell → iframe)
+    // ═══════════════════════════════════════════════════
+    window.addEventListener('message', (event) => {
+      const msg = event.data;
+      if (!msg || typeof msg !== 'object') return;
+      if (msg.type === 'videoConfig' || msg.type === 'configure') {
+        if (msg.border && BORDERS[msg.border]) {
+          currentBorder = msg.border;
+        }
+        if (msg.font && FONTS[msg.font]) {
+          applyFont(msg.font);
+        }
+        if (msg.line1 !== undefined || msg.line2 !== undefined) {
+          setBanner(msg.line1, msg.line2);
+        }
+      }
+    });
+
+    // ═══════════════════════════════════════════════════
+    //  INIT
+    // ═══════════════════════════════════════════════════
+    const params = new URLSearchParams(window.location.search);
+    const paramBorder = params.get('border');
+    if (paramBorder && BORDERS[paramBorder]) currentBorder = paramBorder;
+    applyFont(params.get('font'));  // honors ?font=, else keeps the eurostile default
+
+    // Default copy is John's example; both rows are operator-editable.
+    setBanner(
+      params.has('line1') ? params.get('line1') : 'Welcome',
+      params.has('line2') ? params.get('line2') : 'Knight Family'
+    );
+
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+    requestAnimationFrame(render);
+
+    // Forward arrow keys to the shell, matching the other kiosk pages.
+    document.addEventListener('keydown', (e) => {
+      if (['ArrowLeft', 'ArrowRight'].includes(e.key)) {
+        window.parent.postMessage({ type: 'keydown', key: e.key }, '*');
+      }
+    });
+
+    window.parent.postMessage({ type: 'pageReady', page: 'overlay-banner' }, '*');
+  </script>
+</body>
+</html>

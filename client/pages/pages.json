@@ -114,6 +114,33 @@
     }
   },
   {
+    "id": "overlay-banner",
+    "name": "Banner Overlay",
+    "description": "Transparent two-line text banner with themed border, composites over video",
+    "file": "overlay-banner.html",
+    "icon": "ti-text-size",
+    "category": "overlay",
+    "params": {
+      "line1": "Welcome",
+      "line2": "Knight Family",
+      "border": "hud",
+      "font": "eurostile"
+    },
+    "variants": [
+      {
+        "id": "welcome",
+        "name": "Welcome",
+        "icon": "ti-text-size",
+        "params": {
+          "line1": "Welcome",
+          "line2": "Knight Family",
+          "border": "hud",
+          "font": "eurostile"
+        }
+      }
+    ]
+  },
+  {
     "id": "clock",
     "name": "Clock",
     "description": "Auto-discovered: clock.html",
