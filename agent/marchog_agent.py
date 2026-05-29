@@ -488,12 +488,21 @@ def start_mqtt_listener(player):
 
     client.on_connect = on_connect
     client.on_message = on_message
+    # Use connect_async (not connect) so a transient failure at boot — e.g. the
+    # network not yet routable despite After=network-online.target — doesn't
+    # permanently disable scene control. A blocking connect() raises
+    # "Network is unreachable" during the boot race and we'd give up forever;
+    # connect_async queues the connection and paho's network thread keeps
+    # retrying it, and reconnects automatically on any later drop.
     try:
-        client.connect(host, port, keepalive=60)
+        client.connect_async(host, port, keepalive=60)
     except Exception as e:
-        print(f"[player] MQTT connect to {host}:{port} failed: {e}")
+        # Only genuinely bad args (e.g. invalid host) land here, not transient
+        # network errors — those are handled by the retry loop in loop_start().
+        print(f"[player] MQTT setup for {host}:{port} failed: {e}")
         return None
-    client.loop_start()  # background network thread; auto-reconnects
+    client.loop_start()  # background thread: connects, retries, auto-reconnects
+    print(f"[player] MQTT connecting to {host}:{port} (async; will retry until up)")
     return client
 
 
