@@ -125,16 +125,21 @@ class MQTTBus:
             ) as client:
                 self._client = client
 
-                # Subscribe to topics the server cares about
+                # Subscribe to topics the server cares about. `state/#` and
+                # `heartbeat/#` are the screen-presence channels the kiosks
+                # publish (retained state + LWT, periodic heartbeat) — the
+                # server derives all screen presence from these now that the
+                # per-screen WebSocket is gone.
                 await client.subscribe(f"{TOPIC_PREFIX}/action/#")
                 await client.subscribe(f"{TOPIC_PREFIX}/event/#")
                 await client.subscribe(f"{TOPIC_PREFIX}/sensor/#")
                 await client.subscribe(f"{TOPIC_PREFIX}/heartbeat/#")
+                await client.subscribe(f"{TOPIC_PREFIX}/state/#")
 
                 # Only mark connected AFTER subscriptions succeed
                 self._connected = True
                 logger.info(f"Connected to MQTT broker at {BROKER_HOST}:{BROKER_PORT}")
-                logger.info("Subscribed to action/event/sensor/heartbeat topics")
+                logger.info("Subscribed to action/event/sensor/heartbeat/state topics")
 
                 # Process incoming messages and outgoing publishes concurrently
                 await asyncio.gather(
@@ -245,7 +250,11 @@ class MQTTBus:
 
         logger.debug(f"Received {topic}: {payload.get('type', '?')}")
 
-        # Match handlers
+        # Match handlers. Kiosks now subscribe to their own scene/command
+        # topics directly over MQTT-over-WebSockets, so there is no longer a
+        # server-side MQTT->WebSocket bridge: navigate/cmd messages reach the
+        # kiosks straight from the broker. The server only consumes presence
+        # (state/heartbeat) via the handlers registered in main.py.
         for pattern, handlers in self._handlers.items():
             if topic.startswith(pattern.rstrip("#").rstrip("/")):
                 for handler in handlers:
@@ -253,73 +262,6 @@ class MQTTBus:
                         await handler(topic, payload)
                     except Exception as e:
                         logger.error(f"Handler error for {topic}: {e}")
-
-        # Bridge navigate messages to WebSocket screens
-        if payload.get("type") == "navigate":
-            self._bridge_to_websocket(topic, payload)
-
-    def _bridge_to_websocket(self, topic: str, payload: dict):
-        """Forward MQTT navigate to matching WS screens (cross-thread)."""
-        if not self._main_loop:
-            return
-
-        screens = self.app_state.get("screens", {})
-        screen_meta = self.app_state.get("screen_meta", {})
-
-        for screen_id, screen_data in screens.items():
-            if self._screen_matches_topic(screen_id, screen_meta.get(screen_id, {}), topic):
-                ws = screen_data.get("ws")
-                if ws:
-                    msg = {
-                        "type": "navigate",
-                        "page": payload.get("page_id"),
-                        "params": payload.get("params", {}),
-                    }
-                    # Carry through the Shell hints if the publisher included
-                    # them (build_navigate_message adds file/version).
-                    if "file" in payload:
-                        msg["file"] = payload["file"]
-                    if "version" in payload:
-                        msg["version"] = payload["version"]
-                    # Schedule WS send on the main event loop
-                    asyncio.run_coroutine_threadsafe(
-                        ws.send_json(msg), self._main_loop
-                    )
-                    logger.debug(f"Bridged {topic} -> WS {screen_id}")
-
-    def _screen_matches_topic(self, screen_id: str, meta: dict, topic: str) -> bool:
-        """Check if a screen should receive a message from the given topic."""
-        parts = topic.split("/")
-        if len(parts) < 2:
-            return False
-
-        # marchog/all
-        if topic == f"{TOPIC_PREFIX}/all":
-            return True
-
-        # marchog/screen/{screen_id}
-        if topic == f"{TOPIC_PREFIX}/screen/{screen_id}":
-            return True
-
-        # marchog/type/{device_type}
-        if len(parts) >= 3 and parts[1] == "type":
-            dtype = parts[2]
-            if meta.get("device_type") == dtype:
-                return True
-            if meta.get("device_type_secondary") == dtype:
-                return True
-
-        # marchog/room/{room_id}
-        if len(parts) >= 3 and parts[1] == "room":
-            if meta.get("room_id") == parts[2]:
-                return True
-
-        # marchog/zone/{zone_id}
-        if len(parts) >= 3 and parts[1] == "zone":
-            if meta.get("zone_id") == parts[2]:
-                return True
-
-        return False
 
     # ── Status ────────────────────────────────────────
 

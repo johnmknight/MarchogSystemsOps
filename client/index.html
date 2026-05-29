@@ -295,18 +295,11 @@
       playlistCurrentDuration: 0,
       playlistAnimFrame: null,
 
-      // WebSocket
-      ws: null,
-      wsReconnectAttempts: 0,
-      _reconnectCountdown: null,
-      _heartbeatInterval: null,
-      _heartbeatTimeout: null,
-      _awaitingPong: false,
-
-      // MQTT (authoritative transport for scene `navigate`)
+      // MQTT (sole transport: scenes, presence, control)
       mqtt: null,
       mqttConnected: false,
-      meta: null,                 // routing meta from `registered` {room_id, zone_id, device_type, ...}
+      _mqttHeartbeat: null,       // periodic presence heartbeat interval
+      meta: null,                 // routing meta from GET /api/screens/{id}/meta {room_id, zone_id, device_type, ...}
       _mqttSubscribed: {},        // topic -> true (idempotent subscribe guard)
       // Each retained scene channel (screen / all / room / zone / type) keeps
       // its last navigate; the *effective* scene is whichever has the newest
@@ -343,9 +336,10 @@
         // Load available pages from server
         await this.loadPages();
 
-        // Connect WebSocket (heartbeat/metrics/reload/identify + legacy
-        // navigate fallback) and MQTT (authoritative navigate transport).
-        this.connectWebSocket();
+        // Bootstrap over HTTP (routing meta + server version), then connect
+        // MQTT — the sole transport now. Scenes, presence, and control all ride
+        // MQTT-over-WebSockets; there is no per-screen WebSocket anymore.
+        await this.fetchMeta();
         this.connectMQTT();
         // Start FPS counter for health metrics
         this.startFpsCounter();
@@ -529,10 +523,6 @@
           this.playPlaylistEntry();
         }, this.playlistCurrentDuration);
 
-        // Report playlist position
-        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-          this.ws.send(`playlist_index:${this.playlistIndex}`);
-        }
       },
 
       updatePlaylistProgress() {
@@ -548,66 +538,43 @@
         }
       },
 
-      // ── WebSocket ────────────────────────────────
-      connectWebSocket() {
-        const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const url = `${proto}//${location.host}${typeof MSO_BASE !== 'undefined' ? MSO_BASE : ''}/ws/screen/${this.screenId}`;
-
-        console.log(`Connecting: ${url}`);
-        this.setConnectionStatus('connecting');
-
+      // ── Bootstrap (HTTP) ─────────────────────────
+      // Fetches routing meta (device type / zone / room) so we know which MQTT
+      // group channels to subscribe to, plus the server's build version for
+      // drift detection. Replaces the old WebSocket `registered` handshake.
+      // Failure is non-fatal: we fall back to the per-screen + broadcast
+      // channels so a kiosk still works if the meta endpoint is unreachable.
+      async fetchMeta() {
         try {
-          this.ws = new WebSocket(url);
-
-          this.ws.onopen = () => {
-            console.log('WebSocket connected');
-            this.wsReconnectAttempts = 0;
-            this.setConnectionStatus('connected');
-            // Report our embedded build so the server can flag drift in
-            // the config panel. Sent before reportPage() so the version
-            // lands before the first state message.
-            try {
-              this.ws.send(`build:${this.shellVersion || 'unknown'}`);
-            } catch(e) { /* ignore — reportPage will also fail and reconnect */ }
-            this.reportPage();
-            this.startHeartbeat();
-          };
-
-          this.ws.onmessage = (e) => {
-            try {
-              const msg = JSON.parse(e.data);
-              this.handleWSMessage(msg);
-            } catch (err) {
-              console.error('WS parse error:', err);
+          const res = await fetch(`${typeof MSO_BASE !== 'undefined' ? MSO_BASE : ''}/api/screens/${this.screenId}/meta`);
+          if (res.ok) {
+            const data = await res.json();
+            this.meta = data.meta || null;
+            if (data.version) {
+              this.serverVersion = data.version;
+              if (this.shellVersion && this.shellVersion !== data.version && this.shellVersion !== 'unstamped') {
+                console.warn(`[version] Drift detected — Shell ${this.shellVersion} vs server ${data.version}`);
+              }
             }
-          };
-
-          this.ws.onclose = () => {
-            this.stopHeartbeat();
-            this.setConnectionStatus('disconnected');
-            this.scheduleReconnect();
-          };
-
-          this.ws.onerror = () => {
-            this.stopHeartbeat();
-            this.setConnectionStatus('disconnected');
-          };
-
+            console.log('[meta] routing meta:', this.meta);
+          } else {
+            console.warn(`[meta] fetch returned ${res.status} — subscribing with defaults`);
+          }
         } catch (e) {
-          this.setConnectionStatus('disconnected');
-          this.scheduleReconnect();
+          console.warn('[meta] fetch failed — subscribing with defaults:', e);
         }
       },
 
-      // ── MQTT (scene navigate transport) ─────────
-      // Connects to the Mosquitto broker over WebSockets and subscribes to
-      // this screen's retained scene channels. While MQTT is connected it is
-      // the authoritative source of `navigate`; WS-delivered navigate is
-      // ignored to avoid double-application. If MQTT is down, WS navigate is
-      // honoured again so a broker outage never blacks out the kiosk.
+      // ── MQTT (sole transport) ───────────────────
+      // Connects to the Mosquitto broker over WebSockets. On connect we publish
+      // retained presence (online + current page) and register an MQTT Last
+      // Will so the broker flips us to `offline` if we die ungracefully, then
+      // subscribe to our scene channels (retained navigate) and command channel
+      // (reload/identify/fullscreen). A periodic heartbeat refreshes last_seen.
       connectMQTT() {
         if (typeof mqtt === 'undefined') {
-          console.warn('[mqtt] library not loaded — navigate stays on WebSocket');
+          console.error('[mqtt] library not loaded — kiosk cannot receive scenes');
+          this.setConnectionStatus('disconnected');
           return;
         }
         const params = new URLSearchParams(window.location.search);
@@ -616,6 +583,8 @@
         // the appserv1 IP. Overridable with ?broker=ws://host:port for tests.
         const brokerUrl = params.get('broker') || `ws://${location.hostname}:9002`;
         console.log(`[mqtt] connecting to ${brokerUrl}`);
+        this.setConnectionStatus('connecting');
+        const stateTopic = `marchog/state/${this.screenId}`;
         try {
           const client = mqtt.connect(brokerUrl, {
             clientId: `kiosk-${this.screenId}-${Math.random().toString(16).slice(2, 8)}`,
@@ -623,32 +592,45 @@
             reconnectPeriod: 3000,
             connectTimeout: 8000,
             keepalive: 30,
+            // Last Will: if this kiosk drops without a clean disconnect, the
+            // broker publishes this retained `offline` state on our behalf so
+            // the server's presence view ages us out immediately.
+            will: {
+              topic: stateTopic,
+              payload: JSON.stringify({ type: 'state', device_id: this.screenId, status: 'offline', page: null }),
+              qos: 0,
+              retain: true,
+            },
           });
           this.mqtt = client;
 
           client.on('connect', () => {
             this.mqttConnected = true;
-            console.log('%c[mqtt] connected — navigate now via MQTT', 'color: #10b981');
-            this.subscribeSceneTopics();
+            this.setConnectionStatus('connected');
+            console.log('%c[mqtt] connected', 'color: #10b981');
+            this.publishState();          // retained online + current page
+            this.subscribeSceneTopics();  // scene channels (screen/all/room/zone/type)
+            this.subscribeCommandTopics();// reload/identify/fullscreen
+            this.startMqttHeartbeat();    // periodic last_seen refresh
           });
-          client.on('reconnect', () => console.log('[mqtt] reconnecting...'));
+          client.on('reconnect', () => { this.setConnectionStatus('connecting'); console.log('[mqtt] reconnecting...'); });
           client.on('close', () => {
-            if (this.mqttConnected) console.warn('[mqtt] connection closed — WS navigate re-enabled as fallback');
+            if (this.mqttConnected) console.warn('[mqtt] connection closed');
             this.mqttConnected = false;
+            this.setConnectionStatus('disconnected');
           });
           client.on('error', (e) => console.error('[mqtt] error:', e && e.message ? e.message : e));
           client.on('message', (topic, payload) => this.handleMqttMessage(topic, payload));
         } catch (e) {
-          console.error('[mqtt] connect failed, staying on WebSocket navigate:', e);
+          console.error('[mqtt] connect failed:', e);
           this.mqtt = null;
           this.mqttConnected = false;
+          this.setConnectionStatus('disconnected');
         }
       },
 
       subscribeSceneTopics() {
-        // Idempotent: safe to call on connect and again when `meta` arrives
-        // from the `registered` WS message (room/zone/type may not be known
-        // at the moment MQTT first connects).
+        // Idempotent: safe to call on connect and again if `meta` changes.
         if (!this.mqtt || !this.mqttConnected) return;
         const topics = [`marchog/screen/${this.screenId}`, 'marchog/all'];
         if (this.meta) {
@@ -667,8 +649,101 @@
         }
       },
 
+      subscribeCommandTopics() {
+        // Control channel: reload / identify / fullscreen. Non-retained, so a
+        // late-joining kiosk never re-fires a stale command. Two topics: the
+        // per-screen channel and the broadcast `all` channel (reload-all).
+        if (!this.mqtt || !this.mqttConnected) return;
+        const topics = [`marchog/cmd/${this.screenId}`, 'marchog/cmd/all'];
+        for (const t of topics) {
+          if (this._mqttSubscribed[t]) continue;
+          this.mqtt.subscribe(t, { qos: 0 }, (err) => {
+            if (err) { console.error('[mqtt] cmd subscribe failed:', t, err); return; }
+            this._mqttSubscribed[t] = true;
+            console.log('[mqtt] subscribed (cmd):', t);
+          });
+        }
+      },
+
+      publishState() {
+        // Retained presence on marchog/state/{id}. The server derives the
+        // screen's online/offline status from this plus the LWT (set in
+        // connectMQTT) and the periodic heartbeat. Retained so the server
+        // sees our current state immediately on (re)subscribe.
+        if (!this.mqtt || !this.mqttConnected) return;
+        const payload = {
+          type: 'state',
+          device_id: this.screenId,
+          status: 'online',
+          page: this.currentPage || null,
+          shell_version: this.shellVersion || null,
+          ts: new Date().toISOString(),
+        };
+        this.mqtt.publish(`marchog/state/${this.screenId}`, JSON.stringify(payload), { qos: 0, retain: true });
+      },
+
+      startMqttHeartbeat() {
+        // Periodic last_seen refresh so the server can age out a kiosk that
+        // stops heartbeating (e.g. wedged renderer) even if the LWT never
+        // fired. Folds in client metrics (FPS/heap/viewport) — there is no
+        // separate metrics channel anymore. Non-retained: heartbeats are
+        // liveness pings, not state to replay.
+        this.stopMqttHeartbeat();
+        const beat = () => {
+          if (!this.mqtt || !this.mqttConnected) return;
+          const payload = {
+            type: 'heartbeat',
+            device_id: this.screenId,
+            page: this.currentPage || null,
+            ts: new Date().toISOString(),
+            metrics: this.collectMetrics(),
+          };
+          this.mqtt.publish(`marchog/heartbeat/${this.screenId}`, JSON.stringify(payload), { qos: 0, retain: false });
+        };
+        beat();  // fire one immediately so presence is fresh right after connect
+        this._mqttHeartbeat = setInterval(beat, 15000);  // every 15s
+      },
+
+      stopMqttHeartbeat() {
+        if (this._mqttHeartbeat) { clearInterval(this._mqttHeartbeat); this._mqttHeartbeat = null; }
+      },
+
+      handleCommand(msg) {
+        // Control actions delivered on marchog/cmd/{id} or marchog/cmd/all.
+        // These are admin/operator actions (not scene state), so they're
+        // honoured immediately regardless of the current scene.
+        if (msg.version) this.serverVersion = msg.version;
+        switch (msg.type) {
+          case 'reload':
+            this.performReload(msg.hard !== false);
+            break;
+          case 'identify':
+            this.flashIdentify();
+            break;
+          case 'fullscreen':
+            if (document.fullscreenElement) {
+              document.exitFullscreen();
+            } else {
+              document.documentElement.requestFullscreen().catch(() => {});
+            }
+            break;
+          default:
+            console.warn('[mqtt] unknown command type:', msg.type);
+        }
+      },
+
       handleMqttMessage(topic, payloadBuf) {
         const raw = payloadBuf ? payloadBuf.toString() : '';
+        // Control channel: reload / identify / fullscreen. Routed before the
+        // scene-channel logic since command topics aren't scene state.
+        if (topic.startsWith('marchog/cmd/')) {
+          if (!raw) return;  // empty cmd payload is a no-op
+          let cmd;
+          try { cmd = JSON.parse(raw); }
+          catch (e) { console.error('[mqtt] bad cmd payload on', topic, e); return; }
+          this.handleCommand(cmd);
+          return;
+        }
         // Empty retained payload = clear this channel's override.
         if (!raw) {
           if (this.sceneChannels[topic]) {
@@ -712,11 +787,10 @@
       },
 
       // ── Client Metrics ──
-      // FPS counter + periodic metrics report to server.
+      // FPS counter; metrics are folded into the MQTT heartbeat payload.
       _fpsFrames: 0,
       _fpsLast: performance.now(),
       _fpsValue: 0,
-      _metricsCounter: 0,
 
       startFpsCounter() {
         const tick = () => {
@@ -748,13 +822,6 @@
         // Navigator info (sent once then cached server-side, but cheap to always include)
         m.user_agent = navigator.userAgent;
         return m;
-      },
-
-      sendMetrics() {
-        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
-        try {
-          this.ws.send('metrics:' + JSON.stringify(this.collectMetrics()));
-        } catch(e) { /* ignore */ }
       },
 
       // ── Local Agent Discovery & Media Resolution ──
@@ -821,61 +888,6 @@
         return resolved;
       },
 
-      // ── Heartbeat (detect half-open connections) ──
-      // Uses numbered pings to eliminate caching/buffering false positives.
-      // Client sends "ping:N", server must reply {"type":"pong","seq":N}.
-      // If the pong seq doesn't match or never arrives, connection is dead.
-      startHeartbeat() {
-        this.stopHeartbeat();
-        this._pingSeq = 0;
-        this._lastPongSeq = -1;
-        this._heartbeatInterval = setInterval(() => {
-          if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
-          if (this._pingSeq > 0 && this._lastPongSeq < this._pingSeq) {
-            // Sent ping N but never got pong N back — connection is dead
-            console.warn(`Heartbeat timeout — sent ping:${this._pingSeq}, last pong:${this._lastPongSeq}. Forcing reconnect.`);
-            this.stopHeartbeat();
-            this.ws.close();
-            return;
-          }
-          this._pingSeq++;
-          try {
-            this.ws.send(`ping:${this._pingSeq}`);
-            console.log(`Heartbeat ping:${this._pingSeq}`);
-            // Send metrics every 3rd heartbeat (every 30s)
-            this._metricsCounter++;
-            if (this._metricsCounter >= 3) {
-              this._metricsCounter = 0;
-              this.sendMetrics();
-            }
-          } catch(e) { /* close will fire */ }
-        }, 10000); // ping every 10s
-      },
-
-      stopHeartbeat() {
-        if (this._heartbeatInterval) { clearInterval(this._heartbeatInterval); this._heartbeatInterval = null; }
-        this._pingSeq = 0;
-        this._lastPongSeq = -1;
-      },
-
-      handlePong(seq) {
-        console.log(`Heartbeat pong:${seq} (expected:${this._pingSeq})`);
-        if (seq === this._pingSeq) {
-          this._lastPongSeq = seq;
-        } else {
-          console.warn(`Heartbeat pong seq mismatch! Got ${seq}, expected ${this._pingSeq} — stale response?`);
-        }
-      },
-
-      scheduleReconnect() {
-        // Silent background reconnect with exponential backoff.
-        // Screen keeps displaying its current content while reconnecting.
-        this.wsReconnectAttempts++;
-        const delay = Math.min(1000 * Math.pow(2, this.wsReconnectAttempts - 1), 30000);
-        console.log(`Reconnect attempt ${this.wsReconnectAttempts} in ${Math.round(delay/1000)}s`);
-        setTimeout(() => this.connectWebSocket(), delay);
-      },
-
       setConnectionStatus(status) {
         // Updates the small connection indicator dot in the corner.
         // No screen overlay - kiosk screens keep showing content during
@@ -886,94 +898,8 @@
         document.getElementById('connText').textContent = status.toUpperCase();
       },
 
-      handleWSMessage(msg) {
-        console.log('WS:', msg.type, msg);
-
-        // Any message from the server may carry a `version` field — use it
-        // to keep our notion of the server's build current. Drift between
-        // this value and `shellVersion` is surfaced via the Identify
-        // overlay, not in persistent UI (John's preference: kiosks
-        // shouldn't show debug badges during normal operation).
-        if (msg.version) {
-          if (this.serverVersion && this.serverVersion !== msg.version) {
-            console.warn(`[version] Server rolled: ${this.serverVersion} -> ${msg.version}`);
-          }
-          this.serverVersion = msg.version;
-        }
-
-        switch (msg.type) {
-          case 'pong':
-            this.handlePong(msg.seq || 0);
-            break;
-
-          case 'registered':
-            this.notify(`Registered: ${msg.screen_id}`, 'info');
-            if (msg.version && this.shellVersion && this.shellVersion !== msg.version
-                && this.shellVersion !== 'unstamped') {
-              console.warn(`[version] Drift detected — Shell ${this.shellVersion} vs server ${msg.version}`);
-            }
-            // The server includes this screen's routing metadata (device type,
-            // zone, room) in the registration ack. We stash it so the MQTT
-            // layer knows which group channels to subscribe to (room/zone/type
-            // broadcasts) in addition to the per-screen channel.
-            if (msg.meta) {
-              this.meta = msg.meta;
-              this.subscribeSceneTopics();
-            }
-            break;
-
-          case 'identify':
-            // Admin-triggered identify pulse. We flash our ID + build
-            // info overlay; this is the only time build version becomes
-            // visible on the kiosk screen.
-            this.flashIdentify();
-            break;
-
-          case 'reload':
-            // Admin-triggered reload. Unregister the service worker, wipe
-            // caches, and hard-reload so we pick up the latest Shell code.
-            // Guarded against accidental loops by a one-shot sessionStorage
-            // flag — if a reload was just performed, we ignore additional
-            // reload messages within the same session.
-            this.performReload(msg.hard !== false);
-            break;
-
-          case 'navigate':
-            // Special commands from the config panel always travel over WS
-            // (they're admin/control actions, not scene state) and are honoured
-            // regardless of the MQTT transport.
-            if (msg.page === '__fullscreen__') {
-              if (document.fullscreenElement) {
-                document.exitFullscreen();
-              } else {
-                document.documentElement.requestFullscreen().catch(() => {});
-              }
-              break;
-            }
-            if (msg.page === '__identify__') {
-              this.flashIdentify();
-              break;
-            }
-            // While MQTT is connected it owns scene navigation. Ignore
-            // WS-delivered navigate to avoid applying the same scene twice.
-            // If the broker drops, mqttConnected flips false and WS navigate
-            // is honoured again — so an outage never blacks out the kiosk.
-            if (this.mqttConnected) {
-              console.log('[navigate] ignoring WS navigate (MQTT is the active transport)');
-              break;
-            }
-            this.applyNavigate({ page: msg.page, params: msg.params, file: msg.file });
-            break;
-
-          case 'assignment':
-            // Scene-based assignment
-            this.applyAssignment(msg.config);
-            break;
-        }
-      },
-
-      // Apply a scene navigation. Shared by the MQTT transport and the WS
-      // fallback. `scene` = { page, params, file }.
+      // Apply a scene navigation, driven by the MQTT scene channels.
+      // `scene` = { page, params, file }.
       applyNavigate(scene) {
         const page = scene.page;
         if (!page) return;
@@ -1067,9 +993,10 @@
       },
 
       reportPage() {
-        if (this.ws && this.ws.readyState === WebSocket.OPEN && this.currentPage) {
-          this.ws.send(`page:${this.currentPage}`);
-        }
+        // Whenever the visible page changes, refresh our retained presence so
+        // the server's screen view reflects the current page immediately
+        // (rather than waiting for the next heartbeat).
+        this.publishState();
       },
 
       // ── Event Listeners ──────────────────────────

@@ -2,7 +2,7 @@
 MarchogSystemsOps Server - Star Wars Inspired Multi-Screen Controller
 FastAPI backend with WebSocket screen management and scenes system
 """
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -161,10 +161,98 @@ DEVICE_TYPES = {
 # ── App State ────────────────────────────────────────────────
 
 app_state = {
-    "screens": {},         # {screen_id: {"ws": websocket, "page": str, "connected_at": str}}
+    # Screen presence is now derived entirely from MQTT (no WebSocket). Each
+    # entry: {status, page, shell_version, connected_at, last_seen, metrics, ...}.
+    # Populated by the _on_screen_state / _on_screen_heartbeat handlers below,
+    # which consume the retained state + LWT + heartbeat the kiosks publish.
+    "screens": {},
     "screen_configs": {},  # Pre-provisioned: {screen_id: {"page": str, "label": str}}
     "screen_meta": {},     # {screen_id: {"device_type": str, "room_id": str, "zone_id": str, ...}}
 }
+
+
+def _screen_id_from_topic(topic: str) -> str:
+    """marchog/state/pi5screen11 -> pi5screen11."""
+    return topic.rsplit("/", 1)[-1] if "/" in topic else ""
+
+
+def _parse_ts(payload: dict) -> str:
+    """Return an ISO-8601 UTC timestamp from the payload, falling back to now.
+
+    Using the *publisher's* timestamp (not the receive time) is what keeps
+    presence honest across a server restart: when the server resubscribes it
+    immediately receives every retained state/heartbeat, and a screen that
+    died hours ago must look stale — not freshly alive. A retained "online"
+    with an old timestamp therefore ages out of the live list normally.
+    """
+    raw = payload.get("ts") or payload.get("timestamp")
+    if raw:
+        try:
+            dt = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt.astimezone(timezone.utc).isoformat()
+        except (ValueError, TypeError):
+            pass
+    return datetime.now(timezone.utc).isoformat()
+
+
+async def _on_screen_state(topic: str, payload: dict):
+    """Handle retained `marchog/state/{id}` (incl. the LWT offline message).
+
+    The kiosk publishes its current page + online status here (retained), and
+    registers an MQTT Last Will that flips this to `offline` if it dies
+    ungracefully. This is the authoritative presence signal.
+    """
+    sid = _screen_id_from_topic(topic)
+    if not sid:
+        return
+    status = payload.get("status", "online")
+    scr = app_state["screens"].get(sid)
+    if status == "offline":
+        if scr:
+            scr["status"] = "offline"
+            scr["last_seen"] = _parse_ts(payload)
+        return
+    if scr is None:
+        scr = {"connected_at": datetime.now(timezone.utc).isoformat()}
+        app_state["screens"][sid] = scr
+    scr["status"] = "online"
+    scr["page"] = payload.get("page")
+    if payload.get("shell_version"):
+        scr["shell_version"] = payload["shell_version"]
+    scr["last_seen"] = _parse_ts(payload)
+
+
+async def _on_screen_heartbeat(topic: str, payload: dict):
+    """Handle periodic `marchog/heartbeat/{id}` — refreshes last_seen so the
+    health monitor can age out screens whose LWT never fired (e.g. a clean
+    network drop that the broker hasn't timed out yet). May carry `metrics`."""
+    sid = _screen_id_from_topic(topic)
+    if not sid:
+        return
+    if payload.get("status") == "offline":
+        return
+    scr = app_state["screens"].get(sid)
+    if scr is None:
+        scr = {"connected_at": datetime.now(timezone.utc).isoformat()}
+        app_state["screens"][sid] = scr
+    scr["status"] = "online"
+    scr["last_seen"] = _parse_ts(payload)
+    if payload.get("metrics"):
+        scr["metrics"] = payload["metrics"]
+        scr["metrics_at"] = datetime.now(timezone.utc).isoformat()
+
+
+def _screen_is_live(info: dict, now: datetime) -> bool:
+    """A screen counts as connected if it isn't flagged offline and its last
+    heartbeat/state is within the stale threshold."""
+    if info.get("status") == "offline":
+        return False
+    last_seen = info.get("last_seen")
+    if not last_seen:
+        return True  # just appeared, no heartbeat yet
+    return (now - datetime.fromisoformat(last_seen)).total_seconds() <= STALE_THRESHOLD
 
 # ── Lifespan ─────────────────────────────────────────────────
 
@@ -180,8 +268,13 @@ async def lifespan(app: FastAPI):
         print(f"[+] Auto-registered {len(discovered)} new page(s): {', '.join(discovered)}")
     else:
         print("[+] All pages up to date")
-    # Start MQTT message bus
+    # Start MQTT message bus, then register the presence handlers that derive
+    # screen state from the kiosks' retained state + LWT + heartbeat.
     await mqtt_bus.start(app_state)
+    bus = mqtt_bus.get_bus()
+    if bus:
+        bus.on("marchog/state/#", _on_screen_state)
+        bus.on("marchog/heartbeat/#", _on_screen_heartbeat)
     # Start health monitor
     health_task = asyncio.create_task(_health_monitor())
     yield
@@ -588,10 +681,17 @@ async def api_remove_screen(scene_id: str, screen_id: str):
 
 @app.get("/api/screens")
 async def api_screens():
-    """List all connected screens and their current state, enriched with registry data."""
+    """List all connected screens and their current state, enriched with registry data.
+
+    "Connected" is now derived from MQTT presence: a screen is included if its
+    retained state isn't `offline` and its last heartbeat is within the stale
+    threshold."""
     registry = {r["screen_id"]: r for r in await get_all_screen_registry()}
+    now = datetime.now(timezone.utc)
     screens = []
     for sid, info in app_state["screens"].items():
+        if not _screen_is_live(info, now):
+            continue
         reg = registry.get(sid, {})
         screens.append({
             "screen_id": sid,
@@ -631,23 +731,76 @@ async def api_screen_registry():
     """Get all screen registry entries (includes offline screens that have connected before)."""
     return await get_all_screen_registry()
 
+
+@app.get("/api/screens/{screen_id}/meta")
+async def api_screen_meta(screen_id: str):
+    """Bootstrap endpoint the kiosk calls on startup (replaces the old WS
+    `registered` handshake).
+
+    Returns the screen's routing metadata (device type, zone, room) so the
+    kiosk knows which MQTT group channels to subscribe to, plus the server's
+    build version for drift detection. As a side effect it (1) records the
+    screen in the persistent registry and (2) re-publishes the screen's
+    current scene assignment as a *retained* navigate, so a freshly-booted
+    kiosk that has no retained scene yet still lands on its assigned page.
+    """
+    await register_screen(screen_id)
+    assignment = await get_screen_assignment(screen_id)
+    zone_id = assignment.get("zone_id") if assignment else None
+    room_id = None
+    if zone_id:
+        zone = get_zone(zone_id)
+        if zone:
+            room_id = zone.get("room_id")
+    meta = {
+        "device_type": (assignment or {}).get("device_type", "info-display"),
+        "device_type_secondary": (assignment or {}).get("device_type_secondary"),
+        "zone_id": zone_id,
+        "room_id": room_id,
+    }
+    app_state["screen_meta"][screen_id] = meta
+
+    if assignment and mqtt_bus.is_connected():
+        page_id = assignment.get("static_page")
+        if page_id:
+            msg = build_navigate_message(page_id, assignment.get("params_override"))
+            await mqtt_bus.publish_navigate(
+                [f"marchog/screen/{screen_id}"],
+                page_id,
+                msg["params"],
+                source="assignment",
+                retain=True,
+                extra={"file": msg.get("file"), "version": msg.get("version")},
+            )
+
+    return {"screen_id": screen_id, "version": BUILD_VERSION, "meta": meta}
+
 @app.post("/api/screens/{screen_id}/navigate")
 async def api_navigate_screen(screen_id: str, cmd: NavigateCommand):
     """Send a navigation command to a specific screen, merging with stored params.
 
-    Publishes a *retained* `navigate` to the screen's MQTT topic
-    (marchog/screen/{id}) on every scene push. This is the canonical
-    transport: it reaches the native VLC player agent directly and, because
-    it is retained, a kiosk/agent that (re)connects immediately picks up the
-    current scene — replacing the old reconnect-replay hack.
+    Scene navigations publish a *retained* `navigate` to the screen's MQTT
+    topic (marchog/screen/{id}). This is the canonical transport: it reaches
+    both the browser kiosk and the native VLC player agent, and because it is
+    retained a kiosk/agent that (re)connects immediately picks up the current
+    scene.
 
-    While the browser kiosk is still WebSocket-based (until the
-    MQTT-over-WebSocket shell ships, task #24), we ALSO send the same message
-    straight over its WS if it is connected. This does not double-deliver:
-    the server only subscribes to action/event/sensor/heartbeat topics, so it
-    never receives its own navigate publish and the MQTT->WS bridge does not
-    fire for it.
+    The two special "pages" `__fullscreen__` and `__identify__` are control
+    actions, not scene state, so they go out on the transient command channel
+    (marchog/cmd/{id}, non-retained) instead — sending them retained would
+    leave a sticky toggle on the broker.
     """
+    if cmd.page in ("__fullscreen__", "__identify__"):
+        if not mqtt_bus.is_connected():
+            raise HTTPException(503, "MQTT not connected")
+        ctype = "fullscreen" if cmd.page == "__fullscreen__" else "identify"
+        await mqtt_bus.publish(
+            f"marchog/cmd/{screen_id}",
+            {"type": ctype, "version": BUILD_VERSION},
+            retain=False,
+        )
+        return {"status": "ok", "page": cmd.page, "command": ctype}
+
     # Merge stored params_override with command params (command wins), then
     # let build_navigate_message fold in the page registry defaults too.
     assignment = await get_screen_assignment(screen_id)
@@ -655,33 +808,17 @@ async def api_navigate_screen(screen_id: str, cmd: NavigateCommand):
     merged_params = {**(stored_params or {}), **(cmd.params or {})}
     msg = build_navigate_message(cmd.page, merged_params)
 
-    published = False
-    if mqtt_bus.is_connected():
-        await mqtt_bus.publish_navigate(
-            [f"marchog/screen/{screen_id}"],
-            cmd.page,
-            msg["params"],
-            source="api",
-            retain=True,
-            extra={"file": msg.get("file"), "version": msg.get("version")},
-        )
-        published = True
-
-    sent_ws = False
-    if screen_id in app_state["screens"]:
-        ws = app_state["screens"][screen_id]["ws"]
-        try:
-            await ws.send_json(msg)
-            sent_ws = True
-        except Exception as e:
-            # Only surface a hard failure if MQTT didn't carry it either.
-            if not published:
-                raise HTTPException(500, f"Failed to send: {e}")
-
-    if not published and not sent_ws:
-        raise HTTPException(404, "Screen not connected and MQTT unavailable")
-
-    return {"status": "ok", "page": cmd.page, "mqtt": published, "ws": sent_ws}
+    if not mqtt_bus.is_connected():
+        raise HTTPException(503, "MQTT not connected")
+    await mqtt_bus.publish_navigate(
+        [f"marchog/screen/{screen_id}"],
+        cmd.page,
+        msg["params"],
+        source="api",
+        retain=True,
+        extra={"file": msg.get("file"), "version": msg.get("version")},
+    )
+    return {"status": "ok", "page": cmd.page, "mqtt": True}
 
 
 # ── API: Automations (JSON-backed) ───────────────────────────
@@ -779,21 +916,22 @@ async def api_run_automation(auto_id: str):
                     "via": "mqtt"
                 })
 
-            # ── Legacy direct WebSocket targets ──
+            # ── Per-screen targets (retained navigate over MQTT) ──
             targets = action.get("targets", [])
             for screen_id in targets:
-                if screen_id in app_state["screens"]:
-                    ws = app_state["screens"][screen_id]["ws"]
-                    try:
-                        msg = {"type": "navigate", "page": page_id}
-                        if params:
-                            msg["params"] = params
-                        await ws.send_json(msg)
-                        results.append({"screen": screen_id, "status": "sent", "via": "ws"})
-                    except Exception as e:
-                        results.append({"screen": screen_id, "status": "error", "error": str(e)})
+                if mqtt_bus.is_connected():
+                    msg = build_navigate_message(page_id, params)
+                    await mqtt_bus.publish_navigate(
+                        [f"marchog/screen/{screen_id}"],
+                        page_id,
+                        msg["params"],
+                        source=f"automation:{auto_id}",
+                        retain=True,
+                        extra={"file": msg.get("file"), "version": msg.get("version")},
+                    )
+                    results.append({"screen": screen_id, "status": "published", "via": "mqtt"})
                 else:
-                    results.append({"screen": screen_id, "status": "not_connected"})
+                    results.append({"screen": screen_id, "status": "mqtt_unavailable"})
     return {"status": "executed", "automation": auto_id, "results": results}
 
 
@@ -852,14 +990,17 @@ async def api_screen_health():
             uptime = int((now - datetime.fromisoformat(connected_at)).total_seconds())
 
         last_seen_ago = None
-        status = "online"
+        # Presence comes from MQTT now: an explicit `offline` (LWT or clean
+        # state) wins; otherwise a screen goes `stale` once its heartbeat
+        # ages past the threshold.
+        if screen_data.get("status") == "offline":
+            status = "offline"
+        else:
+            status = "online"
         if last_seen:
             last_seen_ago = int((now - datetime.fromisoformat(last_seen)).total_seconds())
-            if last_seen_ago > STALE_THRESHOLD:
+            if status != "offline" and last_seen_ago > STALE_THRESHOLD:
                 status = "stale"
-        else:
-            # No ping received yet, just connected
-            status = "online"
 
         meta = app_state["screen_meta"].get(screen_id, {})
         reg = registry.get(screen_id, {})
@@ -881,158 +1022,22 @@ async def api_screen_health():
             "agent": _agent_telemetry.get(screen_id),
         })
     return {
-        "total_connected": len(app_state["screens"]),
+        "total_connected": sum(1 for s in results if s["status"] != "offline"),
         "mqtt_connected": mqtt_bus.is_connected(),
         "screens": results,
     }
 
 
-# ── WebSocket: Screen Connection ─────────────────────────────
-
-@app.websocket("/ws/screen/{screen_id}")
-async def ws_screen(websocket: WebSocket, screen_id: str):
-    await websocket.accept()
-    print(f"[*] Screen '{screen_id}' connected")
-
-    # Register screen
-    app_state["screens"][screen_id] = {
-        "ws": websocket,
-        "page": None,
-        "connected_at": datetime.now(timezone.utc).isoformat()
-    }
-
-    # Register in persistent screen registry
-    await register_screen(screen_id)
-
-    # Publish connection event to MQTT
-    if mqtt_bus.is_connected():
-        await mqtt_bus.publish_heartbeat(screen_id, "screen")
-
-    # Populate screen_meta for MQTT topic matching and for the kiosk's own
-    # subscription topics. Defaults are applied so a screen with no explicit
-    # assignment still gets a device_type channel.
-    assignment = await get_screen_assignment(screen_id)
-    zone_id = assignment.get("zone_id") if assignment else None
-    room_id = None
-    if zone_id:
-        zone = get_zone(zone_id)
-        if zone:
-            room_id = zone.get("room_id")
-    meta = {
-        "device_type": (assignment or {}).get("device_type", "info-display"),
-        "device_type_secondary": (assignment or {}).get("device_type_secondary"),
-        "zone_id": zone_id,
-        "room_id": room_id,
-    }
-    app_state["screen_meta"][screen_id] = meta
-
-    try:
-        # Send registration confirmation — includes the server's build version
-        # (so the kiosk can flag drift via the Identify overlay) AND the
-        # screen's routing meta, which the kiosk uses to subscribe to its MQTT
-        # scene channels: marchog/screen/{id}, /all, /room/{room}, /zone/{zone},
-        # and /type/{device_type}.
-        await websocket.send_json({
-            "type": "registered",
-            "screen_id": screen_id,
-            "version": BUILD_VERSION,
-            "meta": meta,
-        })
-
-        # Current scene assignment, if any. Sent over WS for legacy kiosks AND
-        # published as a *retained* navigate to the screen's MQTT topic, so an
-        # MQTT-based kiosk picks up its current scene immediately on subscribe
-        # (this is what makes MQTT the authoritative scene source).
-        if assignment:
-            page_id = assignment.get("static_page")
-            params_override = assignment.get("params_override")
-
-            if page_id:
-                # Send proper navigate message on reconnect
-                msg = build_navigate_message(page_id, params_override)
-                await websocket.send_json(msg)
-                if mqtt_bus.is_connected():
-                    await mqtt_bus.publish_navigate(
-                        [f"marchog/screen/{screen_id}"],
-                        page_id,
-                        msg["params"],
-                        source="assignment",
-                        retain=True,
-                        extra={"file": msg.get("file"), "version": msg.get("version")},
-                    )
-
-        # Message loop
-        while True:
-            data = await websocket.receive_text()
-
-            if data.startswith("build:"):
-                # Screen reporting its embedded Shell build version so the
-                # config panel can compare against the server's current
-                # BUILD_VERSION and flag drift per-kiosk.
-                app_state["screens"][screen_id]["shell_version"] = data.split(":", 1)[1].strip()
-                app_state["screens"][screen_id]["last_seen"] = datetime.now(timezone.utc).isoformat()
-
-            elif data.startswith("page:"):
-                # Screen reporting its current page
-                page = data.split(":", 1)[1]
-                app_state["screens"][screen_id]["page"] = page
-                app_state["screens"][screen_id]["last_seen"] = datetime.now(timezone.utc).isoformat()
-                # Publish state to MQTT (retained)
-                if mqtt_bus.is_connected():
-                    await mqtt_bus.publish(f"marchog/state/{screen_id}", {
-                        "type": "state",
-                        "device_id": screen_id,
-                        "status": "online",
-                        "page": page,
-                    }, retain=True)
-
-            elif data == "ping" or data.startswith("ping:"):
-                # Numbered heartbeat: "ping:N" -> {"type":"pong","seq":N}
-                seq = 0
-                if ":" in data:
-                    try: seq = int(data.split(":", 1)[1])
-                    except ValueError: pass
-                await websocket.send_json({"type": "pong", "seq": seq})
-                app_state["screens"][screen_id]["last_seen"] = datetime.now(timezone.utc).isoformat()
-                # Periodic heartbeat to MQTT
-                if mqtt_bus.is_connected():
-                    await mqtt_bus.publish_heartbeat(screen_id, "screen")
-
-            elif data.startswith("metrics:"):
-                # Client performance metrics (FPS, memory, viewport, etc.)
-                try:
-                    metrics = json.loads(data.split(":", 1)[1])
-                    app_state["screens"][screen_id]["metrics"] = metrics
-                    app_state["screens"][screen_id]["metrics_at"] = datetime.now(timezone.utc).isoformat()
-                except (json.JSONDecodeError, ValueError):
-                    pass
-
-            elif data.startswith("playlist_index:"):
-                # Screen reporting playlist position
-                idx = data.split(":", 1)[1]
-                app_state["screens"][screen_id]["playlist_index"] = int(idx)
-
-    except WebSocketDisconnect:
-        print(f"[~] Screen '{screen_id}' disconnected")
-    except Exception as e:
-        print(f"[!] Screen '{screen_id}' error: {e}")
-    finally:
-        app_state["screens"].pop(screen_id, None)
-        app_state["screen_meta"].pop(screen_id, None)
-        # Publish offline status to MQTT
-        if mqtt_bus.is_connected():
-            await mqtt_bus.publish(f"marchog/heartbeat/{screen_id}", {
-                "type": "heartbeat",
-                "device_id": screen_id,
-                "device_type": "screen",
-                "status": "offline",
-            }, retain=True)
-            await mqtt_bus.publish(f"marchog/state/{screen_id}", {
-                "type": "state",
-                "device_id": screen_id,
-                "status": "offline",
-                "page": None,
-            }, retain=True)
+# ── Screen presence ──────────────────────────────────────────
+# The per-screen WebSocket (`/ws/screen/{id}`) has been removed. Kiosks now:
+#   • bootstrap via GET /api/screens/{id}/meta (routing meta + server version),
+#   • publish presence over MQTT — retained `marchog/state/{id}` + an MQTT Last
+#     Will that flips it to `offline` on ungraceful death, plus a periodic
+#     `marchog/heartbeat/{id}`,
+#   • receive scenes on their retained `marchog/screen|all|room|zone|type`
+#     channels and control actions on `marchog/cmd/{id}` (+ /all).
+# The server consumes presence via _on_screen_state / _on_screen_heartbeat
+# (registered in the lifespan) — see the top of this module.
 
 
 # ── Scene Push Helpers ───────────────────────────────────────
@@ -1100,45 +1105,43 @@ def build_reload_message(hard: bool = True) -> dict:
 
 
 async def push_scene_to_screens(scene_id: str):
-    """Push a scene's configs to all connected screens with proper params."""
+    """Push a scene's configs to its screens as retained MQTT navigates."""
     scene = await get_scene(scene_id)
-    if not scene:
+    if not scene or not mqtt_bus.is_connected():
         return
 
     for screen_config in scene.get("screens", []):
         sid = screen_config["screen_id"]
-        if sid in app_state["screens"]:
-            page_id = screen_config.get("static_page")
-            params_override = screen_config.get("params_override")
-            
-            if page_id:
-                msg = build_navigate_message(page_id, params_override)
-                
-                try:
-                    await app_state["screens"][sid]["ws"].send_json(msg)
-                except Exception as e:
-                    print(f"Failed to push to {sid}: {e}")
+        page_id = screen_config.get("static_page")
+        if page_id:
+            msg = build_navigate_message(page_id, screen_config.get("params_override"))
+            await mqtt_bus.publish_navigate(
+                [f"marchog/screen/{sid}"],
+                page_id,
+                msg["params"],
+                source="scene",
+                retain=True,
+                extra={"file": msg.get("file"), "version": msg.get("version")},
+            )
 
 
 async def push_assignment_to_screen(screen_id: str):
-    """Push the active scene's assignment to a specific screen with params."""
-    if screen_id not in app_state["screens"]:
+    """Push the active scene's assignment to a screen as a retained MQTT navigate."""
+    if not mqtt_bus.is_connected():
         return
-
     assignment = await get_screen_assignment(screen_id)
     if assignment:
-        # Extract page and params from assignment
         page_id = assignment.get("static_page")
-        params_override = assignment.get("params_override")
-        
         if page_id:
-            # Build proper navigate message with correct type and merged params
-            msg = build_navigate_message(page_id, params_override)
-            
-            try:
-                await app_state["screens"][screen_id]["ws"].send_json(msg)
-            except Exception as e:
-                print(f"Failed to push assignment to {screen_id}: {e}")
+            msg = build_navigate_message(page_id, assignment.get("params_override"))
+            await mqtt_bus.publish_navigate(
+                [f"marchog/screen/{screen_id}"],
+                page_id,
+                msg["params"],
+                source="assignment",
+                retain=True,
+                extra={"file": msg.get("file"), "version": msg.get("version")},
+            )
 
 
 # ── Explicit page routes ─────────────────────────────────────
@@ -1166,50 +1169,39 @@ async def api_version():
 
 @app.post("/api/screens/{screen_id}/reload")
 async def api_reload_screen(screen_id: str):
-    """Send a reload message to a specific connected screen so it wipes
-    caches and hard-reloads the Shell."""
-    if screen_id not in app_state["screens"]:
-        raise HTTPException(404, "Screen not connected")
-    ws = app_state["screens"][screen_id]["ws"]
-    try:
-        await ws.send_json(build_reload_message())
-        return {"status": "sent", "screen_id": screen_id, "version": BUILD_VERSION}
-    except Exception as e:
-        raise HTTPException(500, f"Failed to send: {e}")
+    """Tell a specific kiosk to wipe caches and hard-reload the Shell, via the
+    transient `marchog/cmd/{id}` command channel."""
+    if not mqtt_bus.is_connected():
+        raise HTTPException(503, "MQTT not connected")
+    await mqtt_bus.publish(f"marchog/cmd/{screen_id}", build_reload_message(), retain=False)
+    return {"status": "sent", "screen_id": screen_id, "version": BUILD_VERSION}
 
 
 @app.post("/api/screens/reload-all")
 async def api_reload_all_screens():
-    """Broadcast reload to every connected screen. Use after deploying new
-    Shell code so all kiosks pick it up without walking to each monitor."""
-    results = []
-    for sid, info in list(app_state["screens"].items()):
-        ws = info["ws"]
-        try:
-            await ws.send_json(build_reload_message())
-            results.append({"screen_id": sid, "status": "sent"})
-        except Exception as e:
-            results.append({"screen_id": sid, "status": "error", "error": str(e)})
-    return {"status": "broadcast", "version": BUILD_VERSION, "results": results}
+    """Broadcast reload to every kiosk via `marchog/cmd/all`. Use after
+    deploying new Shell code so all kiosks pick it up without walking to each
+    monitor."""
+    if not mqtt_bus.is_connected():
+        raise HTTPException(503, "MQTT not connected")
+    await mqtt_bus.publish("marchog/cmd/all", build_reload_message(), retain=False)
+    return {"status": "broadcast", "version": BUILD_VERSION}
 
 
 @app.post("/api/screens/{screen_id}/identify")
 async def api_identify_screen(screen_id: str):
-    """Flash the Identify overlay on a specific screen — useful for
-    physically locating a kiosk in a multi-monitor install, and for
-    comparing the Shell's embedded build against the server's current
-    build without leaving a badge visible during normal operation."""
-    if screen_id not in app_state["screens"]:
-        raise HTTPException(404, "Screen not connected")
-    ws = app_state["screens"][screen_id]["ws"]
-    try:
-        await ws.send_json({
-            "type": "identify",
-            "version": BUILD_VERSION,
-        })
-        return {"status": "sent", "screen_id": screen_id}
-    except Exception as e:
-        raise HTTPException(500, f"Failed to send: {e}")
+    """Flash the Identify overlay on a specific kiosk via `marchog/cmd/{id}` —
+    useful for physically locating a kiosk in a multi-monitor install, and for
+    comparing the Shell's embedded build against the server's current build
+    without leaving a badge visible during normal operation."""
+    if not mqtt_bus.is_connected():
+        raise HTTPException(503, "MQTT not connected")
+    await mqtt_bus.publish(
+        f"marchog/cmd/{screen_id}",
+        {"type": "identify", "version": BUILD_VERSION},
+        retain=False,
+    )
+    return {"status": "sent", "screen_id": screen_id}
 
 
 # ── Thumbnails ───────────────────────────────────────────────
