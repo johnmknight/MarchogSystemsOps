@@ -1288,7 +1288,7 @@
                 ${(z.screens || []).map(sc => {
                   const online = connectedIds.has(sc.screen_id);
                   const pg = pageMap[sc.static_page];
-                  const hasParams = pg && (pg.file === 'selfdestruct.html' || pg.file === 'video.html' || pg.file === 'weather.html');
+                  const hasParams = pg && (pg.file === 'selfdestruct.html' || pg.file === 'video.html' || pg.file === 'weather.html' || pg.file === 'overlay-banner.html');
                   const overrideInfo = sc.params_override ? JSON.stringify(sc.params_override) : '';
                   const pageOptions = pages.map(p =>
                     `<option value="${p.id}" ${p.id === sc.static_page ? 'selected' : ''}>${p.icon} ${p.name}</option>`
@@ -1357,6 +1357,7 @@
               ${p.params && Object.keys(p.params).length > 0 ? `<div class="card-desc" style="color:var(--accent);font-size:11px;margin-top:2px">${
                 p.file === 'video.html' ? `<i class="ti ti-player-play"></i> ${p.params.border || 'none'} · ${p.params.video ? (p.params.video.length > 40 ? p.params.video.slice(0,40)+'…' : p.params.video) : 'no video'}` :
                 p.file === 'selfdestruct.html' ? `<i class="ti ti-alert-triangle"></i> ${p.params.countdown || 60}s countdown${p.params.abort_at ? ` · abort at ${p.params.abort_at}s` : ' · no abort'}` :
+                p.file === 'overlay-banner.html' ? `<i class="ti ti-text-size"></i> ${escAttr([p.params.line1, p.params.line2].filter(Boolean).join(' / ') || 'no text')} · ${p.params.border || 'hud'}` :
                 `<i class="ti ti-settings"></i> ${Object.keys(p.params).length} param(s)`
               }</div>` : ''}
             </div>
@@ -1877,6 +1878,59 @@
       await loadAll();
     }
 
+    // ── Banner overlay param helpers ─────────────────────
+    // overlay-banner.html exposes two text rows (line1/line2) plus a themed
+    // border and an operator-selectable font. These helpers build the shared
+    // form + option lists so the page-defaults editor and the per-screen
+    // override modal stay in sync (mirrors how video.html params are handled,
+    // just factored out because there are more fields).
+    function escAttr(s) {
+      return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+    const BANNER_BORDERS = [['hud','HUD'],['imperial','Imperial'],['hologram','Hologram'],['targeting','Targeting'],['datastream','Data Feed'],['none','None']];
+    const BANNER_FONTS = [['eurostile','Eurostile'],['michroma','Michroma'],['orbitron','Orbitron'],['techmono','Share Tech Mono'],['plexsans','IBM Plex Sans'],['aurebesh','Aurebesh']];
+    function bannerOptions(list, sel) {
+      return list.map(([v,l]) => `<option value="${v}" ${sel===v?'selected':''}>${l}</option>`).join('');
+    }
+    function bannerParamsForm(merged, idPrefix, heading) {
+      return `
+        <div style="border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:12px;background:rgba(74,158,255,0.04)">
+          <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--accent);margin-bottom:10px"><i class="ti ti-text-size"></i> ${heading}</div>
+          <div class="form-group">
+            <label>Line 1 (eyebrow)</label>
+            <input id="${idPrefix}Line1" value="${escAttr(merged.line1 ?? '')}" placeholder="e.g. Welcome">
+          </div>
+          <div class="form-group">
+            <label>Line 2 (headline)</label>
+            <input id="${idPrefix}Line2" value="${escAttr(merged.line2 ?? '')}" placeholder="e.g. Knight Family">
+          </div>
+          <div style="display:flex;gap:10px">
+            <div class="form-group" style="flex:1">
+              <label>Border Style</label>
+              <select id="${idPrefix}Border">${bannerOptions(BANNER_BORDERS, merged.border || 'hud')}</select>
+            </div>
+            <div class="form-group" style="flex:1">
+              <label>Font</label>
+              <select id="${idPrefix}Font">${bannerOptions(BANNER_FONTS, merged.font || 'eurostile')}</select>
+            </div>
+          </div>
+        </div>`;
+    }
+    function collectBannerParams(idPrefix) {
+      const params = {};
+      const l1 = document.getElementById(idPrefix + 'Line1');
+      const l2 = document.getElementById(idPrefix + 'Line2');
+      const border = document.getElementById(idPrefix + 'Border')?.value;
+      const font = document.getElementById(idPrefix + 'Font')?.value;
+      // Send the line values even when blank so an operator can deliberately
+      // clear a row (the page hides an empty row).
+      if (l1) params.line1 = l1.value;
+      if (l2) params.line2 = l2.value;
+      if (border) params.border = border;
+      if (font) params.font = font;
+      return params;
+    }
+
     // ── Screen Params Override Modal ─────────────────────
     function showScreenParamsModal(zoneId, screenId, pageId) {
       const pg = pages.find(p => p.id === pageId);
@@ -1962,6 +2016,8 @@
           </div>
         `;
         setTimeout(() => updateWeatherFeatureList('${curFeature}'), 50);
+      } else if (pg.file === 'overlay-banner.html') {
+        paramsHtml = bannerParamsForm(merged, 'scrParam', 'Banner Override');
       }
 
       openModal(`
@@ -1997,6 +2053,8 @@
         const border = document.getElementById('scrParamBorder')?.value;
         if (videoUrl) paramsOverride.video = videoUrl;
         if (border) paramsOverride.border = border;
+      } else if (pg.file === 'overlay-banner.html') {
+        paramsOverride = collectBannerParams('scrParam');
       } else if (pg.file === 'weather.html') {
         const body = document.getElementById('scrParamBody')?.value || 'earth';
         const feature = document.getElementById('scrParamFeature')?.value || '';
@@ -2525,6 +2583,7 @@
           </div>
         </div>
         ` : ''}
+        ${p.file === 'overlay-banner.html' ? bannerParamsForm(p.params || {}, 'editBanner', 'Banner Configuration') : ''}
         ${p.file === 'selfdestruct.html' ? `
         <div style="border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:12px;background:rgba(200,60,40,0.03)">
           <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#c83c28;margin-bottom:10px"><i class="ti ti-alert-triangle"></i> Self Destruct Configuration</div>
@@ -2572,6 +2631,10 @@
         if (countdown) params.countdown = parseInt(countdown, 10);
         if (abortAt !== undefined) params.abort_at = parseInt(abortAt, 10) || 0;
         body.params = params;
+      }
+      // Collect banner overlay params if applicable
+      if (file === 'overlay-banner.html') {
+        body.params = collectBannerParams('editBanner');
       }
 
       await api('PUT', `/api/pages/${id}`, body);
