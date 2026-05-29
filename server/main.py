@@ -261,6 +261,7 @@ async def lifespan(app: FastAPI):
     print("[*] MarchogSystemsOps Server starting...")
     await init_db()
     print("[+] Database initialized")
+    _load_agent_presence()
     # Auto-discover new pages in client/pages/
     pages_dir = CLIENT_DIR / "pages"
     discovered = scan_pages_directory(pages_dir)
@@ -767,7 +768,7 @@ async def api_screen_meta(screen_id: str):
             await mqtt_bus.publish_navigate(
                 [f"marchog/screen/{screen_id}"],
                 page_id,
-                msg["params"],
+                _apply_video_suppression(screen_id, page_id, msg["params"]),
                 source="assignment",
                 retain=True,
                 extra={"file": msg.get("file"), "version": msg.get("version")},
@@ -813,7 +814,7 @@ async def api_navigate_screen(screen_id: str, cmd: NavigateCommand):
     await mqtt_bus.publish_navigate(
         [f"marchog/screen/{screen_id}"],
         cmd.page,
-        msg["params"],
+        _apply_video_suppression(screen_id, cmd.page, msg["params"]),
         source="api",
         retain=True,
         extra={"file": msg.get("file"), "version": msg.get("version")},
@@ -974,6 +975,96 @@ async def api_mqtt_reconnect():
 
 _agent_telemetry: dict = {}
 
+# A screen counts as "agent-backed" if its native player agent has POSTed
+# telemetry within this window. The agent's telemetry interval is 60s, so this
+# tolerates two missed beats before we decide the agent is gone.
+AGENT_STALE_THRESHOLD = 180  # seconds
+
+# Per-screen agent last-seen timestamps, persisted to a small JSON file so the
+# agent-backed decision survives a *container restart* instead of going cold
+# for ~60s (until the agent's next telemetry POST) every time the server
+# bounces. The agent process keeps running across a server restart, so its
+# last-seen from just before the bounce is still valid — and the
+# AGENT_STALE_THRESHOLD check still ages it out if the outage was long. Lives
+# in the writable layer (lost on image rebuild), which is fine: after a rebuild
+# the agent re-POSTs within 60s anyway, and the live-deployed code reverts on
+# rebuild regardless.
+AGENT_PRESENCE_CACHE = Path(__file__).resolve().parent.parent / "data" / "agent_presence.json"
+_agent_last_seen: dict[str, str] = {}
+
+
+def _load_agent_presence():
+    """Seed _agent_last_seen from disk at startup so suppression works
+    immediately after a restart, before any fresh telemetry arrives."""
+    try:
+        if AGENT_PRESENCE_CACHE.exists():
+            with open(AGENT_PRESENCE_CACHE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if isinstance(data, dict):
+                _agent_last_seen.update({str(k): str(v) for k, v in data.items()})
+                print(f"[+] Restored agent presence for {len(_agent_last_seen)} screen(s)")
+    except Exception as e:
+        print(f"[!] Could not load agent presence cache: {e}")
+
+
+def _touch_agent_presence(screen_id: str, ts: str):
+    """Record an agent's last-seen timestamp and persist the whole map. Written
+    atomically (temp file + rename) so a crash mid-write can't corrupt it."""
+    if not screen_id or not ts:
+        return
+    _agent_last_seen[screen_id] = ts
+    try:
+        AGENT_PRESENCE_CACHE.parent.mkdir(parents=True, exist_ok=True)
+        tmp = AGENT_PRESENCE_CACHE.with_name(AGENT_PRESENCE_CACHE.name + ".tmp")
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(_agent_last_seen, f)
+        tmp.replace(AGENT_PRESENCE_CACHE)
+    except Exception as e:
+        print(f"[!] Could not persist agent presence: {e}")
+
+
+def _screen_has_live_agent(screen_id: str) -> bool:
+    """True if a native player agent (the VLC hardware-decode handoff) is
+    currently backing this screen.
+
+    Judged by freshness of the agent's last-seen timestamp (persisted across
+    restarts, see above). When an agent is live it decodes video scenes in VLC
+    and composites them under the kiosk, so the browser kiosk must NOT also
+    decode the same clip (double-decode, plus the browser copy shows through
+    whenever VLC isn't covering). If the agent process dies, the timestamp goes
+    stale and this returns False, so the next scene push lets the browser
+    resume decoding as the fallback.
+    """
+    stamp = _agent_last_seen.get(screen_id)
+    if not stamp:
+        # Fall back to the live telemetry store in case a cache write failed.
+        tele = _agent_telemetry.get(screen_id)
+        if tele:
+            stamp = tele.get("received_at") or tele.get("media_status_at")
+    if not stamp:
+        return False
+    try:
+        age = (datetime.now(timezone.utc) - datetime.fromisoformat(stamp)).total_seconds()
+    except (ValueError, TypeError):
+        return False
+    return age <= AGENT_STALE_THRESHOLD
+
+
+def _apply_video_suppression(screen_id: str, page_id: str, params: dict) -> dict:
+    """For the `video` page only, stamp `suppressVideo` based on whether a live
+    native player agent is backing this screen.
+
+    Recomputed on every per-screen navigate so the retained scene always
+    carries an accurate flag: True while an agent is decoding in VLC (kiosk
+    goes black, VLC is the sole decoder), False/absent otherwise (kiosk
+    decodes normally). See [video.html] for the consumer side.
+    """
+    if page_id != "video":
+        return params
+    out = dict(params or {})
+    out["suppressVideo"] = _screen_has_live_agent(screen_id)
+    return out
+
 # ── API: Device Health ───────────────────────────────────────
 
 @app.get("/api/health/screens")
@@ -1118,7 +1209,7 @@ async def push_scene_to_screens(scene_id: str):
             await mqtt_bus.publish_navigate(
                 [f"marchog/screen/{sid}"],
                 page_id,
-                msg["params"],
+                _apply_video_suppression(sid, page_id, msg["params"]),
                 source="scene",
                 retain=True,
                 extra={"file": msg.get("file"), "version": msg.get("version")},
@@ -1137,7 +1228,7 @@ async def push_assignment_to_screen(screen_id: str):
             await mqtt_bus.publish_navigate(
                 [f"marchog/screen/{screen_id}"],
                 page_id,
-                msg["params"],
+                _apply_video_suppression(screen_id, page_id, msg["params"]),
                 source="assignment",
                 retain=True,
                 extra={"file": msg.get("file"), "version": msg.get("version")},
@@ -1345,6 +1436,7 @@ async def receive_agent_telemetry(screen_id: str, request: Request):
     data["received_at"] = datetime.now(timezone.utc).isoformat()
     data["screen_id"] = screen_id
     _agent_telemetry[screen_id] = data
+    _touch_agent_presence(screen_id, data["received_at"])
     return {"status": "ok"}
 
 
@@ -1357,6 +1449,7 @@ async def receive_agent_media_status(screen_id: str, request: Request):
         _agent_telemetry[screen_id] = {}
     _agent_telemetry[screen_id]["media_status"] = data
     _agent_telemetry[screen_id]["media_status_at"] = datetime.now(timezone.utc).isoformat()
+    _touch_agent_presence(screen_id, _agent_telemetry[screen_id]["media_status_at"])
     return {"status": "ok"}
 
 

@@ -386,6 +386,20 @@
     let currentBorder = 'none';
     let ytPlayer = null;
     let currentVideoId = null;
+    // When TRUE, a native player agent (VLC on the Pi) is hardware-decoding
+    // this clip and compositing it under the kiosk. In that case the browser
+    // must NOT also decode the same source: doing so double-decodes (the Pi 5
+    // Chromium can't reach the hardware decoder, so it's a wasted software
+    // decode) AND the browser copy shows through whenever VLC isn't covering
+    // the surface. We instead render an opaque black page (body is #000) and
+    // let the border canvas keep animating on top. The server stamps this
+    // flag on video-scene navigates for screens it sees a live agent on; it
+    // self-corrects, because if the agent goes away the next push clears it
+    // and the browser resumes decoding as the fallback.
+    let suppressVideo = false;
+    // Remember the last source we were asked to show so we can resume
+    // decoding in the browser if suppression is later lifted (agent gone).
+    let lastVideoInput = null;
     const canvas = document.getElementById('borderCanvas');
     const ctx = canvas.getContext('2d');
     let W, H;
@@ -499,10 +513,19 @@
 
       // Store display string
       currentVideoId = source.type === 'youtube' ? source.id : source.url;
+      lastVideoInput = input;
       document.getElementById('videoUrl').value = currentVideoId;
       updateNowPlaying();
 
       destroyCurrentPlayer();
+
+      if (suppressVideo) {
+        // The native VLC agent owns playback for this screen. Leave the page
+        // as an opaque black surface (no decode element) — destroyCurrentPlayer
+        // above already tore down any prior player and left only an empty
+        // #player div over the black body. The border canvas keeps drawing.
+        return;
+      }
 
       if (source.type === 'youtube') {
         await loadYouTubeAPI();
@@ -968,11 +991,30 @@
           buildBorderGrid();
           resizeCanvas();
         }
+        // Honor the suppression flag BEFORE (re)loading, so a video that
+        // arrives together with suppressVideo:true never starts a decode.
+        if (msg.suppressVideo !== undefined) applySuppression(msg.suppressVideo);
         if (msg.video) {
           loadVideo(msg.video);
         }
       }
     });
+
+    // Apply (or lift) native-agent video suppression. Called from the
+    // configure handler whenever the server tells us whether a live agent is
+    // decoding this screen's video in VLC.
+    function applySuppression(flag) {
+      const next = !!flag;
+      if (next === suppressVideo) return;
+      suppressVideo = next;
+      if (suppressVideo) {
+        // Agent took over — stop decoding here and go black.
+        destroyCurrentPlayer();
+      } else if (lastVideoInput) {
+        // Agent went away — resume browser decode as the fallback.
+        loadVideo(lastVideoInput);
+      }
+    }
 
     // ═══════════════════════════════════════════════════
     //  RENDER LOOP
@@ -1013,6 +1055,12 @@
 
     if (paramBorder && BORDERS[paramBorder]) {
       currentBorder = paramBorder;
+    }
+
+    // Standalone-load override: ?suppressVideo=1 lets you preview the
+    // agent-owns-playback state without an MQTT push.
+    if (['1', 'true'].includes((params.get('suppressVideo') || '').toLowerCase())) {
+      suppressVideo = true;
     }
 
     window.addEventListener('resize', resizeCanvas);
