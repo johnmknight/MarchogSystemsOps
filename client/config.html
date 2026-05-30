@@ -832,6 +832,31 @@
         </div>
       </div>
 
+      <!-- HTML Overlay (composites OVER the video plane on agent screens) -->
+      <!--
+        An overlay is an HTML page (currently the banner) that an agent-backed
+        screen renders in a transparent WebKitGTK window stacked ABOVE its
+        hardware-decoded video. It is INDEPENDENT of the base scene: showing or
+        clearing an overlay never changes the page/video playing underneath.
+        Transport mirrors Red Alert — a RETAINED message on the overlay topic,
+        empty payload to clear. Target "all" → marchog/overlay/all (every agent
+        screen); a single screen → marchog/overlay/{screen_id}. Only screens
+        running the agent's overlay window react.
+      -->
+      <div class="section" style="margin-bottom:16px">
+        <div class="section-head">
+          <div class="section-title" style="color:var(--accent)"><i class="ti ti-text-size"></i> HTML Overlay</div>
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+            <select id="overlayTarget" title="Which screens get the overlay" style="background:var(--bg-input,#0d1420);color:var(--text-bright);border:1px solid var(--border);border-radius:3px;padding:5px 8px;font-family:inherit;font-size:0.8em">
+              <option value="all">All agent screens</option>
+            </select>
+            <button class="btn btn-sm" onclick="setOverlay()" title="Show this overlay over the video plane" style="border-color:var(--accent);color:var(--accent)"><i class="ti ti-eye"></i> SHOW</button>
+            <button class="btn btn-sm" onclick="clearOverlay()" title="Clear the overlay; video plane shows alone again"><i class="ti ti-x"></i> CLEAR</button>
+          </div>
+        </div>
+        <div id="overlayParams" style="margin-top:12px"></div>
+      </div>
+
       <div class="section">
         <div class="section-head">
           <div class="section-title">Connected Screens</div>
@@ -977,6 +1002,7 @@
       renderPages();
       renderAutomations();
       renderAlertTargets();
+      renderOverlayTargets();
     }
 
     // ═══════════════════════════════════════════════════
@@ -1008,6 +1034,40 @@
       sel.innerHTML = html;
       // Restore prior selection if it still exists.
       if (prev && [...sel.options].some(o => o.value === prev)) sel.value = prev;
+    }
+
+    // ═══════════════════════════════════════════════════
+    //  HTML OVERLAY PICKER
+    // ═══════════════════════════════════════════════════
+    // The overlay target maps onto the server's overlay endpoints:
+    //   "all"        → POST/DELETE /api/overlay/all     (marchog/overlay/all)
+    //   "<screen_id>"→ POST/DELETE /api/screens/<id>/overlay
+    // Only screens running the agent's transparent overlay window react. The
+    // param form (banner line1/line2/border/font) is injected once and reused.
+    function renderOverlayTargets() {
+      const sel = document.getElementById('overlayTarget');
+      if (!sel) return;
+      const prev = sel.value;
+      let html = '<option value="all">All agent screens</option>';
+      (rooms || []).forEach(room => {
+        (room.zones || []).forEach(z => {
+          (z.screens || []).forEach(sc => {
+            const reg = screenRegistry[sc.screen_id];
+            const label = reg && reg.display_name ? reg.display_name : sc.screen_id;
+            html += `<option value="${sc.screen_id}">${label}</option>`;
+          });
+        });
+      });
+      sel.innerHTML = html;
+      if (prev && [...sel.options].some(o => o.value === prev)) sel.value = prev;
+      // Inject the banner param form once (operator-editable line1/line2/etc).
+      const box = document.getElementById('overlayParams');
+      if (box && !document.getElementById('ovlLine1')) {
+        box.innerHTML = bannerParamsForm(
+          { line1: 'Welcome', line2: 'Knight Family', border: 'hud', font: 'eurostile' },
+          'ovl', 'Banner Overlay'
+        );
+      }
     }
 
     // ═══════════════════════════════════════════════════
@@ -2360,6 +2420,42 @@
         alert(`Red alert cleared on ${res.topic}.`);
       } catch(e) {
         alert(`Clear failed: ${e.message || e}`);
+      }
+    }
+
+    // ── HTML Overlay ──────────────────────────────────────
+    // SHOW publishes a retained `overlay` message on the target's overlay topic;
+    // CLEAR empties it. The overlay composites over the video plane on screens
+    // running the agent's transparent window and never touches the base scene.
+    // Target "all" → /api/overlay/all, a single screen → /api/screens/{id}/overlay.
+    async function setOverlay() {
+      const target = document.getElementById('overlayTarget').value || 'all';
+      const label = document.getElementById('overlayTarget').selectedOptions[0]?.text.trim() || target;
+      const params = collectBannerParams('ovl');
+      try {
+        if (target === 'all') {
+          await api('POST', '/api/overlay/all', { page: 'overlay-banner', params });
+        } else {
+          await api('POST', `/api/screens/${target}/overlay`, { page: 'overlay-banner', params });
+        }
+        alert(`Overlay shown on "${label}".`);
+      } catch(e) {
+        alert(`Overlay failed: ${e.message || e}`);
+      }
+    }
+
+    async function clearOverlay() {
+      const target = document.getElementById('overlayTarget').value || 'all';
+      const label = document.getElementById('overlayTarget').selectedOptions[0]?.text.trim() || target;
+      try {
+        if (target === 'all') {
+          await api('DELETE', '/api/overlay/all');
+        } else {
+          await api('DELETE', `/api/screens/${target}/overlay`);
+        }
+        alert(`Overlay cleared on "${label}".`);
+      } catch(e) {
+        alert(`Overlay clear failed: ${e.message || e}`);
       }
     }
 

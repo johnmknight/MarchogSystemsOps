@@ -33,7 +33,7 @@ import time
 import traceback
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
-from urllib.parse import unquote, urlparse
+from urllib.parse import unquote, urlparse, urlencode
 from urllib.request import urlopen, Request
 from urllib.error import URLError, HTTPError
 from datetime import datetime, timezone
@@ -73,6 +73,14 @@ class AgentConfig:
         self.enable_player = True
         self.broker_host = None   # None ⇒ derive from server_url host
         self.broker_port = 1883
+        # ── Transparent HTML overlay (WebKitGTK over the VLC video plane) ──
+        # When enabled (and WebKitGTK is available on this device), the agent
+        # runs a fullscreen transparent GTK3+WebKit2 window stacked ABOVE the
+        # VLC video plane. It loads marchog overlay pages (e.g. the banner) and
+        # composites real-time text/animation over hardware-decoded video. It
+        # is driven by retained MQTT on marchog/overlay/{screen_id} (this
+        # screen) and marchog/overlay/all (broadcast). See OverlayController.
+        self.enable_overlay = True
 
     def load_file(self, path):
         with open(path) as f:
@@ -80,7 +88,7 @@ class AgentConfig:
         for key in ("port", "media_dir", "server_url", "screen_id",
                      "bind_address", "sync_interval", "telemetry_interval",
                      "auto_cleanup", "enable_player", "broker_host",
-                     "broker_port"):
+                     "broker_port", "enable_overlay"):
             if key in data:
                 setattr(self, key, data[key])
 
@@ -428,12 +436,251 @@ class PlayerController:
         }
 
 
-# Global player instance (created in main() when enabled).
+# ── Transparent HTML Overlay (WebKitGTK over the VLC video plane) ──
+
+class OverlayController:
+    """A fullscreen transparent GTK3 + WebKit2 window stacked ABOVE the VLC
+    video plane, used to composite real-time HTML text/animation over
+    hardware-decoded video.
+
+    Why WebKitGTK and not the kiosk Chromium: Chromium cannot render a
+    transparent window background, so it can't be layered over VLC. WebKitGTK
+    can (`set_background_color` with alpha 0 + an RGBA visual + a transparent
+    page body), which a spike on pi5screen11 proved composites cleanly over
+    VLC's live output.
+
+    Transport: retained MQTT. The agent's MQTT listener routes any message on
+      marchog/overlay/{screen_id}   (this screen)
+      marchog/overlay/all           (broadcast to every agent)
+    here via handle_message(). The effective overlay is the newest-arriving
+    non-empty payload across those channels (mirrors the kiosk's
+    newest-timestamp scene model); an empty/zero-byte retained payload clears
+    that channel, and when no channel has content the window hides.
+
+    Payload shape (published by the server): {type:"overlay", page, file,
+    params, version}. A page change triggers a fresh load_uri; a same-page
+    param change is injected live as a `{type:'configure', …}` postMessage so
+    the overlay updates without a reload/flicker (the marchog pages already
+    speak that protocol).
+
+    Availability is best-effort: if WebKitGTK / a graphical session isn't
+    present (e.g. the dev box, or a headless agent) the controller disables
+    itself and the rest of the agent runs unchanged.
+    """
+
+    def __init__(self, cfg):
+        self.config = cfg
+        self._lock = threading.Lock()
+        # topic -> {"ts": float (arrival order), "payload": dict|None}
+        self._channels = {}
+        self.win = None
+        self.webview = None
+        self.current_file = None
+        self._pending_params = {}
+        self.visible = False
+        self._layer_shell = False
+        self._avail = None
+        # GI modules, resolved lazily in available()
+        self._gtk = self._gdk = self._glib = self._webkit = None
+
+    # ── Availability / capability probe ──
+
+    def available(self):
+        """True only if a graphical session + WebKitGTK are usable here.
+
+        Cached: the import + env probe runs once. Safe to call on any platform
+        — on Windows / headless it simply returns False.
+        """
+        if self._avail is not None:
+            return self._avail
+        if not os.environ.get("WAYLAND_DISPLAY") and not os.environ.get("DISPLAY"):
+            print("[overlay] no WAYLAND_DISPLAY/DISPLAY in env — overlay disabled")
+            self._avail = False
+            return False
+        # The kiosk session is Wayland (labwc). The unit sets DISPLAY=:0 too
+        # (for VLC), which would otherwise make GTK prefer the X11/Xwayland
+        # backend; the proven transparent-compositing spike ran on the Wayland
+        # backend, so pin GTK to it before the first GI import.
+        if os.environ.get("WAYLAND_DISPLAY"):
+            os.environ.setdefault("GDK_BACKEND", "wayland")
+        try:
+            import gi
+            gi.require_version("Gtk", "3.0")
+            gi.require_version("WebKit2", "4.1")
+            from gi.repository import Gtk, Gdk, GLib, WebKit2
+            self._gtk, self._gdk, self._glib, self._webkit = Gtk, Gdk, GLib, WebKit2
+            self._avail = True
+        except (ImportError, ValueError) as e:
+            print(f"[overlay] WebKitGTK unavailable ({e}) — overlay disabled")
+            self._avail = False
+        return self._avail
+
+    # ── URL / page helpers ──
+
+    def _page_url(self, file, params):
+        """marchog serves client pages at {server_url}/pages/{file}. Encode the
+        params as a query string so the very first paint is already correct,
+        even before the JS `configure` injection lands."""
+        base = (self.config.server_url or "").rstrip("/")
+        clean = {k: v for k, v in (params or {}).items()
+                 if v is not None and v != ""}
+        qs = urlencode(clean)
+        url = f"{base}/pages/{file}"
+        return f"{url}?{qs}" if qs else url
+
+    @staticmethod
+    def _file_for(payload):
+        if payload.get("file"):
+            return payload["file"]
+        page = payload.get("page")
+        return f"{page}.html" if page else None
+
+    # ── MQTT entry point (called from the paho network thread) ──
+
+    def handle_message(self, topic, payload):
+        """Record a channel's latest payload and schedule a re-render.
+
+        `payload` is the decoded dict, or None for an empty/cleared retained
+        message. Runs on the MQTT thread, so the actual GTK work is marshalled
+        onto the GTK main loop via GLib.idle_add (GTK is not thread-safe).
+        """
+        with self._lock:
+            self._channels[topic] = {"ts": time.time(),
+                                     "payload": payload or None}
+        if self._glib:
+            self._glib.idle_add(self._render_effective)
+
+    # ── GTK main-thread rendering ──
+
+    def _effective_payload(self):
+        with self._lock:
+            active = [(c["ts"], c["payload"])
+                      for c in self._channels.values() if c["payload"]]
+        if not active:
+            return None
+        active.sort(key=lambda x: x[0])
+        return active[-1][1]
+
+    def _render_effective(self):
+        """Reconcile the window to the newest-arriving overlay payload. Runs on
+        the GTK main thread (via idle_add). Returns False so idle_add fires once."""
+        if not self.win:
+            return False
+        payload = self._effective_payload()
+        if not payload:
+            if self.visible:
+                self.win.hide()
+                self.visible = False
+                print("[overlay] cleared")
+            return False
+
+        file = self._file_for(payload)
+        params = payload.get("params") or {}
+        if not file:
+            return False
+
+        if file != self.current_file:
+            self.current_file = file
+            self._pending_params = params
+            self.webview.load_uri(self._page_url(file, params))
+        else:
+            self._inject_configure(params)
+
+        if not self.visible:
+            self.win.show_all()
+            self.visible = True
+            if not self._layer_shell:
+                # No layer-shell: rely on override-redirect-ish behaviour —
+                # present + keep_above raises us over VLC (which runs
+                # --intf dummy and never grabs focus interactively).
+                self.win.set_keep_above(True)
+                self.win.present()
+        print(f"[overlay] showing {file} params={params}")
+        return False
+
+    def _inject_configure(self, params):
+        """Push a live param update into the page via its `configure` protocol."""
+        if not self.webview:
+            return
+        msg = {"type": "configure"}
+        msg.update(params or {})
+        js = "window.postMessage(%s, '*');" % json.dumps(msg)
+        try:
+            self.webview.run_javascript(js, None, None, None)
+        except Exception as e:
+            print(f"[overlay] configure inject failed: {e}")
+
+    def _on_load_changed(self, webview, event):
+        # Re-apply params once the page has finished loading, so a fresh
+        # load_uri reliably configures even if query-string parsing differs.
+        if event == self._webkit.LoadEvent.FINISHED:
+            self._inject_configure(self._pending_params or {})
+
+    def _try_layer_shell(self, win):
+        """Pin the window to the wlroots 'overlay' layer for robust
+        always-on-top (survives VLC relaunching after us). Optional: the GI
+        typelib may be absent, in which case we fall back to keep_above."""
+        try:
+            import gi
+            gi.require_version("GtkLayerShell", "0.1")
+            from gi.repository import GtkLayerShell
+            GtkLayerShell.init_for_window(win)
+            GtkLayerShell.set_layer(win, GtkLayerShell.Layer.OVERLAY)
+            for edge in ("TOP", "BOTTOM", "LEFT", "RIGHT"):
+                GtkLayerShell.set_anchor(win, getattr(GtkLayerShell.Edge, edge), True)
+            GtkLayerShell.set_exclusive_zone(win, -1)
+            self._layer_shell = True
+            print("[overlay] gtk-layer-shell: pinned to overlay layer")
+        except (ImportError, ValueError) as e:
+            self._layer_shell = False
+            print(f"[overlay] gtk-layer-shell unavailable ({e}); "
+                  f"using keep_above + present fallback")
+
+    def run(self):
+        """Build the transparent overlay window and enter the GTK main loop.
+
+        MUST be called on the process's main thread (GTK requirement). Blocks
+        until Gtk.main_quit(). Any overlay payloads that arrived before this
+        ran are already stored and get rendered on the first idle tick.
+        """
+        Gtk, Gdk, WebKit2 = self._gtk, self._gdk, self._webkit
+
+        win = Gtk.Window()
+        win.set_decorated(False)
+        win.set_app_paintable(True)
+        win.set_accept_focus(False)        # never steal focus from VLC
+        win.set_skip_taskbar_hint(True)
+        win.set_skip_pager_hint(True)
+        screen = win.get_screen()
+        visual = screen.get_rgba_visual()
+        if visual is not None:
+            win.set_visual(visual)          # required for true transparency
+        win.set_default_size(1920, 1080)
+        win.fullscreen()
+
+        wv = WebKit2.WebView()
+        wv.set_background_color(Gdk.RGBA(0, 0, 0, 0))   # transparent canvas
+        wv.connect("load-changed", self._on_load_changed)
+        win.add(wv)
+
+        self.win = win
+        self.webview = wv
+
+        self._try_layer_shell(win)
+        # Render whatever channel state already arrived (usually nothing yet).
+        self._render_effective()
+
+        print("[overlay] GTK overlay window ready; entering main loop")
+        Gtk.main()
+
+
+# Global player + overlay instances (created in main() when enabled).
 _player = None
+_overlay = None
 
 
-def start_mqtt_listener(player):
-    """Subscribe to this screen's marchog navigate topics and drive the player.
+def start_mqtt_listener(player, overlay=None):
+    """Subscribe to this screen's marchog topics and drive the player + overlay.
 
     marchog publishes navigate commands as JSON on:
       marchog/screen/{screen_id}, marchog/all, marchog/room/*, marchog/type/* …
@@ -441,8 +688,13 @@ def start_mqtt_listener(player):
     whose params contain a `video` URL as a video scene → play; anything else
     → stop (so leaving a video scene tears VLC down and reveals the kiosk).
 
-    paho-mqtt is optional: if it isn't installed, player control via MQTT is
-    simply disabled (the HTTP /api/player endpoints still work for testing).
+    Separately, the transparent HTML overlay (when enabled) is driven by
+    retained messages on marchog/overlay/{screen_id} and marchog/overlay/all —
+    these are routed to the OverlayController, independent of the base scene.
+    An empty/zero-byte retained payload on an overlay topic clears that channel.
+
+    paho-mqtt is optional: if it isn't installed, MQTT-driven scene/overlay
+    control is disabled (the HTTP /api/player endpoints still work for testing).
     """
     try:
         import paho.mqtt.client as mqtt
@@ -456,14 +708,40 @@ def start_mqtt_listener(player):
     screen = config.screen_id
 
     def on_connect(client, userdata, flags, rc, *args):
-        client.subscribe(f"{'marchog'}/screen/{screen}")
-        client.subscribe("marchog/all")
-        print(f"[player] MQTT connected {host}:{port}; "
-              f"subscribed marchog/screen/{screen} + marchog/all")
+        subbed = []
+        if player:
+            client.subscribe(f"marchog/screen/{screen}")
+            client.subscribe("marchog/all")
+            subbed += [f"marchog/screen/{screen}", "marchog/all"]
+        if overlay:
+            client.subscribe(f"marchog/overlay/{screen}")
+            client.subscribe("marchog/overlay/all")
+            subbed += [f"marchog/overlay/{screen}", "marchog/overlay/all"]
+        print(f"[mqtt] connected {host}:{port}; subscribed {', '.join(subbed)}")
 
     def on_message(client, userdata, msg):
+        topic = str(msg.topic)
+        raw = msg.payload
+
+        # ── Overlay channels (independent of base scene) ──
+        if topic.startswith("marchog/overlay/"):
+            if not overlay:
+                return
+            if not raw or not raw.strip():
+                overlay.handle_message(topic, None)   # cleared retained → hide
+                return
+            try:
+                payload = json.loads(raw.decode())
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                return
+            overlay.handle_message(topic, payload)
+            return
+
+        # ── Scene channels → native video player ──
+        if not player:
+            return
         try:
-            payload = json.loads(msg.payload.decode())
+            payload = json.loads(raw.decode())
         except (json.JSONDecodeError, UnicodeDecodeError):
             return
         if payload.get("type") != "navigate":
@@ -876,18 +1154,37 @@ def main():
     else:
         print(f"  Worker:      disabled (no server_url or screen_id)")
 
-    # Start native video player + MQTT scene listener (VLC HW-decode handoff)
-    global _player
+    # Build the transparent HTML overlay first so we know whether to subscribe
+    # its MQTT topics. It self-disables on machines without WebKitGTK/a display.
+    global _player, _overlay
+    overlay_active = False
+    if config.enable_overlay and config.screen_id:
+        _overlay = OverlayController(config)
+        if _overlay.available():
+            overlay_active = True
+        else:
+            _overlay = None
+
+    # Start native video player + MQTT scene/overlay listener.
     if config.enable_player and config.screen_id:
         _player = PlayerController(config)
-        _mqtt_client = start_mqtt_listener(_player)
-        broker = config.broker_host or urlparse(config.server_url).hostname or "localhost"
+
+    _mqtt_client = None
+    if (config.screen_id) and (_player or _overlay):
+        _mqtt_client = start_mqtt_listener(_player, _overlay)
+    broker = config.broker_host or urlparse(config.server_url or "").hostname or "localhost"
+
+    if _player:
         if _mqtt_client:
             print(f"  Player:      VLC handoff active (MQTT {broker}:{config.broker_port})")
         else:
             print(f"  Player:      VLC handoff via HTTP only (MQTT unavailable)")
     else:
         print(f"  Player:      disabled")
+    if overlay_active:
+        print(f"  Overlay:     WebKitGTK overlay active (MQTT marchog/overlay/{config.screen_id} + /all)")
+    else:
+        print(f"  Overlay:     disabled (no WebKitGTK/display or turned off)")
     print()
 
     server = HTTPServer((config.bind_address, config.port), AgentHandler)
@@ -897,11 +1194,22 @@ def main():
     print(f"  Sync:        POST http://localhost:{config.port}/api/media/sync")
     print()
 
-    try:
-        server.serve_forever()
-    except KeyboardInterrupt:
-        print("\n  Agent stopped.")
-        server.server_close()
+    if overlay_active:
+        # GTK must own the main thread, so serve HTTP from a daemon thread and
+        # let the overlay's GTK main loop block here.
+        http_thread = threading.Thread(target=server.serve_forever, daemon=True)
+        http_thread.start()
+        try:
+            _overlay.run()   # blocks in Gtk.main()
+        except KeyboardInterrupt:
+            print("\n  Agent stopped.")
+            server.server_close()
+    else:
+        try:
+            server.serve_forever()
+        except KeyboardInterrupt:
+            print("\n  Agent stopped.")
+            server.server_close()
 
 
 if __name__ == "__main__":

@@ -1369,6 +1369,84 @@ async def api_clear_alert(cmd: RedAlertCommand):
     return {"status": "cleared", "topic": topic}
 
 
+# ── API: HTML Overlay (transparent compositing over the VLC video plane) ──
+# An overlay is an HTML page (e.g. overlay-banner) that an agent-backed screen
+# renders in a transparent WebKitGTK window stacked ABOVE its hardware-decoded
+# video. It is independent of the screen's base scene: setting/clearing an
+# overlay never changes which page the kiosk/VLC is showing underneath.
+#
+# Transport mirrors red-alert: a *retained* message on the overlay topic, and
+# an empty retained payload to clear. Topics:
+#   marchog/overlay/{screen_id}   one agent screen
+#   marchog/overlay/all           every agent screen (broadcast)
+# The agent's OverlayController subscribes to both and shows the
+# newest-arriving non-empty payload (clearing one channel falls back to the
+# other). Only screens running the agent's overlay window react; pure browser
+# kiosks ignore these topics.
+
+def build_overlay_message(page_id: str, params_override: dict = None) -> dict:
+    """Build the retained `overlay` payload the agent's OverlayController reads.
+
+    Like build_navigate_message it folds the page registry defaults under the
+    caller's override, and includes `file` so the agent can resolve the page
+    URL ({server_url}/pages/{file}) without its own page lookup.
+    """
+    page = get_page(page_id)
+    page_defaults = page.get("params", {}) if page else {}
+    page_file = page.get("file") if page else None
+    merged_params = {**page_defaults, **(params_override or {})}
+    return {
+        "type": "overlay",
+        "page": page_id,
+        "file": page_file,
+        "params": merged_params,
+        "version": BUILD_VERSION,
+    }
+
+
+class OverlayCommand(BaseModel):
+    page: str
+    params: dict = {}
+
+
+@app.post("/api/screens/{screen_id}/overlay")
+async def api_set_overlay(screen_id: str, cmd: OverlayCommand):
+    """Show an HTML overlay on one agent-backed screen, over its video plane."""
+    if not mqtt_bus.is_connected():
+        raise HTTPException(503, "MQTT not connected")
+    msg = build_overlay_message(cmd.page, cmd.params)
+    await mqtt_bus.publish(f"marchog/overlay/{screen_id}", msg, retain=True)
+    return {"status": "overlay", "screen_id": screen_id, "page": cmd.page}
+
+
+@app.delete("/api/screens/{screen_id}/overlay")
+async def api_clear_overlay(screen_id: str):
+    """Clear this screen's overlay by emptying its retained overlay topic."""
+    if not mqtt_bus.is_connected():
+        raise HTTPException(503, "MQTT not connected")
+    await mqtt_bus.clear_retained(f"marchog/overlay/{screen_id}")
+    return {"status": "cleared", "screen_id": screen_id}
+
+
+@app.post("/api/overlay/all")
+async def api_set_overlay_all(cmd: OverlayCommand):
+    """Broadcast an HTML overlay to every agent-backed screen at once."""
+    if not mqtt_bus.is_connected():
+        raise HTTPException(503, "MQTT not connected")
+    msg = build_overlay_message(cmd.page, cmd.params)
+    await mqtt_bus.publish("marchog/overlay/all", msg, retain=True)
+    return {"status": "overlay", "target": "all", "page": cmd.page}
+
+
+@app.delete("/api/overlay/all")
+async def api_clear_overlay_all():
+    """Clear the broadcast overlay by emptying the retained marchog/overlay/all."""
+    if not mqtt_bus.is_connected():
+        raise HTTPException(503, "MQTT not connected")
+    await mqtt_bus.clear_retained("marchog/overlay/all")
+    return {"status": "cleared", "target": "all"}
+
+
 # ── Thumbnails ───────────────────────────────────────────────
 
 @app.post("/api/thumbnails/generate")
