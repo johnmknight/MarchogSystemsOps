@@ -2679,7 +2679,23 @@
           </div>
         </div>
         ` : ''}
-        ${p.file === 'overlay-banner.html' ? bannerParamsForm(p.params || {}, 'editBanner', 'Banner Configuration') : ''}
+        ${p.file === 'overlay-banner.html' ? `
+          ${bannerParamsForm(p.params || {}, 'editBanner', 'Banner Configuration')}
+          <div style="border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:12px;background:rgba(255,200,0,0.03)">
+            <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--accent);margin-bottom:10px"><i class="ti ti-player-play"></i> Video on VLC</div>
+            <div class="form-group">
+              <label>Video URL (plays on the VLC plane beneath the banner)</label>
+              <div style="display:flex;gap:6px;align-items:stretch">
+                <input id="editOvlVideo" value="${escAttr(p.params?.video || '')}" placeholder="YouTube URL or direct .mp4/.webm URL" style="flex:1">
+                <button type="button" class="btn" style="white-space:nowrap" onclick="pickHoloVideo('editOvlVideo')"><i class="ti ti-folder-open"></i> Library</button>
+              </div>
+            </div>
+            <div class="form-group">
+              <label>Play on</label>
+              <select id="editOvlTarget">${ovlTargetOptions(p.params?.target)}</select>
+            </div>
+          </div>
+        ` : ''}
         ${p.file === 'selfdestruct.html' ? `
         <div style="border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:12px;background:rgba(200,60,40,0.03)">
           <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#c83c28;margin-bottom:10px"><i class="ti ti-alert-triangle"></i> Self Destruct Configuration</div>
@@ -2693,10 +2709,18 @@
           </div>
         </div>
         ` : ''}
+        ${p.file === 'overlay-banner.html' ? `
+        <div class="modal-actions">
+          <button class="btn" onclick="closeModal()">CANCEL</button>
+          <button class="btn" onclick="stopOverlayBundle()" title="Clear the banner overlay and stop the video (return to standby)"><i class="ti ti-player-stop"></i> STOP</button>
+          <button class="btn btn-primary" onclick="saveAndPlayOverlayBanner()"><i class="ti ti-player-play"></i> SAVE &amp; PLAY</button>
+        </div>
+        ` : `
         <div class="modal-actions">
           <button class="btn" onclick="closeModal()">CANCEL</button>
           <button class="btn btn-primary" onclick="submitEditPage()">SAVE</button>
         </div>
+        `}
       `);
     }
 
@@ -2779,6 +2803,92 @@
 
       closeModal();
       await loadAll();
+    }
+
+    // ── Banner Overlay + Video (single-dialog "play it all") ───────────
+    // The Banner Overlay Edit Page doubles as a live launcher: SAVE & PLAY
+    // pushes the chosen video onto the VLC plane AND raises the banner overlay
+    // on top, in one click. The banner overlay carries the visible themed
+    // border, so the video plays borderless underneath to avoid a doubled
+    // frame. STOP tears the whole presentation down (clear banner + standby).
+    //   target "all"        → every screen's base scene → video, banner via /api/overlay/all
+    //   target "<screen_id>"→ that screen only
+    function ovlTargetOptions(prev) {
+      let html = '<option value="all">All screens</option>';
+      (rooms || []).forEach(room => (room.zones || []).forEach(z => (z.screens || []).forEach(sc => {
+        const reg = screenRegistry[sc.screen_id];
+        const label = reg && reg.display_name ? reg.display_name : sc.screen_id;
+        html += `<option value="${sc.screen_id}" ${prev === sc.screen_id ? 'selected' : ''}>${label}</option>`;
+      })));
+      return html;
+    }
+
+    async function saveAndPlayOverlayBanner() {
+      const id = document.getElementById('editPageId').value;
+      const name = document.getElementById('editPageName').value.trim();
+      const desc = document.getElementById('editPageDesc').value.trim();
+      const icon = document.getElementById('editPageIcon').value.trim();
+      const cat = document.getElementById('editPageCat').value;
+      if (!name) return;
+      const banner = collectBannerParams('editBanner');
+      const video = document.getElementById('editOvlVideo')?.value.trim() || '';
+      const target = document.getElementById('editOvlTarget')?.value || 'all';
+      const label = document.getElementById('editOvlTarget')?.selectedOptions[0]?.text.trim() || target;
+
+      // Persist banner text/border/font + the last video so the dialog
+      // re-opens pre-filled. Non-fatal if it fails — still try to play.
+      try {
+        await api('PUT', `/api/pages/${id}`, {
+          name, description: desc, icon, category: cat,
+          params: { ...banner, video }
+        });
+      } catch (e) { console.warn('[overlay+video] save defaults failed:', e); }
+
+      if (!video) { alert('Pick a video to play (URL or Library).'); return; }
+
+      const videoParams = { video, border: 'none' };
+      try {
+        if (target === 'all') {
+          const screens = (await api('GET', '/api/screens')) || [];
+          await Promise.all(screens.map(s =>
+            api('POST', `/api/screens/${s.screen_id}/navigate`, { page: 'video', params: videoParams })
+              .catch(err => console.warn(`[overlay+video] video nav failed for ${s.screen_id}:`, err))
+          ));
+          await api('POST', '/api/overlay/all', { page: 'overlay-banner', params: banner });
+        } else {
+          await api('POST', `/api/screens/${target}/navigate`, { page: 'video', params: videoParams });
+          await api('POST', `/api/screens/${target}/overlay`, { page: 'overlay-banner', params: banner });
+        }
+        closeModal();
+        await loadAll();
+        alert(`Playing video with banner on "${label}".`);
+      } catch (e) {
+        alert(`Play failed: ${e.message || e}`);
+      }
+    }
+
+    async function stopOverlayBundle() {
+      const target = document.getElementById('editOvlTarget')?.value || 'all';
+      const label = document.getElementById('editOvlTarget')?.selectedOptions[0]?.text.trim() || target;
+      if (!confirm(`Stop video and clear banner on "${label}"? Screen(s) return to standby.`)) return;
+      try {
+        if (target === 'all') {
+          await api('DELETE', '/api/overlay/all');
+          const screens = (await api('GET', '/api/screens')) || [];
+          await Promise.all(screens.map(s =>
+            api('POST', `/api/screens/${s.screen_id}/navigate`, { page: 'standby', params: {} })
+              .catch(err => console.warn(`[overlay+video] standby nav failed for ${s.screen_id}:`, err))
+          ));
+        } else {
+          await api('DELETE', `/api/screens/${target}/overlay`);
+          await api('POST', `/api/screens/${target}/navigate`, { page: 'standby', params: {} });
+        }
+        closeModal();
+        await loadAll();
+        alert(`Stopped on "${label}".`);
+      } catch (e) {
+        alert(`Stop failed: ${e.message || e}`);
+      }
     }
 
     // ── Delete Page ──────────────────────────────────────

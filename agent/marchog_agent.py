@@ -408,6 +408,12 @@ class PlayerController:
                 )
                 self.current_url = url
                 print(f"[player] VLC launched (pid {self.proc.pid}) for {url}")
+                # A freshly-mapped fullscreen VLC stacks ABOVE the overlay
+                # window (this Pi has no gtk-layer-shell), so the banner would
+                # disappear behind the video. Ask the overlay to re-raise
+                # itself once VLC's surface is actually up.
+                if _overlay is not None:
+                    _overlay.reassert()
             except FileNotFoundError:
                 print("[player] ERROR: vlc not found on PATH; cannot play video")
                 self.proc = None
@@ -595,8 +601,43 @@ class OverlayController:
                 # --intf dummy and never grabs focus interactively).
                 self.win.set_keep_above(True)
                 self.win.present()
+        # Even when already visible, re-raise over the next few seconds: a
+        # video scene starting around now relaunches VLC, whose fullscreen
+        # surface would otherwise map on top of us.
+        self.reassert()
         print(f"[overlay] showing {file} params={params}")
         return False
+
+    def reassert(self):
+        """Re-raise the overlay above a surface that mapped after us (e.g. a
+        freshly-launched fullscreen VLC). Without gtk-layer-shell the overlay
+        loses the stacking race when VLC maps last, so we re-present a few
+        times over the next few seconds — once VLC's surface is actually up —
+        to win it back. No-op under layer-shell (it pins us to the overlay
+        layer) or when nothing is showing. Safe to call from any thread."""
+        if not self._glib or self._layer_shell:
+            return
+        self._glib.idle_add(self._schedule_raises)
+
+    def _schedule_raises(self):
+        # Spread re-maps across VLC's start-up + first-decode window so at
+        # least one lands AFTER its fullscreen surface is mapped.
+        for delay in (800, 1600, 2800):
+            self._glib.timeout_add(delay, self._raise_once)
+        return False
+
+    def _raise_once(self):
+        if self.win and self.visible:
+            # On wlroots/labwc, fullscreen surfaces stack by map order within
+            # the fullscreen layer, and present()/keep_above will NOT lift us
+            # over a VLC that mapped after us. Re-mapping the window (hide →
+            # show) re-stacks it to the top of that layer, putting the banner
+            # back over the video.
+            self.win.hide()
+            self.win.show_all()
+            self.win.set_keep_above(True)
+            self.win.present()
+        return False  # one-shot
 
     def _inject_configure(self, params):
         """Push a live param update into the page via its `configure` protocol."""
